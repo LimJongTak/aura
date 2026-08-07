@@ -1,0 +1,15 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // 증빙서류: 누구나 업로드 가능(구 시스템과 동일하게 로그인 없이 이름+학번
+    // 본인확인만으로 신청서를 제출하는 모델), 10MB 이하, 이미지/PDF만 허용.
+    // 업로드된 파일은 관리자 검토용으로 공개 읽기를 허용한다.
+    match /evidence/{studentId}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches("image/.*|application/pdf");
+      allow delete: if false;
+    }
+  }
+}

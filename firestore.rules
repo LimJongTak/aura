@@ -1,0 +1,90 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // 관리자 여부를 클라이언트가 확인할 수 있도록 본인 문서만 읽기 허용.
+    match /admins/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list, write: if false;
+    }
+
+    // 학생명단 / 활동기준 / 이수과목마스터 / 환산설정 / 중고급이수자명단:
+    // 조회·신청 폼에 필요한 참조 데이터. 시딩(seed 스크립트)은 Admin SDK로
+    // 이루어지므로 규칙을 우회한다 — 클라이언트 쓰기는 막는다.
+    match /students/{studentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /activityStandards/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /subjectMaster/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /conversionSettings/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /advancedRecipients/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // 마일리지 신청: 구 시스템(이름+학번 본인확인, 로그인 없음)과 동일한 신뢰
+    // 모델을 유지한다. 학생 본인이 새 신청을 생성할 수 있고, 상태 변경은
+    // 관리자만 가능하다.
+    match /mileageApplications/{id} {
+      allow read: if true;
+
+      allow create: if
+        request.resource.data.status == "검토중" &&
+        request.resource.data.source == "self" &&
+        request.resource.data.studentId is string &&
+        request.resource.data.studentName is string &&
+        request.resource.data.category is string &&
+        request.resource.data.activityName is string &&
+        request.resource.data.mileage is number &&
+        exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
+
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "note", "processedAt"]);
+
+      allow delete: if isAdmin();
+    }
+
+    // 중고급 이수 신청: 위와 동일한 모델.
+    match /advancedApplications/{id} {
+      allow read: if true;
+
+      allow create: if
+        request.resource.data.status == "검토중" &&
+        request.resource.data.studentId is string &&
+        request.resource.data.studentName is string &&
+        request.resource.data.department is string &&
+        request.resource.data.targetSemester is string &&
+        exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
+
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "note", "processedAt"]);
+
+      allow delete: if isAdmin();
+    }
+  }
+}
