@@ -95,17 +95,30 @@ export default function LookupPage() {
       {summary && (
         <div className="mt-8 flex flex-col gap-8">
           <div>
-            <h2 className="text-lg font-bold text-foreground">
-              {summary.student.name}
-              <span className="ml-2 text-sm font-medium text-muted">
-                {summary.student.studentId} · {summary.student.department}
-                {summary.student.isParticipating && (
-                  <span className="ml-1.5 rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
-                    참여학과
-                  </span>
-                )}
-              </span>
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-bold text-foreground">
+                {summary.student.name}
+                <span className="ml-2 text-sm font-medium text-muted">
+                  {summary.student.studentId} · {summary.student.department}
+                  {summary.student.isParticipating && (
+                    <span className="ml-1.5 rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
+                      참여학과
+                    </span>
+                  )}
+                </span>
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setSummary(null);
+                  setName("");
+                  setStudentId("");
+                }}
+                className="text-xs font-semibold text-muted transition hover:text-primary"
+              >
+                다른 학생 조회하기
+              </button>
+            </div>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard label="승인 마일리지" value={`${summary.approvedMileage}점`} />
               <StatCard label="검토중" value={`${summary.pendingCount}건`} tone="warning" />
@@ -117,6 +130,25 @@ export default function LookupPage() {
                 tone="success"
               />
             </div>
+            {settings?.isFinalized && settings.conversionRate && (
+              <div className="mt-3">
+                {(() => {
+                  const amount = summary.approvedMileage * settings.conversionRate!;
+                  const pct = Math.min(100, Math.round((amount / summary.semesterCap) * 100));
+                  return (
+                    <>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-surface">
+                        <div
+                          className="h-full rounded-full bg-success transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <p className="mt-1.5 text-xs text-muted">학기 한도 대비 {pct}% 사용</p>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
           <div>
