@@ -5,6 +5,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { FirebaseConfigGate } from "@/components/layout/FirebaseConfigGate";
 import { QuickLinksFloating } from "@/components/layout/QuickLinksFloating";
+import { VisitTracker } from "@/components/layout/VisitTracker";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ko">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <FirebaseConfigGate>
+          <VisitTracker />
           <div className="flex min-h-screen flex-col">
             <Header />
             <main className="flex-1">{children}</main>

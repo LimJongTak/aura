@@ -122,6 +122,11 @@ export default function AdminPage() {
               퀵메뉴 관리
             </Button>
           </Link>
+          <Link href="/admin/analytics">
+            <Button variant="outline" size="sm">
+              방문자 통계
+            </Button>
+          </Link>
           <Button variant="outline" size="sm" onClick={() => signOut(auth)}>
             로그아웃
           </Button>

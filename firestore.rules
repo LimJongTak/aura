@@ -87,6 +87,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 방문자 통계: 누구나 오늘 카운트를 정확히 1씩만 늘릴 수 있고, 그 외
+    // 필드는 손댈 수 없다. 집계된 히스토리 조회는 관리자만 가능.
+    match /visitStats/{date} {
+      allow get, list: if isAdmin();
+      allow create: if request.resource.data.count == 1
+                    && request.resource.data.keys().hasOnly(["count", "updatedAt"]);
+      allow update: if request.resource.data.count == resource.data.count + 1
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["count", "updatedAt"]);
+      allow delete: if false;
+    }
+
     // 마일리지 신청: 학번@s.scnu.ac.kr 계정으로 로그인한 본인만 자신의 신청을
     // 생성할 수 있다. 상태 변경은 관리자만 가능하다. mileage는 점수표
     // 최댓값(50점)을 넘지 못하도록 서버 측에서도 한 번 더 막아, 클라이언트를

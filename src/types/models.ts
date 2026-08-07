@@ -17,6 +17,12 @@ export const ACTIVITY_GROUPS: ActivityGroup[] = [
 
 export type ApplicationStatus = "검토중" | "승인" | "반려";
 
+/** 방문자 통계 → visitStats/{yyyy-MM-dd} */
+export interface VisitStat {
+  date: string;
+  count: number;
+}
+
 /** 학생명단 시트 → students/{studentId} */
 export interface Student {
   studentId: string;
