@@ -23,6 +23,7 @@ export default function ApplyPage() {
   const [activityId, setActivityId] = useState("");
   const [activityDate, setActivityDate] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -210,17 +211,29 @@ export default function ApplyPage() {
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">
-              증빙서류 첨부 (본인 학번·이름 기재 필수)
+              증빙서류 첨부 (PDF 파일만 가능, 본인 학번·이름 기재 필수)
             </label>
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-sm text-muted transition hover:border-primary hover:text-primary">
               <Upload size={16} />
-              {file ? file.name : "파일을 선택해주세요"}
+              {file ? file.name : "PDF 파일을 선택해주세요"}
               <input
                 type="file"
+                accept=".pdf,application/pdf"
                 className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] ?? null;
+                  if (selected && selected.type !== "application/pdf") {
+                    setFile(null);
+                    setFileError("PDF 파일만 첨부할 수 있습니다.");
+                    e.target.value = "";
+                    return;
+                  }
+                  setFileError(null);
+                  setFile(selected);
+                }}
               />
             </label>
+            {fileError && <p className="mt-1.5 text-xs font-medium text-danger">{fileError}</p>}
           </div>
 
           {submitError && <p className="text-sm font-medium text-danger">{submitError}</p>}
