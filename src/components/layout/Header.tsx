@@ -17,12 +17,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-white/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-white">
-            A
-          </span>
-          <span className="text-lg font-extrabold tracking-tight text-foreground">
-            A.U.R.A <span className="font-semibold text-primary">마일리지</span>
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/scnu-logo.png" alt="국립순천대학교" className="h-8 w-auto sm:h-9" />
+          <span className="hidden h-7 w-px bg-border sm:block" />
+          <span className="hidden whitespace-nowrap text-base font-semibold text-foreground sm:block">
+            A.U.R.A <span className="text-primary">마일리지</span>
           </span>
         </Link>
         <nav className="hidden items-center gap-1 sm:flex">
@@ -42,12 +42,6 @@ export function Header() {
             );
           })}
         </nav>
-        <Link
-          href="/admin"
-          className="rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-        >
-          관리자
-        </Link>
       </div>
       <nav className="flex items-center gap-1 overflow-x-auto border-t border-border px-4 py-2 sm:hidden">
         {NAV.map((item) => {

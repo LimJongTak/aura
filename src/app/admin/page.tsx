@@ -85,9 +85,16 @@ export default function AdminPage() {
           <h1 className="text-2xl font-extrabold text-foreground">관리자 · 신청 검토</h1>
           <p className="mt-1 text-sm text-muted">{user.email?.split("@")[0]}님으로 로그인됨</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => signOut(auth)}>
-          로그아웃
-        </Button>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/quicklinks">
+            <Button variant="outline" size="sm">
+              퀵메뉴 관리
+            </Button>
+          </Link>
+          <Button variant="outline" size="sm" onClick={() => signOut(auth)}>
+            로그아웃
+          </Button>
+        </div>
       </div>
 
       <div className="mt-8">

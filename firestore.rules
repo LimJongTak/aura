@@ -45,6 +45,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 우측 플로팅 퀵메뉴: 공개 읽기, 관리자만 쓰기.
+    match /quickLinks/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 마일리지 신청: 구 시스템(이름+학번 본인확인, 로그인 없음)과 동일한 신뢰
     // 모델을 유지한다. 학생 본인이 새 신청을 생성할 수 있고, 상태 변경은
     // 관리자만 가능하다.

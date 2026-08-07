@@ -126,3 +126,23 @@ export const PARTICIPATING_DEPARTMENTS = [
   "전기공학전공",
   "전자공학전공",
 ];
+
+export type QuickLinkIcon =
+  | "newspaper"
+  | "sparkles"
+  | "book-open"
+  | "graduation-cap"
+  | "link"
+  | "globe"
+  | "megaphone"
+  | "help-circle";
+
+/** 화면 오른쪽에 떠있는 바로가기 메뉴 (PC 전용). 공개 읽기, 관리자만 쓰기. */
+export interface QuickLink {
+  id: string;
+  label: string;
+  url: string;
+  icon: QuickLinkIcon;
+  order: number;
+  isActive: boolean;
+}

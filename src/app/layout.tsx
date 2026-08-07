@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { FirebaseConfigGate } from "@/components/layout/FirebaseConfigGate";
+import { QuickLinksFloating } from "@/components/layout/QuickLinksFloating";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <main className="flex-1">{children}</main>
             <Footer />
           </div>
+          <QuickLinksFloating />
         </FirebaseConfigGate>
       </body>
     </html>
