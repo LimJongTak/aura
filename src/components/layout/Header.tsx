@@ -22,7 +22,7 @@ export function Header() {
           <img src="/scnu-logo.png" alt="국립순천대학교" className="h-8 w-auto sm:h-9" />
           <span className="hidden h-7 w-px bg-border sm:block" />
           <span className="hidden whitespace-nowrap text-base font-semibold text-foreground sm:block">
-            A.U.R.A <span className="text-primary">마일리지</span>
+            AI인재양성부트캠프사업단
           </span>
         </Link>
         <nav className="hidden items-center gap-1 sm:flex">

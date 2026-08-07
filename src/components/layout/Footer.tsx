@@ -11,7 +11,7 @@ export function Footer() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <div className="flex items-center gap-2">
           <img src="/scnu-mark-white.png" alt="국립순천대학교" className="h-9 w-auto" />
-          <span className="text-base text-[#9a9a9a]">A.U.R.A 마일리지</span>
+          <span className="text-base text-[#9a9a9a]">AI인재양성부트캠프사업단</span>
         </div>
       </div>
       <div className="border-t border-white/10">
