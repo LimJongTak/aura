@@ -5,13 +5,19 @@ import Link from "next/link";
 import { Card, StatCard } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/Badge";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
-import { computeStudentSummary, listApplicationsForStudent } from "@/lib/firestore/mileageApplications";
+import {
+  computeStudentSummary,
+  listApplicationsForStudent,
+  summarizeApprovedBySemester,
+} from "@/lib/firestore/mileageApplications";
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
+import { getCurrentSemester } from "@/lib/firestore/semesters";
 import type {
   AdvancedApplication,
   ConversionSettings,
   MileageApplication,
+  Semester,
   Student,
   StudentMileageSummary,
 } from "@/types/models";
@@ -34,17 +40,20 @@ function LookupResult({ student }: { student: Student }) {
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
+  const [currentSemester, setCurrentSemester] = useState<Semester | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      computeStudentSummary(student),
+      getCurrentSemester(),
       listApplicationsForStudent(student.studentId),
       listAdvancedApplicationsForStudent(student.studentId),
       getConversionSettings(),
-    ]).then(([studentSummary, apps, advApps, convSettings]) => {
+    ]).then(async ([semester, apps, advApps, convSettings]) => {
+      const studentSummary = await computeStudentSummary(student, semester?.name);
       if (cancelled) return;
+      setCurrentSemester(semester);
       setSummary(studentSummary);
       setApplications(apps);
       setAdvanced(advApps);
@@ -59,6 +68,8 @@ function LookupResult({ student }: { student: Student }) {
   if (loading || !summary) {
     return <p className="py-10 text-center text-sm text-muted">불러오는 중...</p>;
   }
+
+  const bySemester = summarizeApprovedBySemester(applications);
 
   return (
     <div className="flex flex-col gap-8">
@@ -75,7 +86,10 @@ function LookupResult({ student }: { student: Student }) {
           </span>
         </h2>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="승인 마일리지" value={`${summary.approvedMileage}점`} />
+          <StatCard
+            label={currentSemester ? `${currentSemester.name} 승인 마일리지` : "승인 마일리지"}
+            value={`${summary.approvedMileage}점`}
+          />
           <StatCard label="검토중" value={`${summary.pendingCount}건`} tone="warning" />
           <StatCard label="반려" value={`${summary.rejectedCount}건`} tone="danger" />
           <StatCard
@@ -106,6 +120,37 @@ function LookupResult({ student }: { student: Student }) {
           </div>
         )}
       </div>
+
+      {bySemester.length > 0 && (
+        <div>
+          <h3 className="font-bold text-foreground">학기별 승인 마일리지</h3>
+          <Card className="mt-3 overflow-x-auto p-0">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-4 py-3 font-semibold">학기</th>
+                  <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bySemester.map((row) => (
+                  <tr key={row.semester} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5 font-semibold">
+                      {row.semester}
+                      {currentSemester?.name === row.semester && (
+                        <span className="ml-2 rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
+                          현재 학기
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-semibold">{row.mileage}점</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      )}
 
       <div>
         <h3 className="font-bold text-foreground">마일리지 신청 내역</h3>

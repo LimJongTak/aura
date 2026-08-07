@@ -116,10 +116,13 @@ export function computeSemesterCap(student: Student): number {
   return isParticipating ? SEMESTER_CAP_PARTICIPATING : SEMESTER_CAP_NON_PARTICIPATING;
 }
 
-export async function computeStudentSummary(student: Student): Promise<StudentMileageSummary> {
+/** 학기 한도(semesterCap)는 학기 단위 장학금 한도이므로, approvedMileage도 그
+ * 학기로 범위를 좁혀야 정확하다 — semester를 넘기지 않으면 전체 기간 합산.
+ * pendingCount/rejectedCount는 검토 현황 참고용이라 학기와 무관하게 전체를 센다. */
+export async function computeStudentSummary(student: Student, semester?: string): Promise<StudentMileageSummary> {
   const applications = await listApplicationsForStudent(student.studentId);
   const approvedMileage = applications
-    .filter((a) => a.status === "승인")
+    .filter((a) => a.status === "승인" && (!semester || a.semester === semester))
     .reduce((sum, a) => sum + a.mileage, 0);
   const pendingCount = applications.filter((a) => a.status === "검토중").length;
   const rejectedCount = applications.filter((a) => a.status === "반려").length;
@@ -131,4 +134,17 @@ export async function computeStudentSummary(student: Student): Promise<StudentMi
     totalApplications: applications.length,
     semesterCap: computeSemesterCap(student),
   };
+}
+
+/** 학기별 승인 마일리지 합계 (학기 미지정 신청은 "미지정"으로 묶는다). */
+export function summarizeApprovedBySemester(applications: MileageApplication[]): { semester: string; mileage: number }[] {
+  const totals = new Map<string, number>();
+  for (const a of applications) {
+    if (a.status !== "승인") continue;
+    const key = a.semester ?? "미지정";
+    totals.set(key, (totals.get(key) ?? 0) + a.mileage);
+  }
+  return Array.from(totals, ([semester, mileage]) => ({ semester, mileage })).sort((a, b) =>
+    b.semester.localeCompare(a.semester)
+  );
 }
