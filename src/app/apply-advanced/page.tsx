@@ -149,8 +149,8 @@ function AdvancedForm({ student }: { student: Student }) {
                 const semVal = n === 1 ? subject1Semester : subject2Semester;
                 const setSemVal = n === 1 ? setSubject1Semester : setSubject2Semester;
                 return (
-                  <div key={n} className="grid grid-cols-3 gap-2">
-                    <Select className="col-span-1" value={subjectVal} onChange={(e) => setSubjectVal(e.target.value)}>
+                  <div key={n} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <Select className="sm:col-span-1" value={subjectVal} onChange={(e) => setSubjectVal(e.target.value)}>
                       <option value="">교과목 {n} 선택</option>
                       {subjects.map((s) => (
                         <option key={s.id} value={s.subjectName}>
@@ -180,9 +180,9 @@ function AdvancedForm({ student }: { student: Student }) {
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">몰입형 교육프로그램</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <Input
-                className="col-span-1"
+                className="sm:col-span-1"
                 value={immersiveProgram}
                 onChange={(e) => setImmersiveProgram(e.target.value)}
                 placeholder="프로그램명"
@@ -206,9 +206,9 @@ function AdvancedForm({ student }: { student: Student }) {
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">비교과 프로그램</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               <Input
-                className="col-span-1"
+                className="sm:col-span-1"
                 value={nonCurricularProgram}
                 onChange={(e) => setNonCurricularProgram(e.target.value)}
                 placeholder="프로그램명"
