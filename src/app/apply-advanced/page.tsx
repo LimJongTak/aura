@@ -1,31 +1,36 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
-import { findStudent } from "@/lib/firestore/students";
+import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import { listSubjectsForDepartment } from "@/lib/firestore/subjectMaster";
 import { submitAdvancedApplication } from "@/lib/firestore/advancedApplications";
-import type { SubjectMasterEntry, Student } from "@/types/models";
+import { listSemesters } from "@/lib/firestore/semesters";
+import type { Semester, Student, SubjectMasterEntry } from "@/types/models";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 const SEMESTERS = ["1학기", "2학기", "여름학기", "겨울학기"];
 
 export default function ApplyAdvancedPage() {
-  const [name, setName] = useState("");
-  const [studentId, setStudentId] = useState("");
-  const [student, setStudent] = useState<Student | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+      <h1 className="text-2xl font-extrabold text-foreground">중고급 이수 신청</h1>
+      <p className="mt-1.5 text-sm text-muted">참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청 가능합니다.</p>
+      <div className="mt-4">
+        <RequireStudentLogin>{(student) => <AdvancedForm student={student} />}</RequireStudentLogin>
+      </div>
+    </div>
+  );
+}
 
+function AdvancedForm({ student }: { student: Student }) {
   const [subjects, setSubjects] = useState<SubjectMasterEntry[]>([]);
-  const [targetYear, setTargetYear] = useState(String(CURRENT_YEAR));
-  const [targetSemesterPart, setTargetSemesterPart] = useState("2학기");
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [targetSemester, setTargetSemester] = useState("");
   const [subject1, setSubject1] = useState("");
   const [subject1Year, setSubject1Year] = useState(String(CURRENT_YEAR));
   const [subject1Semester, setSubject1Semester] = useState("1학기");
@@ -44,46 +49,18 @@ export default function ApplyAdvancedPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (student) {
-      listSubjectsForDepartment(student.department).then(setSubjects).catch(() => setSubjects([]));
-    }
+    listSubjectsForDepartment(student.department).then(setSubjects).catch(() => setSubjects([]));
+    listSemesters().then((list) => {
+      setSemesters(list);
+      const current = list.find((s) => s.isCurrent);
+      if (current) setTargetSemester(current.name);
+    });
   }, [student]);
-
-  async function handleVerify(e: React.FormEvent) {
-    e.preventDefault();
-    setVerifyError(null);
-    setNotFound(false);
-    if (!name.trim() || !studentId.trim()) {
-      setVerifyError("이름과 학번을 모두 입력해주세요.");
-      return;
-    }
-    setVerifying(true);
-    try {
-      const found = await findStudent(name, studentId);
-      if (!found) {
-        setVerifyError("일치하는 학생 정보를 찾을 수 없습니다. 이름과 학번을 다시 확인해주세요.");
-        setNotFound(true);
-        return;
-      }
-      if (!found.isParticipating) {
-        setVerifyError(
-          "중고급 이수 신청은 참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 가능합니다."
-        );
-        return;
-      }
-      setStudent(found);
-    } catch {
-      setVerifyError("확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
-      setVerifying(false);
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
-    if (!student) return;
-    if (!subject1 || !subject2 || !immersiveProgram.trim() || !nonCurricularProgram.trim()) {
+    if (!targetSemester || !subject1 || !subject2 || !immersiveProgram.trim() || !nonCurricularProgram.trim()) {
       setSubmitError("모든 항목을 입력해주세요.");
       return;
     }
@@ -93,7 +70,7 @@ export default function ApplyAdvancedPage() {
         studentId: student.studentId,
         studentName: student.name,
         department: student.department,
-        targetSemester: `${targetYear}-${targetSemesterPart}`,
+        targetSemester,
         subject1,
         subject1Year: Number(subject1Year),
         subject1Semester,
@@ -115,63 +92,32 @@ export default function ApplyAdvancedPage() {
     }
   }
 
-  if (!student) {
+  if (!student.isParticipating) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-10 sm:px-6">
-        <h1 className="text-2xl font-extrabold text-foreground">중고급 이수 신청</h1>
-        <p className="mt-1.5 text-sm text-muted">
-          참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청 가능합니다.
+      <Card>
+        <p className="text-sm text-muted">
+          중고급 이수 신청은 참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 가능합니다.
         </p>
-        <Card className="mt-6">
-          <form onSubmit={handleVerify} className="flex flex-col gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-muted">이름</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-muted">학번</label>
-              <Input
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                placeholder="예: 20261234"
-                inputMode="numeric"
-              />
-            </div>
-            {verifyError && <p className="text-sm font-medium text-danger">{verifyError}</p>}
-            {notFound && (
-              <p className="text-sm text-muted">
-                처음이신가요?{" "}
-                <Link href="/register" className="font-semibold text-primary hover:underline">
-                  학생 등록 신청하러 가기
-                </Link>
-              </p>
-            )}
-            <Button type="submit" loading={verifying}>
-              확인하고 계속하기
-            </Button>
-          </form>
-        </Card>
-      </div>
+      </Card>
     );
   }
 
   if (submitted) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
+      <div className="py-10 text-center">
         <CheckCircle2 className="mx-auto text-success" size={48} />
-        <h1 className="mt-4 text-xl font-extrabold text-foreground">신청이 접수되었습니다</h1>
+        <h2 className="mt-4 text-xl font-extrabold text-foreground">신청이 접수되었습니다</h2>
         <p className="mt-2 text-sm text-muted">
-          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마일리지 조회&quot;에서 처리 상태를 확인할
-          수 있습니다.
+          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마일리지 조회&quot;에서 처리 상태를 확인할 수
+          있습니다.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-extrabold text-foreground">중고급 이수 신청</h1>
-      <p className="mt-1.5 text-sm text-muted">
+    <div>
+      <p className="text-sm text-muted">
         {student.name}님 ({student.studentId} · {student.department})
       </p>
 
@@ -179,25 +125,21 @@ export default function ApplyAdvancedPage() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">지원 학기</label>
-            <div className="flex gap-2">
-              <Select value={targetYear} onChange={(e) => setTargetYear(e.target.value)} className="w-32">
-                {YEARS.map((y) => (
-                  <option key={y} value={y}>
-                    {y}년
-                  </option>
-                ))}
-              </Select>
-              <Select value={targetSemesterPart} onChange={(e) => setTargetSemesterPart(e.target.value)}>
-                <option value="1학기">1학기</option>
-                <option value="2학기">2학기</option>
-              </Select>
-            </div>
+            <Select value={targetSemester} onChange={(e) => setTargetSemester(e.target.value)}>
+              <option value="">선택해주세요</option>
+              {semesters.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            {semesters.length === 0 && (
+              <p className="mt-1.5 text-xs text-muted">등록된 학기가 없습니다. 사업단에 문의해주세요.</p>
+            )}
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold text-muted">
-              지원 대상 교과 2개 (초급 공통교과 제외)
-            </p>
+            <p className="mb-2 text-xs font-semibold text-muted">지원 대상 교과 2개 (초급 공통교과 제외)</p>
             <div className="flex flex-col gap-3">
               {[1, 2].map((n) => {
                 const subjectVal = n === 1 ? subject1 : subject2;
@@ -208,11 +150,7 @@ export default function ApplyAdvancedPage() {
                 const setSemVal = n === 1 ? setSubject1Semester : setSubject2Semester;
                 return (
                   <div key={n} className="grid grid-cols-3 gap-2">
-                    <Select
-                      className="col-span-1"
-                      value={subjectVal}
-                      onChange={(e) => setSubjectVal(e.target.value)}
-                    >
+                    <Select className="col-span-1" value={subjectVal} onChange={(e) => setSubjectVal(e.target.value)}>
                       <option value="">교과목 {n} 선택</option>
                       {subjects.map((s) => (
                         <option key={s.id} value={s.subjectName}>
@@ -292,9 +230,7 @@ export default function ApplyAdvancedPage() {
             </div>
           </div>
 
-          <p className="text-xs text-muted">
-            ※ AI인재양성부트캠프사업단이 주관하는 비교과프로그램 참여가 필수입니다.
-          </p>
+          <p className="text-xs text-muted">※ AI인재양성부트캠프사업단이 주관하는 비교과프로그램 참여가 필수입니다.</p>
 
           {submitError && <p className="text-sm font-medium text-danger">{submitError}</p>}
 

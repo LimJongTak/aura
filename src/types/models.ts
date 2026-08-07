@@ -25,6 +25,20 @@ export interface Student {
   /** 참여학과여부(Y/N) — 인공지능공학전공·전기공학전공·전자공학전공만 Y */
   isParticipating: boolean;
   phone?: string;
+  /** 최초 비밀번호(000000) 그대로 쓰고 있어 강제 변경이 필요한 상태인지 */
+  mustChangePassword?: boolean;
+}
+
+/**
+ * 마일리지/중고급 이수를 학기 단위로 끊어 관리하기 위한 학기 정의.
+ * mileageApplyStart~mileageApplyEnd 사이에만 마일리지 신청을 받는다.
+ */
+export interface Semester {
+  id: string;
+  name: string; // 예: "2026-2학기"
+  isCurrent: boolean;
+  mileageApplyStart: number | null; // epoch ms
+  mileageApplyEnd: number | null;
 }
 
 /** 활동기준 시트 → activityStandards/{id} */
@@ -51,6 +65,8 @@ export interface MileageApplication {
   note?: string;
   /** self: 학생이 직접 신청, bulk: 사업단 일괄부여 */
   source: "self" | "bulk";
+  /** 신청 당시의 학기 (semesters.name) — 과거 데이터는 없을 수 있다. */
+  semester?: string;
 }
 
 /** 중고급이수신청 시트 → advancedApplications/{id} */

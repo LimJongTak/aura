@@ -2,6 +2,7 @@ import { type FirebaseApp, getApps, initializeApp } from "firebase/app";
 import { type Auth, getAuth } from "firebase/auth";
 import { type Firestore, getFirestore } from "firebase/firestore";
 import { type FirebaseStorage, getStorage } from "firebase/storage";
+import { type Functions, getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -34,3 +35,6 @@ export const db: Firestore = canInit ? getFirestore(firebaseApp) : (undefined as
 export const storage: FirebaseStorage = canInit
   ? getStorage(firebaseApp)
   : (undefined as unknown as FirebaseStorage);
+export const functions: Functions = canInit
+  ? getFunctions(firebaseApp, "asia-northeast3")
+  : (undefined as unknown as Functions);

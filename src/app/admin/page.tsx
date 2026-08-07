@@ -96,6 +96,11 @@ export default function AdminPage() {
               학생 등록 신청
             </Button>
           </Link>
+          <Link href="/admin/semesters">
+            <Button variant="outline" size="sm">
+              학기 관리
+            </Button>
+          </Link>
           <Link href="/admin/quicklinks">
             <Button variant="outline" size="sm">
               퀵메뉴 관리

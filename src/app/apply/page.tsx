@@ -1,25 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { CheckCircle2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
-import { findStudent } from "@/lib/firestore/students";
+import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import { listActivityStandards } from "@/lib/firestore/activityStandards";
 import { submitMileageApplication } from "@/lib/firestore/mileageApplications";
+import { getCurrentSemester } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
-import { ACTIVITY_GROUPS, type ActivityStandard, type Student } from "@/types/models";
+import { ACTIVITY_GROUPS, type ActivityStandard, type Semester, type Student } from "@/types/models";
 
 export default function ApplyPage() {
-  const [name, setName] = useState("");
-  const [studentId, setStudentId] = useState("");
-  const [student, setStudent] = useState<Student | null>(null);
-  const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+      <h1 className="text-2xl font-extrabold text-foreground">마일리지 신청</h1>
+      <div className="mt-4">
+        <RequireStudentLogin>{(student) => <ApplyForm student={student} />}</RequireStudentLogin>
+      </div>
+    </div>
+  );
+}
 
+function ApplyForm({ student }: { student: Student }) {
   const [standards, setStandards] = useState<ActivityStandard[]>([]);
   const [category, setCategory] = useState(ACTIVITY_GROUPS[0]);
   const [activityId, setActivityId] = useState("");
@@ -29,49 +33,37 @@ export default function ApplyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [semester, setSemester] = useState<Semester | null>(null);
+  const [semesterLoading, setSemesterLoading] = useState(true);
 
   useEffect(() => {
     listActivityStandards().then(setStandards).catch(() => setStandards([]));
+    getCurrentSemester()
+      .then(setSemester)
+      .catch(() => setSemester(null))
+      .finally(() => setSemesterLoading(false));
   }, []);
 
-  const activitiesInCategory = useMemo(
-    () => standards.filter((s) => s.category === category),
-    [standards, category]
-  );
-  const selectedActivity = useMemo(
-    () => standards.find((s) => s.id === activityId) ?? null,
-    [standards, activityId]
-  );
+  const now = Date.now();
+  const withinWindow =
+    !!semester &&
+    !!semester.mileageApplyStart &&
+    !!semester.mileageApplyEnd &&
+    now >= semester.mileageApplyStart &&
+    now <= semester.mileageApplyEnd;
 
-  async function handleVerify(e: React.FormEvent) {
-    e.preventDefault();
-    setVerifyError(null);
-    setNotFound(false);
-    if (!name.trim() || !studentId.trim()) {
-      setVerifyError("이름과 학번을 모두 입력해주세요.");
-      return;
-    }
-    setVerifying(true);
-    try {
-      const found = await findStudent(name, studentId);
-      if (!found) {
-        setVerifyError("일치하는 학생 정보를 찾을 수 없습니다. 이름과 학번을 다시 확인해주세요.");
-        setNotFound(true);
-        return;
-      }
-      setStudent(found);
-    } catch {
-      setVerifyError("확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
-    } finally {
-      setVerifying(false);
-    }
-  }
+  const activitiesInCategory = useMemo(() => standards.filter((s) => s.category === category), [standards, category]);
+  const selectedActivity = useMemo(() => standards.find((s) => s.id === activityId) ?? null, [standards, activityId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
-    if (!student || !selectedActivity || !activityDate) {
+    if (!selectedActivity || !activityDate) {
       setSubmitError("활동과 활동 일자를 선택해주세요.");
+      return;
+    }
+    if (!withinWindow || !semester) {
+      setSubmitError("지금은 마일리지 신청 기간이 아닙니다.");
       return;
     }
     setSubmitting(true);
@@ -88,6 +80,7 @@ export default function ApplyPage() {
         mileage: selectedActivity.mileage,
         evidenceFileUrl,
         activityDate: new Date(activityDate),
+        semester: semester.name,
       });
       setSubmitted(true);
     } catch {
@@ -97,52 +90,14 @@ export default function ApplyPage() {
     }
   }
 
-  if (!student) {
-    return (
-      <div className="mx-auto max-w-xl px-4 py-10 sm:px-6">
-        <h1 className="text-2xl font-extrabold text-foreground">마일리지 신청</h1>
-        <p className="mt-1.5 text-sm text-muted">먼저 본인 확인을 위해 이름과 학번을 입력해주세요.</p>
-        <Card className="mt-6">
-          <form onSubmit={handleVerify} className="flex flex-col gap-4">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-muted">이름</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold text-muted">학번</label>
-              <Input
-                value={studentId}
-                onChange={(e) => setStudentId(e.target.value)}
-                placeholder="예: 20261234"
-                inputMode="numeric"
-              />
-            </div>
-            {verifyError && <p className="text-sm font-medium text-danger">{verifyError}</p>}
-            {notFound && (
-              <p className="text-sm text-muted">
-                처음이신가요?{" "}
-                <Link href="/register" className="font-semibold text-primary hover:underline">
-                  학생 등록 신청하러 가기
-                </Link>
-              </p>
-            )}
-            <Button type="submit" loading={verifying}>
-              확인하고 계속하기
-            </Button>
-          </form>
-        </Card>
-      </div>
-    );
-  }
-
   if (submitted) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
+      <div className="py-10 text-center">
         <CheckCircle2 className="mx-auto text-success" size={48} />
-        <h1 className="mt-4 text-xl font-extrabold text-foreground">신청이 접수되었습니다</h1>
+        <h2 className="mt-4 text-xl font-extrabold text-foreground">신청이 접수되었습니다</h2>
         <p className="mt-2 text-sm text-muted">
-          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마일리지 조회&quot;에서 처리 상태를 확인할
-          수 있습니다.
+          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마일리지 조회&quot;에서 처리 상태를 확인할 수
+          있습니다.
         </p>
         <Button
           className="mt-6"
@@ -161,11 +116,22 @@ export default function ApplyPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-extrabold text-foreground">마일리지 신청</h1>
-      <p className="mt-1.5 text-sm text-muted">
+    <div>
+      <p className="text-sm text-muted">
         {student.name}님 ({student.studentId} · {student.department})
       </p>
+
+      {!semesterLoading && !withinWindow && (
+        <div className="mt-4 rounded-xl bg-warning-light p-4 text-sm text-warning">
+          {semester
+            ? `현재 마일리지 신청 기간이 아닙니다. (${semester.name} 신청 기간: ${
+                semester.mileageApplyStart && semester.mileageApplyEnd
+                  ? `${new Date(semester.mileageApplyStart).toLocaleString("ko-KR")} ~ ${new Date(semester.mileageApplyEnd).toLocaleString("ko-KR")}`
+                  : "미설정"
+              })`
+            : "현재 사업단이 설정한 마일리지 신청 기간이 없습니다. 신청 기간 공지를 확인해주세요."}
+        </div>
+      )}
 
       <Card className="mt-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
@@ -250,7 +216,12 @@ export default function ApplyPage() {
 
           {submitError && <p className="text-sm font-medium text-danger">{submitError}</p>}
 
-          <Button type="submit" size="lg" loading={submitting} disabled={!selectedActivity || !activityDate}>
+          <Button
+            type="submit"
+            size="lg"
+            loading={submitting}
+            disabled={!selectedActivity || !activityDate || !withinWindow}
+          >
             마일리지 신청하기
           </Button>
         </form>

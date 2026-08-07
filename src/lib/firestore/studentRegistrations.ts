@@ -10,8 +10,8 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
-import { upsertStudent } from "@/lib/firestore/students";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase/client";
 import type { ApplicationStatus, StudentRegistrationRequest } from "@/types/models";
 
 const registrationsRef = () => collection(db, "studentRegistrationRequests");
@@ -49,17 +49,12 @@ export async function listPendingStudentRegistrations(): Promise<StudentRegistra
   });
 }
 
-/** 승인: students 문서를 새로 만들고, 신청 상태를 승인으로 바꾼다. */
+const approveStudentRegistrationFn = httpsCallable(functions, "approveStudentRegistration");
+
+/** 승인: Cloud Function이 학번@s.scnu.ac.kr 계정(초기 비밀번호 000000)과 students 문서를
+ * 함께 만들고, 신청 상태를 승인으로 바꾼다. */
 export async function approveStudentRegistration(request: StudentRegistrationRequest): Promise<void> {
-  await upsertStudent(request.studentId, {
-    name: request.name,
-    department: request.department,
-    isParticipating: request.isParticipating,
-  });
-  await updateDoc(doc(db, "studentRegistrationRequests", request.id), {
-    status: "승인" satisfies ApplicationStatus,
-    processedAt: serverTimestamp(),
-  });
+  await approveStudentRegistrationFn({ requestId: request.id });
 }
 
 export async function rejectStudentRegistration(id: string, note?: string): Promise<void> {

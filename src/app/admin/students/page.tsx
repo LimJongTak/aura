@@ -6,7 +6,8 @@ import { ArrowLeft, Download, Pencil, Search } from "lucide-react";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { listAllStudents, upsertStudent } from "@/lib/firestore/students";
 import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/firestore/mileageApplications";
-import type { Student } from "@/types/models";
+import { listSemesters } from "@/lib/firestore/semesters";
+import type { MileageApplication, Semester, Student } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -16,9 +17,14 @@ interface StudentRow extends Student {
   rank: number;
 }
 
+const ALL_SEMESTERS = "전체 학기";
+
 export default function AdminStudentsPage() {
   const { loading, user, isAdmin } = useAdminUser();
-  const [rows, setRows] = useState<StudentRow[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [approvedApps, setApprovedApps] = useState<MileageApplication[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
   const [dataLoading, setDataLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("전체");
@@ -28,16 +34,16 @@ export default function AdminStudentsPage() {
   const refresh = useCallback(async () => {
     setDataLoading(true);
     try {
-      const [students, approvedApps] = await Promise.all([listAllStudents(), listApprovedMileageApplications()]);
-      const totals = new Map<string, number>();
-      for (const app of approvedApps) {
-        totals.set(app.studentId, (totals.get(app.studentId) ?? 0) + app.mileage);
-      }
-      const sorted = students
-        .map((s) => ({ ...s, approvedMileage: totals.get(s.studentId) ?? 0 }))
-        .sort((a, b) => b.approvedMileage - a.approvedMileage)
-        .map((s, i) => ({ ...s, rank: i + 1 }));
-      setRows(sorted);
+      const [studentList, apps, semesterList] = await Promise.all([
+        listAllStudents(),
+        listApprovedMileageApplications(),
+        listSemesters(),
+      ]);
+      setStudents(studentList);
+      setApprovedApps(apps);
+      setSemesters(semesterList);
+      const current = semesterList.find((s) => s.isCurrent);
+      if (current) setSemesterFilter(current.name);
     } finally {
       setDataLoading(false);
     }
@@ -46,6 +52,19 @@ export default function AdminStudentsPage() {
   useEffect(() => {
     if (isAdmin) refresh();
   }, [isAdmin, refresh]);
+
+  const rows = useMemo<StudentRow[]>(() => {
+    const appsInScope =
+      semesterFilter === ALL_SEMESTERS ? approvedApps : approvedApps.filter((a) => a.semester === semesterFilter);
+    const totals = new Map<string, number>();
+    for (const app of appsInScope) {
+      totals.set(app.studentId, (totals.get(app.studentId) ?? 0) + app.mileage);
+    }
+    return students
+      .map((s) => ({ ...s, approvedMileage: totals.get(s.studentId) ?? 0 }))
+      .sort((a, b) => b.approvedMileage - a.approvedMileage)
+      .map((s, i) => ({ ...s, rank: i + 1 }));
+  }, [students, approvedApps, semesterFilter]);
 
   const departments = useMemo(() => {
     const set = new Set(rows.map((r) => r.department).filter(Boolean));
@@ -108,7 +127,9 @@ export default function AdminStudentsPage() {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-foreground">학생 관리 · 마일리지 순위</h1>
-          <p className="mt-1 text-sm text-muted">전체 {rows.length}명 중 {filtered.length}명 표시</p>
+          <p className="mt-1 text-sm text-muted">
+            {semesterFilter} 기준 전체 {rows.length}명 중 {filtered.length}명 표시
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv}>
           <Download size={15} /> CSV 다운로드
@@ -126,6 +147,14 @@ export default function AdminStudentsPage() {
               className="pl-9"
             />
           </div>
+          <Select value={semesterFilter} onChange={(e) => setSemesterFilter(e.target.value)} className="sm:w-48">
+            <option value={ALL_SEMESTERS}>{ALL_SEMESTERS}</option>
+            {semesters.map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
           <Select value={department} onChange={(e) => setDepartment(e.target.value)} className="sm:w-56">
             {departments.map((d) => (
               <option key={d} value={d}>

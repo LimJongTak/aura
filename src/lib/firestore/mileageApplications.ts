@@ -34,6 +34,8 @@ export interface SubmitMileageApplicationInput {
   mileage: number;
   evidenceFileUrl?: string;
   activityDate: Date;
+  /** 관리자가 지정한 "현재 학기" 이름 — Firestore 규칙이 신청 기간을 검증할 때 이 값과 대조한다. */
+  semester: string;
 }
 
 export async function submitMileageApplication(input: SubmitMileageApplicationInput): Promise<void> {
@@ -46,6 +48,7 @@ export async function submitMileageApplication(input: SubmitMileageApplicationIn
     evidenceFileUrl: input.evidenceFileUrl ?? "",
     status: "검토중" satisfies ApplicationStatus,
     source: "self",
+    semester: input.semester,
     appliedAt: Timestamp.fromDate(input.activityDate),
     createdAt: serverTimestamp(),
   });
