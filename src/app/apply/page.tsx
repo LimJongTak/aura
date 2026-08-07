@@ -101,14 +101,14 @@ export default function ApplyPage() {
           <form onSubmit={handleVerify} className="flex flex-col gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-muted">이름</label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 장가연" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-muted">학번</label>
               <Input
                 value={studentId}
                 onChange={(e) => setStudentId(e.target.value)}
-                placeholder="예: 20224254"
+                placeholder="예: 20261234"
                 inputMode="numeric"
               />
             </div>

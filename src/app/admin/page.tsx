@@ -86,6 +86,11 @@ export default function AdminPage() {
           <p className="mt-1 text-sm text-muted">{user.email?.split("@")[0]}님으로 로그인됨</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/students">
+            <Button variant="outline" size="sm">
+              학생 관리 · 순위
+            </Button>
+          </Link>
           <Link href="/admin/quicklinks">
             <Button variant="outline" size="sm">
               퀵메뉴 관리

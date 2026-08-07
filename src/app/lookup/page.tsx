@@ -70,14 +70,14 @@ export default function LookupPage() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <div className="flex-1">
             <label className="mb-1.5 block text-xs font-semibold text-muted">이름</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 장가연" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" />
           </div>
           <div className="flex-1">
             <label className="mb-1.5 block text-xs font-semibold text-muted">학번</label>
             <Input
               value={studentId}
               onChange={(e) => setStudentId(e.target.value)}
-              placeholder="예: 20224254"
+              placeholder="예: 20261234"
               inputMode="numeric"
             />
           </div>

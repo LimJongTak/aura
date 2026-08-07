@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import type { Student } from "@/types/models";
 
@@ -22,4 +22,22 @@ export async function listParticipatingStudents(): Promise<Student[]> {
   const q = query(studentsRef(), where("isParticipating", "==", true));
   const snap = await getDocs(q);
   return snap.docs.map((d) => d.data() as Student);
+}
+
+export interface UpdateStudentInput {
+  name: string;
+  department: string;
+  isParticipating: boolean;
+  phone?: string;
+}
+
+/** 관리자용 학생 정보 수정(학과·참여학과 여부 등). 없는 학번이면 새로 만든다. */
+export async function upsertStudent(studentId: string, input: UpdateStudentInput): Promise<void> {
+  await setDoc(doc(db, "students", studentId.trim()), {
+    studentId: studentId.trim(),
+    name: input.name.trim(),
+    department: input.department.trim(),
+    isParticipating: input.isParticipating,
+    phone: input.phone ?? "",
+  });
 }

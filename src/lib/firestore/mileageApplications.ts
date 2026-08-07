@@ -80,6 +80,16 @@ export async function listPendingMileageApplications(): Promise<MileageApplicati
   });
 }
 
+/** 전체 학생 순위 계산용 — 승인된 신청 전체를 학번 필터 없이 가져온다. */
+export async function listApprovedMileageApplications(): Promise<MileageApplication[]> {
+  const q = query(applicationsRef(), where("status", "==", "승인"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return { id: d.id, ...data, appliedAt: toMillis(data.appliedAt) } as MileageApplication;
+  });
+}
+
 export async function updateMileageApplicationStatus(
   id: string,
   status: ApplicationStatus,
