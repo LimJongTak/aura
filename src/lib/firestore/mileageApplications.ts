@@ -93,15 +93,20 @@ export async function listApprovedMileageApplications(): Promise<MileageApplicat
   });
 }
 
+/** 승인 시 관리자가 학기를 지정/변경할 수 있다 — 학생이 신청 시점에 태그한
+ * 학기와 실제로 점수를 인정할 학기가 다를 수 있기 때문 (예: 신청은 늦게
+ * 들어왔지만 지난 학기 활동으로 인정하는 경우). */
 export async function updateMileageApplicationStatus(
   id: string,
   status: ApplicationStatus,
-  note?: string
+  note?: string,
+  semester?: string
 ): Promise<void> {
   await updateDoc(doc(db, "mileageApplications", id), {
     status,
     note: note ?? "",
     processedAt: serverTimestamp(),
+    ...(semester ? { semester } : {}),
   });
 }
 

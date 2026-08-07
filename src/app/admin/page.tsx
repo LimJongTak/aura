@@ -5,6 +5,7 @@ import Link from "next/link";
 import { signOut } from "firebase/auth";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Select } from "@/components/ui/Input";
 import { auth } from "@/lib/firebase/client";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
@@ -15,18 +16,33 @@ import {
   listPendingAdvancedApplications,
   updateAdvancedApplicationStatus,
 } from "@/lib/firestore/advancedApplications";
-import type { AdvancedApplication, MileageApplication } from "@/types/models";
+import { listSemesters } from "@/lib/firestore/semesters";
+import type { AdvancedApplication, MileageApplication, Semester } from "@/types/models";
 
 export default function AdminPage() {
   const { loading, user, isAdmin } = useAdminUser();
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [semesterChoice, setSemesterChoice] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [m, a] = await Promise.all([listPendingMileageApplications(), listPendingAdvancedApplications()]);
+    const [m, a, s] = await Promise.all([
+      listPendingMileageApplications(),
+      listPendingAdvancedApplications(),
+      listSemesters(),
+    ]);
     setMileageApps(m);
     setAdvancedApps(a);
+    setSemesters(s);
+    setSemesterChoice((prev) => {
+      const next = { ...prev };
+      for (const app of m) {
+        if (!next[app.id]) next[app.id] = app.semester ?? s.find((sem) => sem.isCurrent)?.name ?? "";
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
@@ -36,7 +52,7 @@ export default function AdminPage() {
   async function handleMileageDecision(id: string, status: "승인" | "반려") {
     setBusyId(id);
     try {
-      await updateMileageApplicationStatus(id, status);
+      await updateMileageApplicationStatus(id, status, undefined, semesterChoice[id]);
       await refresh();
     } finally {
       setBusyId(null);
@@ -126,6 +142,7 @@ export default function AdminPage() {
                   <th className="px-4 py-3 font-semibold">활동명</th>
                   <th className="px-4 py-3 text-right font-semibold">마일리지</th>
                   <th className="px-4 py-3 font-semibold">증빙</th>
+                  <th className="px-4 py-3 font-semibold">인정 학기</th>
                   <th className="px-4 py-3 font-semibold">처리</th>
                 </tr>
               </thead>
@@ -151,6 +168,22 @@ export default function AdminPage() {
                       ) : (
                         "-"
                       )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <Select
+                        className="w-32"
+                        value={semesterChoice[a.id] ?? a.semester ?? ""}
+                        onChange={(e) => setSemesterChoice((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                      >
+                        {a.semester && !semesters.some((s) => s.name === a.semester) && (
+                          <option value={a.semester}>{a.semester}</option>
+                        )}
+                        {semesters.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </Select>
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1.5">
