@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -19,6 +20,7 @@ export default function ApplyAdvancedPage() {
   const [studentId, setStudentId] = useState("");
   const [student, setStudent] = useState<Student | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
   const [subjects, setSubjects] = useState<SubjectMasterEntry[]>([]);
@@ -50,6 +52,7 @@ export default function ApplyAdvancedPage() {
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setVerifyError(null);
+    setNotFound(false);
     if (!name.trim() || !studentId.trim()) {
       setVerifyError("이름과 학번을 모두 입력해주세요.");
       return;
@@ -59,6 +62,7 @@ export default function ApplyAdvancedPage() {
       const found = await findStudent(name, studentId);
       if (!found) {
         setVerifyError("일치하는 학생 정보를 찾을 수 없습니다. 이름과 학번을 다시 확인해주세요.");
+        setNotFound(true);
         return;
       }
       if (!found.isParticipating) {
@@ -134,6 +138,14 @@ export default function ApplyAdvancedPage() {
               />
             </div>
             {verifyError && <p className="text-sm font-medium text-danger">{verifyError}</p>}
+            {notFound && (
+              <p className="text-sm text-muted">
+                처음이신가요?{" "}
+                <Link href="/register" className="font-semibold text-primary hover:underline">
+                  학생 등록 신청하러 가기
+                </Link>
+              </p>
+            )}
             <Button type="submit" loading={verifying}>
               확인하고 계속하기
             </Button>

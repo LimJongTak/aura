@@ -17,14 +17,17 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
-    // 학생명단 / 활동기준 / 이수과목마스터 / 환산설정 / 중고급이수자명단:
-    // 조회·신청 폼에 필요한 참조 데이터. 시딩(seed 스크립트)은 Admin SDK로
-    // 이루어지므로 규칙을 우회한다 — 클라이언트 쓰기는 막는다.
+    // 학생명단: 이름+학번 본인확인(단건 조회, get)은 로그인 없이 가능해야
+    // 하지만, 컬렉션 전체를 훑는 목록 조회(list)까지 열어두면 전화번호를
+    // 포함한 전체 명단이 그대로 유출된다 — list는 관리자만 허용한다.
     match /students/{studentId} {
-      allow read: if true;
+      allow get: if true;
+      allow list: if isAdmin();
       allow write: if isAdmin();
     }
 
+    // 활동기준 / 이수과목마스터 / 환산설정: 신청 폼에 필요한 공개 참조
+    // 데이터(개인정보 아님) — 목록 조회까지 공개해도 안전하다.
     match /activityStandards/{id} {
       allow read: if true;
       allow write: if false;
@@ -40,8 +43,9 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 중고급이수자명단: 이름+지급액 등 개인정보 성격이 있어 관리자만 조회.
     match /advancedRecipients/{id} {
-      allow read: if true;
+      allow read: if isAdmin();
       allow write: if false;
     }
 
@@ -53,7 +57,8 @@ service cloud.firestore {
 
     // 마일리지 신청: 구 시스템(이름+학번 본인확인, 로그인 없음)과 동일한 신뢰
     // 모델을 유지한다. 학생 본인이 새 신청을 생성할 수 있고, 상태 변경은
-    // 관리자만 가능하다.
+    // 관리자만 가능하다. mileage는 점수표 최댓값(50점)을 넘지 못하도록
+    // 서버 측에서도 한 번 더 막아, 클라이언트를 우회한 임의 값 주입을 막는다.
     match /mileageApplications/{id} {
       allow read: if true;
 
@@ -65,6 +70,8 @@ service cloud.firestore {
         request.resource.data.category is string &&
         request.resource.data.activityName is string &&
         request.resource.data.mileage is number &&
+        request.resource.data.mileage > 0 &&
+        request.resource.data.mileage <= 50 &&
         exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
 
       allow update: if isAdmin() &&
@@ -85,6 +92,27 @@ service cloud.firestore {
         request.resource.data.department is string &&
         request.resource.data.targetSemester is string &&
         exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
+
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "note", "processedAt"]);
+
+      allow delete: if isAdmin();
+    }
+
+    // 학생 등록 신청: 학생명단에 없는 학생이 이름·학번·학과를 제출하면
+    // 관리자 승인 후 students 문서가 생성된다. 이미 등록된 학번은 신청 불가.
+    // 승인 전 목록은 개인정보라 관리자만 조회 가능.
+    match /studentRegistrationRequests/{id} {
+      allow get, list: if isAdmin();
+
+      allow create: if
+        request.resource.data.status == "검토중" &&
+        request.resource.data.studentId is string &&
+        request.resource.data.name is string &&
+        request.resource.data.department is string &&
+        request.resource.data.isParticipating is bool &&
+        !exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
 
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys()

@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import type { Student } from "@/types/models";
 
@@ -13,14 +13,13 @@ export async function findStudent(name: string, studentId: string): Promise<Stud
   return data;
 }
 
-export async function listAllStudents(): Promise<Student[]> {
-  const snap = await getDocs(studentsRef());
-  return snap.docs.map((d) => d.data() as Student);
+export async function studentExists(studentId: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, "students", studentId.trim()));
+  return snap.exists();
 }
 
-export async function listParticipatingStudents(): Promise<Student[]> {
-  const q = query(studentsRef(), where("isParticipating", "==", true));
-  const snap = await getDocs(q);
+export async function listAllStudents(): Promise<Student[]> {
+  const snap = await getDocs(studentsRef());
   return snap.docs.map((d) => d.data() as Student);
 }
 

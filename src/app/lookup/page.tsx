@@ -24,6 +24,7 @@ export default function LookupPage() {
   const [studentId, setStudentId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [summary, setSummary] = useState<StudentMileageSummary | null>(null);
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
@@ -32,6 +33,7 @@ export default function LookupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotFound(false);
     setSummary(null);
     if (!name.trim() || !studentId.trim()) {
       setError("이름과 학번을 모두 입력해주세요.");
@@ -42,6 +44,7 @@ export default function LookupPage() {
       const student = await findStudent(name, studentId);
       if (!student) {
         setError("일치하는 학생 정보를 찾을 수 없습니다. 이름과 학번을 다시 확인해주세요.");
+        setNotFound(true);
         return;
       }
       const [studentSummary, apps, advApps, convSettings] = await Promise.all([
@@ -88,6 +91,14 @@ export default function LookupPage() {
         {error && (
           <p className="mt-3 flex items-center gap-1.5 text-sm font-medium text-danger">
             <AlertCircle size={15} /> {error}
+          </p>
+        )}
+        {notFound && (
+          <p className="mt-1.5 text-sm text-muted">
+            처음이신가요?{" "}
+            <Link href="/register" className="font-semibold text-primary hover:underline">
+              학생 등록 신청하러 가기
+            </Link>
           </p>
         )}
       </Card>

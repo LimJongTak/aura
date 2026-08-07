@@ -48,28 +48,28 @@ export default function HomePage() {
   return (
     <div>
       {/* Hero */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-primary-dark via-primary to-[#2f7fd6]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_55%)]" />
-        <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
-          <p className="text-sm font-semibold text-white/80">국립순천대학교 · AI인재양성부트캠프사업단</p>
-          <h1 className="mt-2 text-3xl font-extrabold text-white sm:text-4xl">A.U.R.A 마일리지</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">
+      <div className="border-b border-border bg-surface">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-5xl">
+            A.U.R.A <span className="text-primary">마일리지</span>
+          </h1>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
             교육 참여, 활동, 성과 등에 대해 부여되는 점수이며, 장학금(학기별 최대 150만원, 비참여학과
             100만원)으로 환산·활용됩니다. 아래에서 내 마일리지를 조회하거나 신청해보세요.
           </p>
-          <div className="mt-7 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/lookup">
-              <Button size="lg" variant="white">
+              <Button size="lg">
                 <Search size={18} /> 마일리지 조회
               </Button>
             </Link>
             <Link href="/apply">
-              <Button size="lg" variant="outlineOnDark">
+              <Button size="lg" variant="outline">
                 <ClipboardList size={18} /> 마일리지 신청
               </Button>
             </Link>
             <Link href="/apply-advanced">
-              <Button size="lg" variant="outlineOnDark">
+              <Button size="lg" variant="outline">
                 <GraduationCap size={18} /> 중고급 이수 신청
               </Button>
             </Link>

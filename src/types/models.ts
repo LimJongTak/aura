@@ -146,3 +146,19 @@ export interface QuickLink {
   order: number;
   isActive: boolean;
 }
+
+/**
+ * 학생명단에 없는 학생이 스스로 등록을 신청하는 요청. 관리자 승인 시
+ * students/{studentId} 문서가 새로 생성된다. 승인 전까지는 비공개(관리자만 조회).
+ */
+export interface StudentRegistrationRequest {
+  id: string;
+  requestedAt: number;
+  studentId: string;
+  name: string;
+  department: string;
+  isParticipating: boolean;
+  status: ApplicationStatus;
+  processedAt?: number;
+  note?: string;
+}
