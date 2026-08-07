@@ -137,3 +137,23 @@ export const approveStudentRegistration = onCall(async (request) => {
 
   return { success: true };
 });
+
+/** 관리자가 학생을 탈퇴시키면 Firebase Auth 계정과 Firestore 학생 문서를 삭제한다.
+ * 신청 이력(mileageApplications 등)은 감사 기록으로 남기기 위해 그대로 둔다. */
+export const deleteStudent = onCall(async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const { studentId } = request.data as { studentId?: string };
+  if (!studentId) throw new HttpsError("invalid-argument", "studentId가 필요합니다.");
+
+  try {
+    const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
+    await admin.auth().deleteUser(userRecord.uid);
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code !== "auth/user-not-found") throw err;
+  }
+
+  await admin.firestore().collection("students").doc(studentId).delete();
+
+  return { success: true };
+});

@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase/client";
 import type { Student } from "@/types/models";
 
 const studentsRef = () => collection(db, "students");
@@ -30,4 +31,12 @@ export async function upsertStudent(studentId: string, input: UpdateStudentInput
     isParticipating: input.isParticipating,
     phone: input.phone ?? "",
   });
+}
+
+const deleteStudentFn = httpsCallable(functions, "deleteStudent");
+
+/** 관리자용 학생 탈퇴: Cloud Function이 Auth 계정과 students 문서를 함께 삭제한다.
+ * 신청 이력은 감사 기록으로 남기기 위해 삭제하지 않는다. */
+export async function deleteStudent(studentId: string): Promise<void> {
+  await deleteStudentFn({ studentId: studentId.trim() });
 }

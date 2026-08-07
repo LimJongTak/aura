@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Pencil, Search } from "lucide-react";
+import { ArrowLeft, Download, Pencil, Search, UserX } from "lucide-react";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
-import { listAllStudents, upsertStudent } from "@/lib/firestore/students";
+import { deleteStudent, listAllStudents, upsertStudent } from "@/lib/firestore/students";
 import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/firestore/mileageApplications";
 import { listSemesters } from "@/lib/firestore/semesters";
 import type { MileageApplication, Semester, Student } from "@/types/models";
@@ -30,6 +30,7 @@ export default function AdminStudentsPage() {
   const [department, setDepartment] = useState("전체");
   const [participatingOnly, setParticipatingOnly] = useState(false);
   const [editing, setEditing] = useState<StudentRow | null>(null);
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
@@ -80,6 +81,19 @@ export default function AdminStudentsPage() {
       return true;
     });
   }, [rows, search, department, participatingOnly]);
+
+  async function handleWithdraw(row: StudentRow) {
+    if (!confirm(`${row.name}(${row.studentId}) 학생을 탈퇴시킬까요?\n로그인 계정이 삭제되며 되돌릴 수 없습니다.`)) return;
+    setWithdrawingId(row.studentId);
+    try {
+      await deleteStudent(row.studentId);
+      await refresh();
+    } catch {
+      alert("탈퇴 처리에 실패했어요.");
+    } finally {
+      setWithdrawingId(null);
+    }
+  }
 
   function handleExportCsv() {
     const header = ["순위", "학번", "이름", "학과", "참여학과", "승인 마일리지", "학기 한도(원)"];
@@ -185,6 +199,7 @@ export default function AdminStudentsPage() {
                 <th className="px-4 py-3 font-semibold">참여학과</th>
                 <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
                 <th className="px-4 py-3 font-semibold">수정</th>
+                <th className="px-4 py-3 font-semibold">탈퇴</th>
               </tr>
             </thead>
             <tbody>
@@ -205,6 +220,16 @@ export default function AdminStudentsPage() {
                   <td className="px-4 py-2.5">
                     <button onClick={() => setEditing(r)} className="text-muted hover:text-primary">
                       <Pencil size={15} />
+                    </button>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <button
+                      onClick={() => handleWithdraw(r)}
+                      disabled={withdrawingId === r.studentId}
+                      className="text-muted hover:text-danger disabled:opacity-40"
+                      title="탈퇴 처리"
+                    >
+                      <UserX size={15} />
                     </button>
                   </td>
                 </tr>

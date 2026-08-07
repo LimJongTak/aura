@@ -16,9 +16,26 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const TITLE = "A.U.R.A 마일리지 | 국립순천대학교 AI인재양성부트캠프사업단";
+const DESCRIPTION = "AURA 마일리지 조회, 신청, 중고급 이수 신청을 한 곳에서.";
+
 export const metadata: Metadata = {
-  title: "A.U.R.A 마일리지 | 국립순천대학교 AI인재양성부트캠프사업단",
-  description: "AURA 마일리지 조회, 신청, 중고급 이수 신청을 한 곳에서.",
+  metadataBase: new URL("https://aura.scnuai.com"),
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "https://aura.scnuai.com",
+    siteName: "A.U.R.A 마일리지",
+    locale: "ko_KR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
