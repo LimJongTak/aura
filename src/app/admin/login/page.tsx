@@ -4,13 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
+import { toAdminEmail } from "@/lib/auth/adminId";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [id, setId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,10 +21,10 @@ export default function AdminLoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, toAdminEmail(id), password);
       router.push("/admin");
     } catch {
-      setError("로그인에 실패했습니다. 이메일과 비밀번호를 확인해주세요.");
+      setError("로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.");
     } finally {
       setLoading(false);
     }
@@ -36,8 +37,8 @@ export default function AdminLoginPage() {
       <Card className="mt-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted">이메일</label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <label className="mb-1.5 block text-xs font-semibold text-muted">아이디</label>
+            <Input value={id} onChange={(e) => setId(e.target.value)} />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">비밀번호</label>

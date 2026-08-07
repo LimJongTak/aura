@@ -83,7 +83,7 @@ export default function AdminPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-foreground">관리자 · 신청 검토</h1>
-          <p className="mt-1 text-sm text-muted">{user.email}로 로그인됨</p>
+          <p className="mt-1 text-sm text-muted">{user.email?.split("@")[0]}님으로 로그인됨</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => signOut(auth)}>
           로그아웃
