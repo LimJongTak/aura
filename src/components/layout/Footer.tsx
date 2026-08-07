@@ -8,8 +8,8 @@ export function Footer() {
           <p>국립순천대학교 AI인재양성부트캠프사업단</p>
           <p className="mt-1">대표전화 : 061-750-5391</p>
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <div className="flex items-center gap-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/scnu-mark-white.png" alt="국립순천대학교" className="h-9 w-auto" />
           <span className="text-base text-[#9a9a9a]">AI인재양성부트캠프사업단</span>
         </div>

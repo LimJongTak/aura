@@ -79,7 +79,7 @@ export default function AdminSemestersPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-foreground">학기 관리</h1>
           <p className="mt-1 text-sm text-muted">
-            "현재 학기"로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.
+            &quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.
           </p>
         </div>
         <Button size="sm" onClick={() => setEditing("new")}>
