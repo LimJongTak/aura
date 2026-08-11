@@ -80,9 +80,12 @@ export function Header() {
               </>
             ) : user && isAdmin ? (
               <>
-                <span className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark">
+                <Link
+                  href="/admin"
+                  className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
+                >
                   관리자
-                </span>
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
@@ -141,9 +144,12 @@ export function Header() {
                 </div>
               ) : user && isAdmin ? (
                 <div className="flex items-center justify-between px-3">
-                  <span className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark">
+                  <Link
+                    href="/admin"
+                    className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
+                  >
                     관리자
-                  </span>
+                  </Link>
                   <button
                     onClick={handleLogout}
                     className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
