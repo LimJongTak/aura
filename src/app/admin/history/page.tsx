@@ -272,7 +272,7 @@ export default function AdminHistoryPage() {
 
       <Card className="mt-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative flex-1 sm:min-w-[200px]">
+          <div className="relative sm:w-44">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input
               value={search}
@@ -290,7 +290,7 @@ export default function AdminHistoryPage() {
             ))}
           </Select>
           <div className="flex shrink-0 items-center gap-2">
-            <label className="text-xs font-semibold text-muted">처리일 기간</label>
+            <label className="whitespace-nowrap text-xs font-semibold text-muted">처리일 기간</label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
             <span className="text-xs text-muted">~</span>
             <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
