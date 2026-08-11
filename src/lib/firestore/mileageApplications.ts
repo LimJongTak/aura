@@ -93,6 +93,28 @@ export async function listApprovedMileageApplications(): Promise<MileageApplicat
   });
 }
 
+/** 관리자가 승인/반려 처리를 마친 신청 전체 (처리 내역 화면용). status별로 따로 조회해
+ *  합치는 이유는 "in" 필터 + orderBy 조합이 복합 색인을 요구하기 때문이다. */
+export async function listProcessedMileageApplications(): Promise<MileageApplication[]> {
+  const statuses: ApplicationStatus[] = ["승인", "반려"];
+  const grouped = await Promise.all(
+    statuses.map(async (status) => {
+      const q = query(applicationsRef(), where("status", "==", status), orderBy("appliedAt", "desc"));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          appliedAt: toMillis(data.appliedAt),
+          processedAt: data.processedAt ? toMillis(data.processedAt) : undefined,
+        } as MileageApplication;
+      });
+    })
+  );
+  return grouped.flat().sort((a, b) => (b.processedAt ?? b.appliedAt) - (a.processedAt ?? a.appliedAt));
+}
+
 /** 승인 시 관리자가 학기를 지정/변경할 수 있다 — 학생이 신청 시점에 태그한
  * 학기와 실제로 점수를 인정할 학기가 다를 수 있기 때문 (예: 신청은 늦게
  * 들어왔지만 지난 학기 활동으로 인정하는 경우). */

@@ -57,6 +57,27 @@ export async function listPendingAdvancedApplications(): Promise<AdvancedApplica
   });
 }
 
+/** 관리자가 승인/반려 처리를 마친 중고급 이수 신청 전체 (처리 내역 화면용). */
+export async function listProcessedAdvancedApplications(): Promise<AdvancedApplication[]> {
+  const statuses: ApplicationStatus[] = ["승인", "반려"];
+  const grouped = await Promise.all(
+    statuses.map(async (status) => {
+      const q = query(advancedRef(), where("status", "==", status), orderBy("appliedAt", "desc"));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          appliedAt: toMillis(data.appliedAt),
+          processedAt: data.processedAt ? toMillis(data.processedAt) : undefined,
+        } as AdvancedApplication;
+      });
+    })
+  );
+  return grouped.flat().sort((a, b) => (b.processedAt ?? b.appliedAt) - (a.processedAt ?? a.appliedAt));
+}
+
 export async function updateAdvancedApplicationStatus(
   id: string,
   status: ApplicationStatus,

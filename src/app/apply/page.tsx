@@ -17,13 +17,15 @@ export default function ApplyPage() {
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <h1 className="text-2xl font-extrabold text-foreground">마일리지 신청</h1>
       <div className="mt-4">
-        <RequireStudentLogin>{(student) => <ApplyForm student={student} />}</RequireStudentLogin>
+        <RequireStudentLogin>
+          {(student, { isPreview }) => <ApplyForm student={student} isPreview={isPreview} />}
+        </RequireStudentLogin>
       </div>
     </div>
   );
 }
 
-function ApplyForm({ student }: { student: Student }) {
+function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolean }) {
   const [standards, setStandards] = useState<ActivityStandard[]>([]);
   const [category, setCategory] = useState(ACTIVITY_GROUPS[0]);
   const [activityId, setActivityId] = useState("");
@@ -58,6 +60,10 @@ function ApplyForm({ student }: { student: Student }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
+    if (isPreview) {
+      setSubmitError("미리보기 모드에서는 제출할 수 없습니다.");
+      return;
+    }
     if (!selectedActivity || !activityDate) {
       setSubmitError("활동과 활동 일자를 선택해주세요.");
       return;
@@ -220,9 +226,9 @@ function ApplyForm({ student }: { student: Student }) {
             type="submit"
             size="lg"
             loading={submitting}
-            disabled={!selectedActivity || !activityDate || !withinWindow}
+            disabled={!selectedActivity || !activityDate || !withinWindow || isPreview}
           >
-            마일리지 신청하기
+            {isPreview ? "미리보기 모드 (제출 불가)" : "마일리지 신청하기"}
           </Button>
         </form>
       </Card>

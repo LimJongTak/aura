@@ -102,6 +102,11 @@ export default function AdminPage() {
           <p className="mt-1 text-sm text-muted">{user.email?.split("@")[0]}님으로 로그인됨</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/history">
+            <Button variant="outline" size="sm">
+              처리 내역
+            </Button>
+          </Link>
           <Link href="/admin/students">
             <Button variant="outline" size="sm">
               학생 관리 · 순위
@@ -228,7 +233,11 @@ export default function AdminPage() {
                 <tr className="border-b border-border bg-surface text-muted">
                   <th className="px-4 py-3 font-semibold">학번/이름</th>
                   <th className="px-4 py-3 font-semibold">지원학기</th>
+                  <th className="px-4 py-3 font-semibold">등급</th>
                   <th className="px-4 py-3 font-semibold">교과목</th>
+                  <th className="px-4 py-3 font-semibold">몰입형</th>
+                  <th className="px-4 py-3 font-semibold">비교과</th>
+                  <th className="px-4 py-3 font-semibold">성적증명서</th>
                   <th className="px-4 py-3 font-semibold">처리</th>
                 </tr>
               </thead>
@@ -239,8 +248,38 @@ export default function AdminPage() {
                       {a.studentId} {a.studentName}
                     </td>
                     <td className="px-4 py-2.5">{a.targetSemester}</td>
+                    <td className="px-4 py-2.5">{a.level}</td>
                     <td className="px-4 py-2.5">
-                      {a.subject1} / {a.subject2}
+                      {a.subjects?.map((s) => (
+                        <div key={s.subjectName}>
+                          [{s.program}] {s.subjectName} ({s.completed}, {s.completedYearMonth})
+                        </div>
+                      ))}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {a.immersive && (
+                        <div>
+                          [{a.immersive.program}] {a.immersive.subjectName} ({a.immersive.completed},{" "}
+                          {a.immersive.completedYearMonth})
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {a.nonCurricularProgram} ({a.nonCurricularYearMonth})
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {a.transcriptFileUrl ? (
+                        <a
+                          href={a.transcriptFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          보기
+                        </a>
+                      ) : (
+                        "-"
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex gap-1.5">

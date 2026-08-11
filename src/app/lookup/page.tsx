@@ -205,6 +205,7 @@ function LookupResult({ student }: { student: Student }) {
               <thead>
                 <tr className="border-b border-border bg-surface text-muted">
                   <th className="px-4 py-3 font-semibold">지원학기</th>
+                  <th className="px-4 py-3 font-semibold">등급</th>
                   <th className="px-4 py-3 font-semibold">교과목</th>
                   <th className="px-4 py-3 font-semibold">몰입형/비교과</th>
                   <th className="px-4 py-3 font-semibold">상태</th>
@@ -214,11 +215,12 @@ function LookupResult({ student }: { student: Student }) {
                 {advanced.map((a) => (
                   <tr key={a.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">{a.targetSemester}</td>
+                    <td className="px-4 py-2.5">{a.level}</td>
                     <td className="px-4 py-2.5">
-                      {a.subject1} / {a.subject2}
+                      {a.subjects?.map((s) => s.subjectName).join(" / ")}
                     </td>
                     <td className="px-4 py-2.5">
-                      {a.immersiveProgram} / {a.nonCurricularProgram}
+                      {a.immersive?.subjectName} / {a.nonCurricularProgram}
                     </td>
                     <td className="px-4 py-2.5">
                       <StatusBadge status={a.status} />

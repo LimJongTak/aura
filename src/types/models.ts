@@ -75,6 +75,25 @@ export interface MileageApplication {
   semester?: string;
 }
 
+/** 중고급 이수 신청에서 학생이 선택하는 신청 등급. 등급별 이수기준이 다르다
+ *  (중급: 중급 교과목 2과목 + 몰입형 1과목 + 비교과 참여 1회 / 고급도 동일 구조,
+ *  교과목만 고급 교과목으로 대체). */
+export type CompletionLevel = "중급" | "고급";
+
+export type YesNo = "Y" | "N";
+
+export const EDUCATION_PROGRAMS = ["AI Beginner", "AI Growing", "AI Advanced", "AI-Bridge Professional"] as const;
+export type EducationProgram = (typeof EDUCATION_PROGRAMS)[number];
+
+/** 중고급 이수 신청의 교과목 1건(이수 교과목 또는 몰입형 교과목 공통 입력 단위). */
+export interface CompletedSubjectEntry {
+  program: EducationProgram;
+  subjectName: string;
+  completed: YesNo;
+  /** 이수연월, 예: "2026-07" */
+  completedYearMonth: string;
+}
+
 /** 중고급이수신청 시트 → advancedApplications/{id} */
 export interface AdvancedApplication {
   id: string;
@@ -83,18 +102,17 @@ export interface AdvancedApplication {
   studentName: string;
   department: string;
   targetSemester: string; // 예: "2026-2학기"
-  subject1: string;
-  subject1Year: number;
-  subject1Semester: string;
-  subject2: string;
-  subject2Year: number;
-  subject2Semester: string;
-  immersiveProgram: string;
-  immersiveYear: number;
-  immersiveSemester: string;
+  level: CompletionLevel;
+  /** 이수기준상 등급별 교과목 2과목 */
+  subjects: CompletedSubjectEntry[];
+  /** 몰입형 교과목 1과목 (AI-Bridge Professional) */
+  immersive: CompletedSubjectEntry;
+  /** 비교과 참여 프로그램명 */
   nonCurricularProgram: string;
-  nonCurricularYear: number;
-  nonCurricularSemester: string;
+  /** 비교과 참여 연월, 예: "2026-07" */
+  nonCurricularYearMonth: string;
+  /** 성적증명서(PDF) 첨부 다운로드 URL — 필수 */
+  transcriptFileUrl: string;
   status: ApplicationStatus;
   processedAt?: number;
   note?: string;
