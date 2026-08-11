@@ -200,6 +200,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [nonCurricularYearMonth, setNonCurricularYearMonth] = useState("");
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [transcriptFileError, setTranscriptFileError] = useState<string | null>(null);
+  const [ackConfirmed, setAckConfirmed] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -252,6 +253,10 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     }
     if (!transcriptFile) {
       setSubmitError("성적증명서(PDF)를 첨부해주세요.");
+      return;
+    }
+    if (!ackConfirmed) {
+      setSubmitError("중복 수혜 관련 유의사항을 확인해주세요.");
       return;
     }
     setSubmitting(true);
@@ -474,9 +479,24 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             {transcriptFileError && <p className="mt-1.5 text-xs font-medium text-danger">{transcriptFileError}</p>}
           </div>
 
+          <div className="rounded-xl border border-warning/30 bg-warning-light p-4 text-sm text-warning">
+            <p className="font-bold">
+              중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지 않습니다 (중복 수혜
+              불가).
+            </p>
+            <p className="mt-2 font-bold">
+              AURA 마일리지는 학기별로 적용되는 시스템으로, 매 학기 0점부터 다시 시작됩니다 (이전 학기 마일리지는
+              다음 학기로 이월되지 않습니다).
+            </p>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold">
+              <input type="checkbox" checked={ackConfirmed} onChange={(e) => setAckConfirmed(e.target.checked)} />
+              위 유의사항을 확인했습니다.
+            </label>
+          </div>
+
           {submitError && <p className="text-sm font-medium text-danger">{submitError}</p>}
 
-          <Button type="submit" size="lg" loading={submitting} disabled={isPreview}>
+          <Button type="submit" size="lg" loading={submitting} disabled={!ackConfirmed || isPreview}>
             {isPreview ? "미리보기 모드 (제출 불가)" : "중고급 이수 신청하기"}
           </Button>
         </form>

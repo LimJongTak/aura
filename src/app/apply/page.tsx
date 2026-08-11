@@ -37,6 +37,7 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [semester, setSemester] = useState<Semester | null>(null);
   const [semesterLoading, setSemesterLoading] = useState(true);
+  const [ackConfirmed, setAckConfirmed] = useState(false);
 
   useEffect(() => {
     listActivityStandards().then(setStandards).catch(() => setStandards([]));
@@ -66,6 +67,10 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
     }
     if (!selectedActivity || !activityDate) {
       setSubmitError("활동과 활동 일자를 선택해주세요.");
+      return;
+    }
+    if (!ackConfirmed) {
+      setSubmitError("중복 수혜 관련 유의사항을 확인해주세요.");
       return;
     }
     if (!withinWindow || !semester) {
@@ -113,6 +118,7 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
             setActivityId("");
             setActivityDate("");
             setFile(null);
+            setAckConfirmed(false);
           }}
         >
           추가로 신청하기
@@ -220,13 +226,24 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
             {fileError && <p className="mt-1.5 text-xs font-medium text-danger">{fileError}</p>}
           </div>
 
+          <div className="rounded-xl border border-warning/30 bg-warning-light p-4 text-sm text-warning">
+            <p className="font-bold">
+              중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지 않습니다 (중복 수혜
+              불가).
+            </p>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold">
+              <input type="checkbox" checked={ackConfirmed} onChange={(e) => setAckConfirmed(e.target.checked)} />
+              위 유의사항을 확인했습니다.
+            </label>
+          </div>
+
           {submitError && <p className="text-sm font-medium text-danger">{submitError}</p>}
 
           <Button
             type="submit"
             size="lg"
             loading={submitting}
-            disabled={!selectedActivity || !activityDate || !withinWindow || isPreview}
+            disabled={!selectedActivity || !activityDate || !withinWindow || !ackConfirmed || isPreview}
           >
             {isPreview ? "미리보기 모드 (제출 불가)" : "마일리지 신청하기"}
           </Button>
