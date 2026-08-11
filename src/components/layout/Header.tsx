@@ -7,6 +7,7 @@ import { Menu, X } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
+import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { cn } from "@/lib/utils/cn";
 
 const NAV = [
@@ -20,7 +21,9 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { loading, user, student } = useStudentSession();
+  const { loading: adminLoading, isAdmin } = useAdminUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  const sessionLoading = loading || adminLoading;
 
   // 페이지 이동 시 모바일 메뉴 자동으로 닫기
   useEffect(() => {
@@ -28,8 +31,9 @@ export function Header() {
   }, [pathname]);
 
   async function handleLogout() {
+    const wasAdmin = isAdmin;
     await signOut(auth);
-    router.push("/login");
+    router.push(wasAdmin ? "/admin/login" : "/login");
   }
 
   return (
@@ -62,11 +66,23 @@ export function Header() {
           })}
         </nav>
 
-        {!loading && (
+        {!sessionLoading && (
           <div className="hidden items-center gap-2 sm:flex">
             {user && student ? (
               <>
                 <span className="text-xs font-semibold text-muted">{student.name}님</span>
+                <button
+                  onClick={handleLogout}
+                  className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
+                >
+                  로그아웃
+                </button>
+              </>
+            ) : user && isAdmin ? (
+              <>
+                <span className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark">
+                  관리자
+                </span>
                 <button
                   onClick={handleLogout}
                   className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
@@ -112,10 +128,22 @@ export function Header() {
             );
           })}
           <div className="mt-2 border-t border-border pt-3">
-            {!loading &&
+            {!sessionLoading &&
               (user && student ? (
                 <div className="flex items-center justify-between px-3">
                   <span className="text-sm font-semibold text-muted">{student.name}님</span>
+                  <button
+                    onClick={handleLogout}
+                    className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              ) : user && isAdmin ? (
+                <div className="flex items-center justify-between px-3">
+                  <span className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark">
+                    관리자
+                  </span>
                   <button
                     onClick={handleLogout}
                     className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
