@@ -6,7 +6,6 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase/client";
 import { toStudentEmail } from "@/lib/auth/studentAuth";
-import { recordStudentLogin } from "@/lib/firestore/students";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -31,7 +30,6 @@ export default function LoginPage() {
       const cred = await signInWithEmailAndPassword(auth, toStudentEmail(studentId), password);
       const snap = await getDoc(doc(db, "students", studentId.trim()));
       const student = snap.exists() ? (snap.data() as Student) : null;
-      void recordStudentLogin(studentId).catch(() => {});
       if (student?.mustChangePassword) {
         router.push("/change-password");
       } else {

@@ -198,7 +198,6 @@ export default function AdminStudentsPage() {
                 <th className="px-4 py-3 font-semibold">학과</th>
                 <th className="px-4 py-3 font-semibold">참여학과</th>
                 <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
-                <th className="px-4 py-3 font-semibold">마지막 로그인</th>
                 <th className="px-4 py-3 font-semibold">수정</th>
                 <th className="px-4 py-3 font-semibold">탈퇴</th>
               </tr>
@@ -218,9 +217,6 @@ export default function AdminStudentsPage() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right font-bold text-primary-dark">{r.approvedMileage}점</td>
-                  <td className="px-4 py-2.5 text-muted">
-                    {r.lastLoginAt ? new Date(r.lastLoginAt).toLocaleString("ko-KR") : "로그인 이력 없음"}
-                  </td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => setEditing(r)} className="text-muted hover:text-primary">
                       <Pencil size={15} />
