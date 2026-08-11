@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Pencil, Search, UserX } from "lucide-react";
+import { ArrowLeft, Download, Eye, Pencil, Search, UserX } from "lucide-react";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { deleteStudent, listAllStudents, upsertStudent } from "@/lib/firestore/students";
 import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/firestore/mileageApplications";
@@ -198,6 +198,7 @@ export default function AdminStudentsPage() {
                 <th className="px-4 py-3 font-semibold">학과</th>
                 <th className="px-4 py-3 font-semibold">참여학과</th>
                 <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
+                <th className="px-4 py-3 font-semibold">상세</th>
                 <th className="px-4 py-3 font-semibold">수정</th>
                 <th className="px-4 py-3 font-semibold">탈퇴</th>
               </tr>
@@ -217,6 +218,15 @@ export default function AdminStudentsPage() {
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right font-bold text-primary-dark">{r.approvedMileage}점</td>
+                  <td className="px-4 py-2.5">
+                    <Link
+                      href={`/admin/students/${encodeURIComponent(r.studentId)}`}
+                      className="text-muted hover:text-primary"
+                      title="상세보기"
+                    >
+                      <Eye size={15} />
+                    </Link>
+                  </td>
                   <td className="px-4 py-2.5">
                     <button onClick={() => setEditing(r)} className="text-muted hover:text-primary">
                       <Pencil size={15} />

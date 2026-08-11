@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { signOut } from "firebase/auth";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
+import { StatusBadge } from "@/components/ui/Badge";
 import { auth } from "@/lib/firebase/client";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
   listPendingMileageApplications,
+  listProcessedMileageApplications,
   updateMileageApplicationStatus,
 } from "@/lib/firestore/mileageApplications";
 import {
@@ -19,21 +22,55 @@ import {
 import { listSemesters } from "@/lib/firestore/semesters";
 import type { AdvancedApplication, MileageApplication, Semester } from "@/types/models";
 
+/** 같은 학생·구분·활동명·학기로 신청된 다른 이력(상태 무관)이 있는지 확인하는
+ * 배지. 관리자가 중복 신청을 놓치지 않도록 승인/반려 버튼 옆에 붙는다. */
+function DuplicateBadge({ matches }: { matches: MileageApplication[] }) {
+  const [open, setOpen] = useState(false);
+  if (matches.length === 0) return null;
+  return (
+    <div className="relative mt-1 inline-block" onMouseLeave={() => setOpen(false)}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-full bg-warning-light px-2 py-0.5 text-[11px] font-semibold text-warning"
+      >
+        <AlertTriangle size={11} /> 중복 의심 ({matches.length + 1}건)
+      </button>
+      {open && (
+        <div className="absolute left-0 z-10 mt-1 w-56 rounded-xl border border-border bg-white p-2 text-xs shadow-lg">
+          <p className="mb-1.5 font-semibold text-foreground">동일 활동 이전 신청 이력</p>
+          <ul className="flex flex-col gap-1.5">
+            {matches.map((m) => (
+              <li key={m.id} className="flex items-center justify-between gap-2">
+                <span className="text-muted">{new Date(m.appliedAt).toLocaleDateString("ko-KR")}</span>
+                <StatusBadge status={m.status} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { loading, user, isAdmin } = useAdminUser();
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
+  const [mileageHistory, setMileageHistory] = useState<MileageApplication[]>([]);
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semesterChoice, setSemesterChoice] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [m, a, s] = await Promise.all([
+    const [m, a, s, processed] = await Promise.all([
       listPendingMileageApplications(),
       listPendingAdvancedApplications(),
       listSemesters(),
+      listProcessedMileageApplications(),
     ]);
     setMileageApps(m);
+    setMileageHistory([...m, ...processed]);
     setAdvancedApps(a);
     setSemesters(s);
     setSemesterChoice((prev) => {
@@ -48,6 +85,23 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAdmin) refresh();
   }, [isAdmin, refresh]);
+
+  // 학번+구분+활동명+학기가 같은 신청을 한 그룹으로 묶어 중복 신청 여부를 판단한다.
+  const duplicateGroups = useMemo(() => {
+    const map = new Map<string, MileageApplication[]>();
+    for (const app of mileageHistory) {
+      const key = `${app.studentId}|${app.category}|${app.activityName.trim()}|${app.semester ?? ""}`;
+      const arr = map.get(key) ?? [];
+      arr.push(app);
+      map.set(key, arr);
+    }
+    return map;
+  }, [mileageHistory]);
+
+  function findDuplicates(app: MileageApplication): MileageApplication[] {
+    const key = `${app.studentId}|${app.category}|${app.activityName.trim()}|${app.semester ?? ""}`;
+    return (duplicateGroups.get(key) ?? []).filter((m) => m.id !== app.id);
+  }
 
   async function handleMileageDecision(id: string, status: "승인" | "반려") {
     setBusyId(id);
@@ -163,7 +217,10 @@ export default function AdminPage() {
                       {a.studentId} {a.studentName}
                     </td>
                     <td className="px-4 py-2.5">{a.category}</td>
-                    <td className="px-4 py-2.5">{a.activityName}</td>
+                    <td className="px-4 py-2.5">
+                      <div>{a.activityName}</div>
+                      <DuplicateBadge matches={findDuplicates(a)} />
+                    </td>
                     <td className="px-4 py-2.5 text-right font-semibold">{a.mileage}점</td>
                     <td className="px-4 py-2.5">
                       {a.evidenceFileUrl ? (

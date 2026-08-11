@@ -10,6 +10,11 @@ export async function studentExists(studentId: string): Promise<boolean> {
   return snap.exists();
 }
 
+export async function getStudent(studentId: string): Promise<Student | null> {
+  const snap = await getDoc(doc(db, "students", studentId.trim()));
+  return snap.exists() ? (snap.data() as Student) : null;
+}
+
 export async function listAllStudents(): Promise<Student[]> {
   const snap = await getDocs(studentsRef());
   return snap.docs.map((d) => d.data() as Student);
