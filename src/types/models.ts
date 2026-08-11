@@ -33,6 +33,8 @@ export interface Student {
   phone?: string;
   /** 최초 비밀번호(000000) 그대로 쓰고 있어 강제 변경이 필요한 상태인지 */
   mustChangePassword?: boolean;
+  /** 마지막으로 로그인에 성공한 시각 (epoch ms) — 로그인 시점에만 갱신된다. */
+  lastLoginAt?: number;
 }
 
 /**

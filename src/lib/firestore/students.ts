@@ -1,9 +1,15 @@
-import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, Timestamp, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase/client";
 import type { Student } from "@/types/models";
 
 const studentsRef = () => collection(db, "students");
+
+function toMillis(v: unknown): number | undefined {
+  if (v instanceof Timestamp) return v.toMillis();
+  if (typeof v === "number") return v;
+  return undefined;
+}
 
 export async function studentExists(studentId: string): Promise<boolean> {
   const snap = await getDoc(doc(db, "students", studentId.trim()));
@@ -12,7 +18,18 @@ export async function studentExists(studentId: string): Promise<boolean> {
 
 export async function listAllStudents(): Promise<Student[]> {
   const snap = await getDocs(studentsRef());
-  return snap.docs.map((d) => d.data() as Student);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return { ...data, lastLoginAt: toMillis(data.lastLoginAt) } as Student;
+  });
+}
+
+/** 로그인에 성공할 때마다 호출해 마지막 로그인 시각을 남긴다. Firestore 규칙상
+ * 본인 문서의 lastLoginAt 필드만 건드릴 수 있다. */
+export async function recordStudentLogin(studentId: string): Promise<void> {
+  await updateDoc(doc(db, "students", studentId.trim()), {
+    lastLoginAt: serverTimestamp(),
+  });
 }
 
 export interface UpdateStudentInput {
@@ -22,15 +39,20 @@ export interface UpdateStudentInput {
   phone?: string;
 }
 
-/** 관리자용 학생 정보 수정(학과·참여학과 여부 등). 없는 학번이면 새로 만든다. */
+/** 관리자용 학생 정보 수정(학과·참여학과 여부 등). 없는 학번이면 새로 만든다.
+ * merge로 저장해 mustChangePassword·lastLoginAt 같은 다른 필드를 지우지 않는다. */
 export async function upsertStudent(studentId: string, input: UpdateStudentInput): Promise<void> {
-  await setDoc(doc(db, "students", studentId.trim()), {
-    studentId: studentId.trim(),
-    name: input.name.trim(),
-    department: input.department.trim(),
-    isParticipating: input.isParticipating,
-    phone: input.phone ?? "",
-  });
+  await setDoc(
+    doc(db, "students", studentId.trim()),
+    {
+      studentId: studentId.trim(),
+      name: input.name.trim(),
+      department: input.department.trim(),
+      isParticipating: input.isParticipating,
+      phone: input.phone ?? "",
+    },
+    { merge: true }
+  );
 }
 
 const deleteStudentFn = httpsCallable(functions, "deleteStudent");

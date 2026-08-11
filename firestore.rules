@@ -38,7 +38,14 @@ service cloud.firestore {
     match /students/{studentId} {
       allow get: if true;
       allow list: if isAdmin();
-      allow write: if isAdmin();
+
+      // 로그인할 때마다 본인 학생 문서에 마지막 로그인 시각만 남길 수 있게
+      // 허용한다 — 그 외 필드(학과·참여여부 등)는 여전히 관리자만 바꿀 수 있다.
+      allow update: if isAdmin() ||
+        (isSelf(studentId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["lastLoginAt"]));
+
+      allow create, delete: if isAdmin();
     }
 
     // 활동기준 / 이수과목마스터 / 환산설정: 신청 폼에 필요한 공개 참조
