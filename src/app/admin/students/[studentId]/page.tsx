@@ -1,25 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
-import { Select } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { getStudent } from "@/lib/firestore/students";
-import { computeSemesterCap, listApplicationsForStudent } from "@/lib/firestore/mileageApplications";
+import {
+  computeSemesterCap,
+  grantMileage,
+  listApplicationsForStudent,
+} from "@/lib/firestore/mileageApplications";
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { listSemesters } from "@/lib/firestore/semesters";
-import type {
-  AdvancedApplication,
-  ConversionSettings,
-  MileageApplication,
-  Semester,
-  Student,
+import { uploadEvidenceFile } from "@/lib/storage/evidence";
+import {
+  ACTIVITY_GROUPS,
+  type ActivityGroup,
+  type AdvancedApplication,
+  type ConversionSettings,
+  type MileageApplication,
+  type Semester,
+  type Student,
 } from "@/types/models";
 
 const ALL_SEMESTERS = "전체 학기";
@@ -36,32 +43,33 @@ export default function AdminStudentDetailPage() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
+  const [granting, setGranting] = useState(false);
 
-  useEffect(() => {
-    if (!isAdmin) return;
-    let cancelled = false;
-    setDataLoading(true);
-    Promise.all([
+  const refresh = useCallback(async () => {
+    const [s, apps, advApps, semesterList, convSettings] = await Promise.all([
       getStudent(studentId),
       listApplicationsForStudent(studentId),
       listAdvancedApplicationsForStudent(studentId),
       listSemesters(),
       getConversionSettings(),
-    ]).then(([s, apps, advApps, semesterList, convSettings]) => {
-      if (cancelled) return;
-      setStudent(s);
-      setApplications(apps);
-      setAdvanced(advApps);
-      setSemesters(semesterList);
-      setSettings(convSettings);
+    ]);
+    setStudent(s);
+    setApplications(apps);
+    setAdvanced(advApps);
+    setSemesters(semesterList);
+    setSettings(convSettings);
+    setSemesterFilter((prev) => {
+      if (prev !== ALL_SEMESTERS) return prev;
       const current = semesterList.find((sem) => sem.isCurrent);
-      if (current) setSemesterFilter(current.name);
-      setDataLoading(false);
+      return current ? current.name : prev;
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdmin, studentId]);
+  }, [studentId]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    setDataLoading(true);
+    refresh().finally(() => setDataLoading(false));
+  }, [isAdmin, refresh]);
 
   const scopedApplications = useMemo(
     () =>
@@ -147,15 +155,33 @@ export default function AdminStudentDetailPage() {
             )}
           </h1>
         </div>
-        <Select value={semesterFilter} onChange={(e) => setSemesterFilter(e.target.value)} className="sm:w-48">
-          <option value={ALL_SEMESTERS}>{ALL_SEMESTERS}</option>
-          {semesters.map((s) => (
-            <option key={s.id} value={s.name}>
-              {s.name}
-            </option>
-          ))}
-        </Select>
+        <div className="flex items-center gap-2">
+          <Select value={semesterFilter} onChange={(e) => setSemesterFilter(e.target.value)} className="sm:w-48">
+            <option value={ALL_SEMESTERS}>{ALL_SEMESTERS}</option>
+            {semesters.map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" onClick={() => setGranting(true)}>
+            마일리지 지급
+          </Button>
+        </div>
       </div>
+
+      {granting && (
+        <GrantMileageModal
+          student={student}
+          semesters={semesters}
+          defaultSemester={semesterFilter !== ALL_SEMESTERS ? semesterFilter : semesters.find((s) => s.isCurrent)?.name}
+          onClose={() => setGranting(false)}
+          onGranted={() => {
+            setGranting(false);
+            refresh();
+          }}
+        />
+      )}
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label={`${semesterFilter} 승인 마일리지`} value={`${approvedMileage}점`} />
@@ -277,6 +303,134 @@ export default function AdminStudentDetailPage() {
             </table>
           )}
         </Card>
+      </div>
+    </div>
+  );
+}
+
+function GrantMileageModal({
+  student,
+  semesters,
+  defaultSemester,
+  onClose,
+  onGranted,
+}: {
+  student: Student;
+  semesters: Semester[];
+  defaultSemester?: string;
+  onClose: () => void;
+  onGranted: () => void;
+}) {
+  const [category, setCategory] = useState<ActivityGroup>(ACTIVITY_GROUPS[0]);
+  const [activityName, setActivityName] = useState("");
+  const [mileage, setMileage] = useState("");
+  const [semester, setSemester] = useState(defaultSemester ?? semesters[0]?.name ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const mileageValue = Number(mileage);
+    if (!activityName.trim() || !mileageValue || mileageValue <= 0 || !semester) {
+      setError("활동명, 마일리지, 인정 학기를 모두 입력해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      let evidenceFileUrl: string | undefined;
+      if (file) {
+        evidenceFileUrl = await uploadEvidenceFile(student.studentId, file);
+      }
+      await grantMileage({
+        studentId: student.studentId,
+        studentName: student.name,
+        category,
+        activityName: activityName.trim(),
+        mileage: mileageValue,
+        evidenceFileUrl,
+        semester,
+      });
+      onGranted();
+    } catch {
+      setError("지급 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-foreground">
+          마일리지 지급 <span className="text-sm font-normal text-muted">({student.name})</span>
+        </h2>
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">구분</label>
+            <Select value={category} onChange={(e) => setCategory(e.target.value as ActivityGroup)}>
+              {ACTIVITY_GROUPS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">활동명</label>
+            <Input value={activityName} onChange={(e) => setActivityName(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">마일리지 점수</label>
+            <Input type="number" min="1" value={mileage} onChange={(e) => setMileage(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">인정 학기</label>
+            <Select value={semester} onChange={(e) => setSemester(e.target.value)}>
+              <option value="">선택해주세요</option>
+              {semesters.map((s) => (
+                <option key={s.id} value={s.name}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">증빙 (선택, PDF만 가능)</label>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface px-4 py-4 text-xs text-muted transition hover:border-primary hover:text-primary">
+              <Upload size={14} />
+              {file ? file.name : "PDF 파일을 선택해주세요"}
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] ?? null;
+                  if (selected && selected.type !== "application/pdf") {
+                    setFile(null);
+                    setFileError("PDF 파일만 첨부할 수 있습니다.");
+                    e.target.value = "";
+                    return;
+                  }
+                  setFileError(null);
+                  setFile(selected);
+                }}
+              />
+            </label>
+            {fileError && <p className="mt-1.5 text-xs font-medium text-danger">{fileError}</p>}
+          </div>
+          {error && <p className="text-sm font-medium text-danger">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              취소
+            </Button>
+            <Button type="submit" size="sm" loading={submitting}>
+              지급하기
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );

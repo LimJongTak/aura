@@ -54,6 +54,37 @@ export async function submitMileageApplication(input: SubmitMileageApplicationIn
   });
 }
 
+export interface GrantMileageInput {
+  studentId: string;
+  studentName: string;
+  category: ActivityGroup;
+  activityName: string;
+  mileage: number;
+  evidenceFileUrl?: string;
+  /** 인정 학기 (semesters.name) */
+  semester: string;
+  note?: string;
+}
+
+/** 관리자가 학생 개별 심사 없이 직접 마일리지를 지급한다 (구 "일괄부여" 방식과 동일하게
+ * 바로 승인 상태로 생성한다). Firestore 규칙상 관리자만 source "bulk"로 생성할 수 있다. */
+export async function grantMileage(input: GrantMileageInput): Promise<void> {
+  await addDoc(applicationsRef(), {
+    studentId: input.studentId,
+    studentName: input.studentName,
+    category: input.category,
+    activityName: input.activityName,
+    mileage: input.mileage,
+    evidenceFileUrl: input.evidenceFileUrl ?? "",
+    status: "승인" satisfies ApplicationStatus,
+    source: "bulk",
+    semester: input.semester,
+    note: input.note ?? "",
+    appliedAt: serverTimestamp(),
+    processedAt: serverTimestamp(),
+  });
+}
+
 function toMillis(v: unknown): number {
   if (v instanceof Timestamp) return v.toMillis();
   if (typeof v === "number") return v;
