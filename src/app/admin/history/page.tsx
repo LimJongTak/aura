@@ -8,11 +8,18 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { StatusBadge } from "@/components/ui/Badge";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
-import { listProcessedMileageApplications } from "@/lib/firestore/mileageApplications";
-import { listProcessedAdvancedApplications } from "@/lib/firestore/advancedApplications";
+import {
+  listProcessedMileageApplications,
+  updateMileageApplicationStatus,
+} from "@/lib/firestore/mileageApplications";
+import {
+  listProcessedAdvancedApplications,
+  updateAdvancedApplicationStatus,
+} from "@/lib/firestore/advancedApplications";
 import type { AdvancedApplication, ApplicationStatus, MileageApplication } from "@/types/models";
 
 const STATUS_FILTERS: ("전체" | ApplicationStatus)[] = ["전체", "승인", "반려"];
+const PAGE_SIZE = 10;
 
 function StatusFilterTabs({
   value,
@@ -41,6 +48,85 @@ function StatusFilterTabs({
   );
 }
 
+function Pagination({
+  page,
+  totalPages,
+  onChange,
+}: {
+  page: number;
+  totalPages: number;
+  onChange: (p: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-1 border-t border-border p-3">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, page - 1))}
+        disabled={page === 1}
+        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition hover:text-primary disabled:opacity-30"
+      >
+        이전
+      </button>
+      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onChange(p)}
+          className={`h-7 w-7 shrink-0 rounded-full text-xs font-semibold transition ${
+            p === page ? "bg-primary text-white" : "text-muted hover:bg-surface"
+          }`}
+        >
+          {p}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange(Math.min(totalPages, page + 1))}
+        disabled={page === totalPages}
+        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition hover:text-primary disabled:opacity-30"
+      >
+        다음
+      </button>
+    </div>
+  );
+}
+
+/** 처리일시가 [from, to] 날짜 범위(포함) 안에 있는지 확인한다. 빈 값은 해당 경계를 무시한다. */
+function inDateRange(processedAt: number | undefined, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  if (!processedAt) return false;
+  if (from && processedAt < new Date(`${from}T00:00:00`).getTime()) return false;
+  if (to && processedAt > new Date(`${to}T23:59:59`).getTime()) return false;
+  return true;
+}
+
+function StatusSwitchButton({
+  status,
+  busy,
+  onSwitch,
+}: {
+  status: ApplicationStatus;
+  busy: boolean;
+  onSwitch: (next: "승인" | "반려") => void;
+}) {
+  if (status === "승인") {
+    return (
+      <Button size="sm" variant="danger" loading={busy} onClick={() => onSwitch("반려")}>
+        반려로 변경
+      </Button>
+    );
+  }
+  if (status === "반려") {
+    return (
+      <Button size="sm" loading={busy} onClick={() => onSwitch("승인")}>
+        승인으로 변경
+      </Button>
+    );
+  }
+  return null;
+}
+
 export default function AdminHistoryPage() {
   const { loading, user, isAdmin } = useAdminUser();
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
@@ -49,6 +135,11 @@ export default function AdminHistoryPage() {
   const [mileageStatus, setMileageStatus] = useState<"전체" | ApplicationStatus>("전체");
   const [advancedStatus, setAdvancedStatus] = useState<"전체" | ApplicationStatus>("전체");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [mileagePage, setMileagePage] = useState(1);
+  const [advancedPage, setAdvancedPage] = useState(1);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
@@ -65,23 +156,60 @@ export default function AdminHistoryPage() {
     if (isAdmin) refresh();
   }, [isAdmin, refresh]);
 
+  useEffect(() => {
+    setMileagePage(1);
+    setAdvancedPage(1);
+  }, [search, dateFrom, dateTo]);
+
+  useEffect(() => setMileagePage(1), [mileageStatus]);
+  useEffect(() => setAdvancedPage(1), [advancedStatus]);
+
   const filteredMileage = useMemo(() => {
     const q = search.trim();
     return mileageApps.filter((a) => {
       if (mileageStatus !== "전체" && a.status !== mileageStatus) return false;
       if (q && !a.studentName.includes(q) && !a.studentId.includes(q)) return false;
+      if (!inDateRange(a.processedAt, dateFrom, dateTo)) return false;
       return true;
     });
-  }, [mileageApps, mileageStatus, search]);
+  }, [mileageApps, mileageStatus, search, dateFrom, dateTo]);
 
   const filteredAdvanced = useMemo(() => {
     const q = search.trim();
     return advancedApps.filter((a) => {
       if (advancedStatus !== "전체" && a.status !== advancedStatus) return false;
       if (q && !a.studentName.includes(q) && !a.studentId.includes(q)) return false;
+      if (!inDateRange(a.processedAt, dateFrom, dateTo)) return false;
       return true;
     });
-  }, [advancedApps, advancedStatus, search]);
+  }, [advancedApps, advancedStatus, search, dateFrom, dateTo]);
+
+  const mileageTotalPages = Math.max(1, Math.ceil(filteredMileage.length / PAGE_SIZE));
+  const advancedTotalPages = Math.max(1, Math.ceil(filteredAdvanced.length / PAGE_SIZE));
+  const pagedMileage = filteredMileage.slice((mileagePage - 1) * PAGE_SIZE, mileagePage * PAGE_SIZE);
+  const pagedAdvanced = filteredAdvanced.slice((advancedPage - 1) * PAGE_SIZE, advancedPage * PAGE_SIZE);
+
+  async function handleMileageSwitch(id: string, next: "승인" | "반려") {
+    if (!confirm(`이 신청의 상태를 "${next}"(으)로 다시 변경할까요?`)) return;
+    setBusyId(id);
+    try {
+      await updateMileageApplicationStatus(id, next);
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleAdvancedSwitch(id: string, next: "승인" | "반려") {
+    if (!confirm(`이 신청의 상태를 "${next}"(으)로 다시 변경할까요?`)) return;
+    setBusyId(id);
+    try {
+      await updateAdvancedApplicationStatus(id, next);
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   if (loading) {
     return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
@@ -117,14 +245,34 @@ export default function AdminHistoryPage() {
       </div>
 
       <Card className="mt-6">
-        <div className="relative">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="이름 또는 학번 검색"
-            className="pl-9 sm:max-w-xs"
-          />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="이름 또는 학번 검색"
+              className="pl-9 sm:max-w-xs"
+            />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="text-xs font-semibold text-muted">처리일 기간</label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-auto" />
+            <span className="text-xs text-muted">~</span>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-auto" />
+            {(dateFrom || dateTo) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+              >
+                초기화
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
@@ -150,10 +298,11 @@ export default function AdminHistoryPage() {
                   <th className="px-4 py-3 font-semibold">인정 학기</th>
                   <th className="px-4 py-3 font-semibold">상태</th>
                   <th className="px-4 py-3 font-semibold">비고</th>
+                  <th className="px-4 py-3 font-semibold">재처리</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredMileage.map((a) => (
+                {pagedMileage.map((a) => (
                   <tr key={a.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5 text-muted">
                       {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
@@ -169,11 +318,19 @@ export default function AdminHistoryPage() {
                       <StatusBadge status={a.status} />
                     </td>
                     <td className="px-4 py-2.5 text-muted">{a.note || "-"}</td>
+                    <td className="px-4 py-2.5">
+                      <StatusSwitchButton
+                        status={a.status}
+                        busy={busyId === a.id}
+                        onSwitch={(next) => handleMileageSwitch(a.id, next)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          <Pagination page={mileagePage} totalPages={mileageTotalPages} onChange={setMileagePage} />
         </Card>
       </div>
 
@@ -201,10 +358,11 @@ export default function AdminHistoryPage() {
                   <th className="px-4 py-3 font-semibold">성적증명서</th>
                   <th className="px-4 py-3 font-semibold">상태</th>
                   <th className="px-4 py-3 font-semibold">비고</th>
+                  <th className="px-4 py-3 font-semibold">재처리</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredAdvanced.map((a) => (
+                {pagedAdvanced.map((a) => (
                   <tr key={a.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5 text-muted">
                       {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
@@ -249,11 +407,19 @@ export default function AdminHistoryPage() {
                       <StatusBadge status={a.status} />
                     </td>
                     <td className="px-4 py-2.5 text-muted">{a.note || "-"}</td>
+                    <td className="px-4 py-2.5">
+                      <StatusSwitchButton
+                        status={a.status}
+                        busy={busyId === a.id}
+                        onSwitch={(next) => handleAdvancedSwitch(a.id, next)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          <Pagination page={advancedPage} totalPages={advancedTotalPages} onChange={setAdvancedPage} />
         </Card>
       </div>
     </div>
