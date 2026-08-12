@@ -7,6 +7,7 @@ import {
   BarChart3,
   CalendarDays,
   ClipboardList,
+  HelpCircle,
   LayoutDashboard,
   Link2,
   LogOut,
@@ -36,6 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/registrations", label: "등록 신청", icon: UserPlus, badge: "registrations" },
   { href: "/admin/quicklinks", label: "퀵메뉴 관리", icon: Link2 },
   { href: "/admin/analytics", label: "방문자 통계", icon: BarChart3 },
+  { href: "/admin/help", label: "사용법 안내", icon: HelpCircle },
 ];
 
 function isActive(pathname: string, href: string, exact?: boolean) {
