@@ -6,8 +6,10 @@ import {
   getDocs,
   orderBy,
   query,
+  setDoc,
   Timestamp,
   updateDoc,
+  where,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
@@ -66,12 +68,49 @@ export async function createSemester(input: SemesterInput): Promise<void> {
   });
 }
 
+const RETAG_CHUNK_SIZE = 400;
+
+/** collectionName의 field == oldValue인 문서를 모두 newValue로 바꾼다 (청크 배치 처리). */
+async function retagField(
+  collectionName: string,
+  field: string,
+  oldValue: string,
+  newValue: string
+): Promise<void> {
+  const snap = await getDocs(query(collection(db, collectionName), where(field, "==", oldValue)));
+  const docs = snap.docs;
+  for (let i = 0; i < docs.length; i += RETAG_CHUNK_SIZE) {
+    const batch = writeBatch(db);
+    for (const d of docs.slice(i, i + RETAG_CHUNK_SIZE)) {
+      batch.update(d.ref, { [field]: newValue });
+    }
+    await batch.commit();
+  }
+}
+
 export async function updateSemester(id: string, input: SemesterInput): Promise<void> {
+  const newName = input.name.trim();
+  const existingSnap = await getDoc(doc(db, "semesters", id));
+  const existing = existingSnap.exists() ? (existingSnap.data() as { name?: string; isCurrent?: boolean }) : null;
+
   await updateDoc(doc(db, "semesters", id), {
-    name: input.name.trim(),
+    name: newName,
     mileageApplyStart: input.mileageApplyStart ? Timestamp.fromDate(input.mileageApplyStart) : null,
     mileageApplyEnd: input.mileageApplyEnd ? Timestamp.fromDate(input.mileageApplyEnd) : null,
   });
+
+  // 학기 이름을 바꾸면 이미 그 이름으로 태그된 신청/지급 이력도 함께 갱신해야 한다 —
+  // 그렇지 않으면 이름 변경 직후 기존 승인 마일리지가 새 학기 필터에서 전부 사라져 보인다
+  // (실제로 2026-08-12에 이 문제로 마일리지가 0점으로 보이는 사고가 있었다).
+  if (existing?.name && existing.name !== newName) {
+    await Promise.all([
+      retagField("mileageApplications", "semester", existing.name, newName),
+      retagField("advancedApplications", "targetSemester", existing.name, newName),
+    ]);
+    if (existing.isCurrent) {
+      await setDoc(currentStateRef(), { semesterName: newName }, { merge: true });
+    }
+  }
 }
 
 /** 이 학기를 "현재 학기"로 지정한다. 다른 학기의 isCurrent는 모두 false로,
