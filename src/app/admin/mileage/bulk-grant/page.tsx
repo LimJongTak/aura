@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Download, Search, Upload } from "lucide-react";
+import { Download, Search, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { listAllStudents } from "@/lib/firestore/students";
 import { listSemesters } from "@/lib/firestore/semesters";
 import { bulkGrantMileage, type BulkGrantResult, type GrantMileageInput } from "@/lib/firestore/mileageApplications";
@@ -47,7 +46,6 @@ function ResultBanner({ results, onDismiss }: { results: BulkGrantResult[]; onDi
 }
 
 export default function AdminMileageBulkGrantPage() {
-  const { loading, user, isAdmin } = useAdminUser();
   const [students, setStudents] = useState<Student[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -59,50 +57,21 @@ export default function AdminMileageBulkGrantPage() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) return;
     setDataLoading(true);
     refresh().finally(() => setDataLoading(false));
-  }, [isAdmin, refresh]);
+  }, [refresh]);
 
   const defaultSemester = useMemo(
     () => semesters.find((s) => s.isCurrent)?.name ?? semesters[0]?.name ?? "",
     [semesters]
   );
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <Link href="/admin" className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary">
-        <ArrowLeft size={14} /> 관리자로 돌아가기
-      </Link>
-      <div className="mt-3">
-        <h1 className="text-2xl font-extrabold text-foreground">마일리지 일괄지급</h1>
-        <p className="mt-1 text-sm text-muted">
-          여러 학생에게 한 번에 마일리지를 지급합니다. 지급된 건은 바로 승인 상태로 생성됩니다.
-        </p>
-      </div>
+    <div className="max-w-5xl">
+      <PageHeader
+        title="마일리지 일괄지급"
+        description="여러 학생에게 한 번에 마일리지를 지급합니다. 지급된 건은 바로 승인 상태로 생성됩니다."
+      />
 
       {dataLoading ? (
         <p className="mt-10 text-center text-sm text-muted">불러오는 중...</p>

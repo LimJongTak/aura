@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, CheckCircle2, Plus } from "lucide-react";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
+import { CheckCircle2, Plus } from "lucide-react";
 import {
   createSemester,
   listSemesters,
@@ -15,6 +13,7 @@ import type { Semester } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 function toDatetimeLocal(ms: number | null): string {
   if (!ms) return "";
@@ -24,7 +23,6 @@ function toDatetimeLocal(ms: number | null): string {
 }
 
 export default function AdminSemestersPage() {
-  const { loading, user, isAdmin } = useAdminUser();
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [editing, setEditing] = useState<Semester | "new" | null>(null);
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
@@ -34,8 +32,8 @@ export default function AdminSemestersPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) refresh();
-  }, [isAdmin, refresh]);
+    refresh();
+  }, [refresh]);
 
   async function handleSetCurrent(semester: Semester) {
     setSettingCurrentId(semester.id);
@@ -47,45 +45,19 @@ export default function AdminSemestersPage() {
     }
   }
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <Link href="/admin" className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary">
-        <ArrowLeft size={14} /> 관리자로 돌아가기
-      </Link>
-      <div className="mt-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">학기 관리</h1>
-          <p className="mt-1 text-sm text-muted">
-            &quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.
-          </p>
-        </div>
-        <Button size="sm" onClick={() => setEditing("new")}>
-          <Plus size={16} /> 새 학기
-        </Button>
-      </div>
+    <div className="max-w-2xl">
+      <PageHeader
+        title="학기 관리"
+        description={
+          <>&quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.</>
+        }
+        actions={
+          <Button size="sm" onClick={() => setEditing("new")}>
+            <Plus size={16} /> 새 학기
+          </Button>
+        }
+      />
 
       {editing && (
         <SemesterForm initial={editing === "new" ? null : editing} onDone={() => { setEditing(null); refresh(); }} />

@@ -1,64 +1,31 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { listAllVisitStats } from "@/lib/firestore/visits";
 import { bucketizeVisitStats, PERIOD_LABEL, type VisitPeriod } from "@/lib/utils/visitBuckets";
 import type { VisitStat } from "@/types/models";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { cn } from "@/lib/utils/cn";
 
 const PERIODS: VisitPeriod[] = ["day", "week", "month", "year"];
 
 export default function AdminAnalyticsPage() {
-  const { loading, user, isAdmin } = useAdminUser();
   const [stats, setStats] = useState<VisitStat[] | null>(null);
   const [period, setPeriod] = useState<VisitPeriod>("day");
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (isAdmin) listAllVisitStats().then(setStats);
-  }, [isAdmin]);
+    listAllVisitStats().then(setStats);
+  }, []);
 
   const buckets = useMemo(() => (stats ? bucketizeVisitStats(stats, period) : []), [stats, period]);
   const total = buckets.reduce((sum, b) => sum + b.count, 0);
   const max = Math.max(1, ...buckets.map((b) => b.count));
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <Link href="/admin" className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary">
-        <ArrowLeft size={14} /> 관리자로 돌아가기
-      </Link>
-      <div className="mt-3">
-        <h1 className="text-2xl font-extrabold text-foreground">방문자 통계</h1>
-        <p className="mt-1 text-sm text-muted">브라우저 세션 기준 하루 1회 집계됩니다.</p>
-      </div>
+    <div className="max-w-4xl">
+      <PageHeader title="방문자 통계" description="브라우저 세션 기준 하루 1회 집계됩니다." />
 
       <div className="mt-6 flex gap-2 rounded-full bg-surface p-1 text-sm">
         {PERIODS.map((p) => (

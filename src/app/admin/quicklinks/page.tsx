@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowDown, ArrowLeft, ArrowUp, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
+import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   createQuickLink,
   deleteQuickLink,
@@ -17,41 +15,17 @@ import type { QuickLink, QuickLinkIcon } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { cn } from "@/lib/utils/cn";
 
 export default function AdminQuickLinksPage() {
-  const { loading, user, isAdmin } = useAdminUser();
   const [links, setLinks] = useState<QuickLink[]>([]);
   const [editing, setEditing] = useState<QuickLink | "new" | null>(null);
 
   useEffect(() => {
-    if (!isAdmin) return;
     const unsub = subscribeQuickLinks(setLinks);
     return () => unsub();
-  }, [isAdmin]);
-
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
-  }
+  }, []);
 
   async function handleDelete(id: string) {
     if (!confirm("이 버튼을 삭제할까요?")) return;
@@ -66,19 +40,16 @@ export default function AdminQuickLinksPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <Link href="/admin" className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary">
-        <ArrowLeft size={14} /> 관리자로 돌아가기
-      </Link>
-      <div className="mt-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">퀵메뉴 관리</h1>
-          <p className="mt-1 text-sm text-muted">화면 오른쪽에 떠있는 바로가기 버튼이에요 (PC 화면에서만 보여요).</p>
-        </div>
-        <Button size="sm" onClick={() => setEditing("new")}>
-          <Plus size={16} /> 새 버튼
-        </Button>
-      </div>
+    <div className="max-w-2xl">
+      <PageHeader
+        title="퀵메뉴 관리"
+        description="화면 오른쪽에 떠있는 바로가기 버튼이에요 (PC 화면에서만 보여요)."
+        actions={
+          <Button size="sm" onClick={() => setEditing("new")}>
+            <Plus size={16} /> 새 버튼
+          </Button>
+        }
+      />
 
       {editing && (
         <QuickLinkForm initial={editing === "new" ? null : editing} nextOrder={links.length} onDone={() => setEditing(null)} />

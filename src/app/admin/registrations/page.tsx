@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
   approveStudentRegistration,
   listPendingStudentRegistrations,
@@ -12,9 +9,9 @@ import {
 import type { StudentRegistrationRequest } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 export default function AdminRegistrationsPage() {
-  const { loading, user, isAdmin } = useAdminUser();
   const [requests, setRequests] = useState<StudentRegistrationRequest[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -23,8 +20,8 @@ export default function AdminRegistrationsPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) refresh();
-  }, [isAdmin, refresh]);
+    refresh();
+  }, [refresh]);
 
   async function handleApprove(request: StudentRegistrationRequest) {
     setBusyId(request.id);
@@ -46,38 +43,14 @@ export default function AdminRegistrationsPage() {
     }
   }
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <Link href="/admin" className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary">
-        <ArrowLeft size={14} /> 관리자로 돌아가기
-      </Link>
-      <h1 className="mt-3 text-2xl font-extrabold text-foreground">학생 등록 신청 · 검토중 ({requests.length}건)</h1>
-      <p className="mt-1 text-sm text-muted">
-        승인하면 즉시 학생명단에 추가되어 &quot;마일리지 조회&quot;에서 이름·학번으로 조회할 수 있습니다.
-      </p>
+    <div className="max-w-3xl">
+      <PageHeader
+        title={`학생 등록 신청 · 검토중 (${requests.length}건)`}
+        description={
+          <>승인하면 즉시 학생명단에 추가되어 &quot;마일리지 조회&quot;에서 이름·학번으로 조회할 수 있습니다.</>
+        }
+      />
 
       <Card className="mt-6 overflow-x-auto p-0">
         {requests.length === 0 ? (

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, Eye, Pencil, Search, UserX } from "lucide-react";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
+import { Download, Eye, Pencil, Search, UserX } from "lucide-react";
 import { deleteStudent, listAllStudents, upsertStudent } from "@/lib/firestore/students";
 import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/firestore/mileageApplications";
 import { listSemesters } from "@/lib/firestore/semesters";
@@ -11,6 +10,7 @@ import type { MileageApplication, Semester, Student } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
+import { PageHeader } from "@/components/admin/PageHeader";
 
 interface StudentRow extends Student {
   approvedMileage: number;
@@ -20,7 +20,6 @@ interface StudentRow extends Student {
 const ALL_SEMESTERS = "전체 학기";
 
 export default function AdminStudentsPage() {
-  const { loading, user, isAdmin } = useAdminUser();
   const [students, setStudents] = useState<Student[]>([]);
   const [approvedApps, setApprovedApps] = useState<MileageApplication[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
@@ -51,8 +50,8 @@ export default function AdminStudentsPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) refresh();
-  }, [isAdmin, refresh]);
+    refresh();
+  }, [refresh]);
 
   const rows = useMemo<StudentRow[]>(() => {
     const appsInScope =
@@ -111,45 +110,17 @@ export default function AdminStudentsPage() {
     URL.revokeObjectURL(url);
   }
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <Link href="/admin" className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary">
-        <ArrowLeft size={14} /> 관리자로 돌아가기
-      </Link>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">학생 관리 · 마일리지 순위</h1>
-          <p className="mt-1 text-sm text-muted">
-            {semesterFilter} 기준 전체 {rows.length}명 중 {filtered.length}명 표시
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={handleExportCsv}>
-          <Download size={15} /> CSV 다운로드
-        </Button>
-      </div>
+    <div>
+      <PageHeader
+        title="학생 관리 · 마일리지 순위"
+        description={`${semesterFilter} 기준 전체 ${rows.length}명 중 ${filtered.length}명 표시`}
+        actions={
+          <Button variant="outline" size="sm" onClick={handleExportCsv}>
+            <Download size={15} /> CSV 다운로드
+          </Button>
+        }
+      />
 
       <Card className="mt-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

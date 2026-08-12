@@ -8,12 +8,15 @@ import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
-import { useAdminUser } from "@/lib/auth/useAdminUser";
+import { RecallReasonModal } from "@/components/admin/RecallReasonModal";
 import { getStudent } from "@/lib/firestore/students";
 import {
+  cancelMileageRecall,
   computeSemesterCap,
   grantMileage,
   listApplicationsForStudent,
+  recallMileageApplications,
+  setMileagePaid,
 } from "@/lib/firestore/mileageApplications";
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
@@ -34,7 +37,6 @@ const ALL_SEMESTERS = "전체 학기";
 export default function AdminStudentDetailPage() {
   const params = useParams<{ studentId: string }>();
   const studentId = decodeURIComponent(params.studentId);
-  const { loading, user, isAdmin } = useAdminUser();
 
   const [dataLoading, setDataLoading] = useState(true);
   const [student, setStudent] = useState<Student | null>(null);
@@ -44,6 +46,9 @@ export default function AdminStudentDetailPage() {
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
   const [granting, setGranting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [recalling, setRecalling] = useState(false);
 
   const refresh = useCallback(async () => {
     const [s, apps, advApps, semesterList, convSettings] = await Promise.all([
@@ -66,10 +71,11 @@ export default function AdminStudentDetailPage() {
   }, [studentId]);
 
   useEffect(() => {
-    if (!isAdmin) return;
     setDataLoading(true);
     refresh().finally(() => setDataLoading(false));
-  }, [isAdmin, refresh]);
+  }, [refresh]);
+
+  useEffect(() => setSelectedIds(new Set()), [semesterFilter]);
 
   const scopedApplications = useMemo(
     () =>
@@ -95,27 +101,73 @@ export default function AdminStudentDetailPage() {
     [advanced, semesterFilter]
   );
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
+  const selectableIds = useMemo(
+    () => scopedApplications.filter((a) => a.status === "승인").map((a) => a.id),
+    [scopedApplications]
+  );
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedIds.has(id));
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        for (const id of selectableIds) next.delete(id);
+      } else {
+        for (const id of selectableIds) next.add(id);
+      }
+      return next;
+    });
   }
 
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 권한이 없습니다.</p>
-      </div>
-    );
+  async function handleBulkSetPaid(paid: boolean) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`선택한 ${ids.length}건을 "${paid ? "지급완료" : "지급 취소"}"(으)로 표시할까요?`)) return;
+    setBulkBusy(true);
+    try {
+      await setMileagePaid(ids, paid);
+      setSelectedIds(new Set());
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkCancelRecall() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`선택한 ${ids.length}건의 회수를 취소할까요?`)) return;
+    setBulkBusy(true);
+    try {
+      await cancelMileageRecall(ids);
+      setSelectedIds(new Set());
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkRecall(reason: string) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      await recallMileageApplications(ids, reason);
+      setSelectedIds(new Set());
+      setRecalling(false);
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   if (dataLoading) {
@@ -134,7 +186,7 @@ export default function AdminStudentDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <div>
       <Link
         href="/admin/students"
         className="flex items-center gap-1 text-xs font-semibold text-muted hover:text-primary"
@@ -204,6 +256,28 @@ export default function AdminStudentDetailPage() {
         <h2 className="font-bold text-foreground">
           마일리지 신청 내역 ({semesterFilter}, {scopedApplications.length}건)
         </h2>
+        <p className="mt-1 text-xs text-muted">승인 건의 체크박스로 지급완료·회수 처리를 할 수 있습니다.</p>
+
+        {selectedIds.size > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary-light px-4 py-3">
+            <span className="text-xs font-semibold text-primary-dark">{selectedIds.size}건 선택됨</span>
+            <div className="ml-auto flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" loading={bulkBusy} onClick={() => handleBulkSetPaid(true)}>
+                지급완료 처리
+              </Button>
+              <Button size="sm" variant="outline" loading={bulkBusy} onClick={() => handleBulkSetPaid(false)}>
+                지급 취소
+              </Button>
+              <Button size="sm" variant="danger" loading={bulkBusy} onClick={() => setRecalling(true)}>
+                마일리지 회수
+              </Button>
+              <Button size="sm" variant="outline" loading={bulkBusy} onClick={handleBulkCancelRecall}>
+                회수 취소
+              </Button>
+            </div>
+          </div>
+        )}
+
         <Card className="mt-3 overflow-x-auto p-0">
           {scopedApplications.length === 0 ? (
             <p className="p-6 text-sm text-muted">신청 내역이 없습니다.</p>
@@ -211,6 +285,14 @@ export default function AdminStudentDetailPage() {
             <table className="w-full text-left text-xs sm:text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface text-muted">
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleSelectAll}
+                      aria-label="승인 건 전체 선택"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-semibold">일시</th>
                   <th className="px-4 py-3 font-semibold">학기</th>
                   <th className="px-4 py-3 font-semibold">구분</th>
@@ -223,6 +305,16 @@ export default function AdminStudentDetailPage() {
               <tbody>
                 {scopedApplications.map((a) => (
                   <tr key={a.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5">
+                      {a.status === "승인" && (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(a.id)}
+                          onChange={() => toggleSelect(a.id)}
+                          aria-label={`${a.activityName} 선택`}
+                        />
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-muted">{new Date(a.appliedAt).toLocaleDateString("ko-KR")}</td>
                     <td className="px-4 py-2.5 text-muted">{a.semester ?? "-"}</td>
                     <td className="px-4 py-2.5">{a.category}</td>
@@ -259,6 +351,15 @@ export default function AdminStudentDetailPage() {
             </table>
           )}
         </Card>
+
+        {recalling && (
+          <RecallReasonModal
+            count={selectedIds.size}
+            busy={bulkBusy}
+            onClose={() => setRecalling(false)}
+            onConfirm={handleBulkRecall}
+          />
+        )}
       </div>
 
       <div className="mt-10">

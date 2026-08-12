@@ -1,14 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { signOut } from "firebase/auth";
 import { AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/Badge";
-import { auth } from "@/lib/firebase/client";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
   listPendingMileageApplications,
@@ -54,7 +52,7 @@ function DuplicateBadge({ matches }: { matches: MileageApplication[] }) {
 }
 
 export default function AdminPage() {
-  const { loading, user, isAdmin } = useAdminUser();
+  const { user } = useAdminUser();
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
   const [mileageHistory, setMileageHistory] = useState<MileageApplication[]>([]);
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
@@ -83,8 +81,8 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) refresh();
-  }, [isAdmin, refresh]);
+    refresh();
+  }, [refresh]);
 
   // 학번+구분+활동명+학기가 같은 신청을 한 그룹으로 묶어 중복 신청 여부를 판단한다.
   const duplicateGroups = useMemo(() => {
@@ -123,79 +121,9 @@ export default function AdminPage() {
     }
   }
 
-  if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">관리자 로그인이 필요합니다.</p>
-        <Link href="/admin/login">
-          <Button className="mt-4">로그인하러 가기</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">
-          {user.email} 계정에는 관리자 권한이 없습니다. Firestore admins 컬렉션에 UID를 등록해주세요.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">관리자 · 신청 검토</h1>
-          <p className="mt-1 text-sm text-muted">{user.email?.split("@")[0]}님으로 로그인됨</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link href="/admin/history">
-            <Button variant="outline" size="sm">
-              처리 내역
-            </Button>
-          </Link>
-          <Link href="/admin/students">
-            <Button variant="outline" size="sm">
-              학생 관리 · 순위
-            </Button>
-          </Link>
-          <Link href="/admin/mileage/bulk-grant">
-            <Button variant="outline" size="sm">
-              마일리지 일괄지급
-            </Button>
-          </Link>
-          <Link href="/admin/registrations">
-            <Button variant="outline" size="sm">
-              학생 등록 신청
-            </Button>
-          </Link>
-          <Link href="/admin/semesters">
-            <Button variant="outline" size="sm">
-              학기 관리
-            </Button>
-          </Link>
-          <Link href="/admin/quicklinks">
-            <Button variant="outline" size="sm">
-              퀵메뉴 관리
-            </Button>
-          </Link>
-          <Link href="/admin/analytics">
-            <Button variant="outline" size="sm">
-              방문자 통계
-            </Button>
-          </Link>
-          <Button variant="outline" size="sm" onClick={() => signOut(auth)}>
-            로그아웃
-          </Button>
-        </div>
-      </div>
+    <div>
+      <PageHeader title="관리자 대시보드" description={user?.email ? `${user.email.split("@")[0]}님으로 로그인됨` : undefined} />
 
       <div className="mt-8">
         <h2 className="font-bold text-foreground">마일리지 신청 · 검토중 ({mileageApps.length}건)</h2>
