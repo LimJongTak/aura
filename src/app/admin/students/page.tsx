@@ -59,6 +59,7 @@ export default function AdminStudentsPage() {
       semesterFilter === ALL_SEMESTERS ? approvedApps : approvedApps.filter((a) => a.semester === semesterFilter);
     const totals = new Map<string, number>();
     for (const app of appsInScope) {
+      if (app.recalled) continue;
       totals.set(app.studentId, (totals.get(app.studentId) ?? 0) + app.mileage);
     }
     return students

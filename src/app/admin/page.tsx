@@ -166,6 +166,11 @@ export default function AdminPage() {
               학생 관리 · 순위
             </Button>
           </Link>
+          <Link href="/admin/mileage/bulk-grant">
+            <Button variant="outline" size="sm">
+              마일리지 일괄지급
+            </Button>
+          </Link>
           <Link href="/admin/registrations">
             <Button variant="outline" size="sm">
               학생 등록 신청

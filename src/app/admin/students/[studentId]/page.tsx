@@ -7,7 +7,7 @@ import { ArrowLeft, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
-import { StatusBadge } from "@/components/ui/Badge";
+import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { getStudent } from "@/lib/firestore/students";
 import {
@@ -80,7 +80,8 @@ export default function AdminStudentDetailPage() {
   );
 
   const approvedMileage = useMemo(
-    () => scopedApplications.filter((a) => a.status === "승인").reduce((sum, a) => sum + a.mileage, 0),
+    () =>
+      scopedApplications.filter((a) => a.status === "승인" && !a.recalled).reduce((sum, a) => sum + a.mileage, 0),
     [scopedApplications]
   );
   const pendingCount = useMemo(() => scopedApplications.filter((a) => a.status === "검토중").length, [scopedApplications]);
@@ -242,7 +243,15 @@ export default function AdminStudentDetailPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <StatusBadge status={a.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge status={a.status} />
+                        {a.recalled && (
+                          <Badge tone="danger" title={a.recallReason ? `회수 사유: ${a.recallReason}` : undefined}>
+                            회수됨
+                          </Badge>
+                        )}
+                        {a.paid && <Badge tone="success">지급완료</Badge>}
+                      </div>
                     </td>
                   </tr>
                 ))}

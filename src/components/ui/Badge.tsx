@@ -19,3 +19,30 @@ export function StatusBadge({ status }: { status: ApplicationStatus }) {
     </span>
   );
 }
+
+const TONE_CLASSES = {
+  success: "bg-success-light text-success",
+  warning: "bg-warning-light text-warning",
+  danger: "bg-danger-light text-danger",
+  muted: "bg-surface text-muted",
+} as const;
+
+/** 지급완료/회수됨처럼 status와 별개인 보조 표시용 범용 배지. */
+export function Badge({
+  tone = "muted",
+  title,
+  children,
+}: {
+  tone?: keyof typeof TONE_CLASSES;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold", TONE_CLASSES[tone])}
+    >
+      {children}
+    </span>
+  );
+}

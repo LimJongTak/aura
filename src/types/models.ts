@@ -73,6 +73,16 @@ export interface MileageApplication {
   source: "self" | "bulk";
   /** 신청 당시의 학기 (semesters.name) — 과거 데이터는 없을 수 있다. */
   semester?: string;
+  /** 장학금(환산금액) 지급 완료 여부 — status와 별개로 관리자가 표시한다. */
+  paid?: boolean;
+  paidAt?: number;
+  /** 이미 승인된 마일리지를 관리자가 회수했는지 여부. status는 "승인"으로 그대로
+   *  두고 recalled 플래그만 세운다 — 승인 이력 자체는 남기되, 회수된 건은
+   *  합계(승인 마일리지 총점) 계산에서만 제외한다. (예: 중고급 이수 신청 시
+   *  이미 지급된 마일리지를 회수해야 하는 경우) */
+  recalled?: boolean;
+  recalledAt?: number;
+  recallReason?: string;
 }
 
 /** 중고급 이수 신청에서 학생이 선택하는 신청 등급. 등급별 이수기준이 다르다

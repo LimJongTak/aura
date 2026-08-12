@@ -6,10 +6,13 @@ import { ArrowLeft, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
-import { StatusBadge } from "@/components/ui/Badge";
+import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
+  cancelMileageRecall,
   listProcessedMileageApplications,
+  recallMileageApplications,
+  setMileagePaid,
   updateMileageApplicationStatus,
 } from "@/lib/firestore/mileageApplications";
 import {
@@ -134,6 +137,51 @@ function StatusChangeMenu({
   );
 }
 
+function RecallReasonModal({
+  count,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  count: number;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const trimmed = reason.trim();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-foreground">마일리지 회수 ({count}건)</h2>
+        <p className="mt-1 text-xs text-muted">회수 사유를 입력해주세요. 선택된 건들이 승인 마일리지 합계에서 제외됩니다.</p>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          rows={3}
+          placeholder="예: 2026-1학기 중고급 이수 신청으로 인한 회수"
+          className="mt-3 w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            취소
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            loading={busy}
+            disabled={!trimmed}
+            onClick={() => onConfirm(trimmed)}
+          >
+            회수하기
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminHistoryPage() {
   const { loading, user, isAdmin } = useAdminUser();
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
@@ -150,6 +198,9 @@ export default function AdminHistoryPage() {
   const [mileagePage, setMileagePage] = useState(1);
   const [advancedPage, setAdvancedPage] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [recalling, setRecalling] = useState(false);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
@@ -178,6 +229,7 @@ export default function AdminHistoryPage() {
 
   useEffect(() => setMileagePage(1), [mileageStatus]);
   useEffect(() => setAdvancedPage(1), [advancedStatus]);
+  useEffect(() => setSelectedIds(new Set()), [category, mileageStatus, search, semesterFilter, dateFrom, dateTo]);
 
   const filteredMileage = useMemo(() => {
     const q = search.trim();
@@ -214,6 +266,75 @@ export default function AdminHistoryPage() {
       await refresh();
     } finally {
       setBusyId(null);
+    }
+  }
+
+  const selectableMileageIds = useMemo(
+    () => pagedMileage.filter((a) => a.status === "승인").map((a) => a.id),
+    [pagedMileage]
+  );
+  const allSelectedOnPage = selectableMileageIds.length > 0 && selectableMileageIds.every((id) => selectedIds.has(id));
+
+  function toggleSelectAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelectedOnPage) {
+        for (const id of selectableMileageIds) next.delete(id);
+      } else {
+        for (const id of selectableMileageIds) next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkSetPaid(paid: boolean) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`선택한 ${ids.length}건을 "${paid ? "지급완료" : "지급 취소"}"(으)로 표시할까요?`)) return;
+    setBulkBusy(true);
+    try {
+      await setMileagePaid(ids, paid);
+      setSelectedIds(new Set());
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkCancelRecall() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!confirm(`선택한 ${ids.length}건의 회수를 취소할까요?`)) return;
+    setBulkBusy(true);
+    try {
+      await cancelMileageRecall(ids);
+      setSelectedIds(new Set());
+      await refresh();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function handleBulkRecall(reason: string) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      await recallMileageApplications(ids, reason);
+      setSelectedIds(new Set());
+      setRecalling(false);
+      await refresh();
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -322,6 +443,25 @@ export default function AdminHistoryPage() {
               ))}
             </div>
           </div>
+          {selectedIds.size > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary-light px-4 py-3">
+              <span className="text-xs font-semibold text-primary-dark">{selectedIds.size}건 선택됨</span>
+              <div className="ml-auto flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" loading={bulkBusy} onClick={() => handleBulkSetPaid(true)}>
+                  지급완료 처리
+                </Button>
+                <Button size="sm" variant="outline" loading={bulkBusy} onClick={() => handleBulkSetPaid(false)}>
+                  지급 취소
+                </Button>
+                <Button size="sm" variant="danger" loading={bulkBusy} onClick={() => setRecalling(true)}>
+                  마일리지 회수
+                </Button>
+                <Button size="sm" variant="outline" loading={bulkBusy} onClick={handleBulkCancelRecall}>
+                  회수 취소
+                </Button>
+              </div>
+            </div>
+          )}
           <Card className="mt-3 overflow-x-auto p-0">
             {dataLoading ? (
               <p className="p-6 text-sm text-muted">불러오는 중...</p>
@@ -331,6 +471,14 @@ export default function AdminHistoryPage() {
               <table className="w-full text-left text-xs sm:text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface text-muted">
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={allSelectedOnPage}
+                        onChange={toggleSelectAllOnPage}
+                        aria-label="이 페이지 승인 건 전체 선택"
+                      />
+                    </th>
                     <th className="px-4 py-3 font-semibold">처리일시</th>
                     <th className="px-4 py-3 font-semibold">학번/이름</th>
                     <th className="px-4 py-3 font-semibold">구분</th>
@@ -339,6 +487,8 @@ export default function AdminHistoryPage() {
                     <th className="px-4 py-3 font-semibold">증빙</th>
                     <th className="px-4 py-3 font-semibold">인정 학기</th>
                     <th className="px-4 py-3 font-semibold">상태</th>
+                    <th className="px-4 py-3 font-semibold">지급</th>
+                    <th className="px-4 py-3 font-semibold">회수</th>
                     <th className="px-4 py-3 font-semibold">비고</th>
                     <th className="px-4 py-3 font-semibold">상태 변경</th>
                   </tr>
@@ -346,6 +496,16 @@ export default function AdminHistoryPage() {
                 <tbody>
                   {pagedMileage.map((a) => (
                     <tr key={a.id} className="border-b border-border last:border-0">
+                      <td className="px-4 py-2.5">
+                        {a.status === "승인" && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(a.id)}
+                            onChange={() => toggleSelect(a.id)}
+                            aria-label={`${a.studentName} 선택`}
+                          />
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-muted">
                         {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
                       </td>
@@ -373,6 +533,32 @@ export default function AdminHistoryPage() {
                       <td className="px-4 py-2.5">
                         <StatusBadge status={a.status} />
                       </td>
+                      <td className="px-4 py-2.5">
+                        {a.paid ? (
+                          <Badge tone="success" title={a.paidAt ? new Date(a.paidAt).toLocaleString("ko-KR") : undefined}>
+                            지급완료
+                          </Badge>
+                        ) : (
+                          <Badge tone="muted">미지급</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {a.recalled ? (
+                          <Badge
+                            tone="danger"
+                            title={[
+                              a.recalledAt ? new Date(a.recalledAt).toLocaleString("ko-KR") : null,
+                              a.recallReason,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          >
+                            회수됨
+                          </Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-muted">{a.note || "-"}</td>
                       <td className="px-4 py-2.5">
                         <StatusChangeMenu
@@ -388,6 +574,14 @@ export default function AdminHistoryPage() {
             )}
             <Pagination page={mileagePage} totalPages={mileageTotalPages} onChange={setMileagePage} />
           </Card>
+          {recalling && (
+            <RecallReasonModal
+              count={selectedIds.size}
+              busy={bulkBusy}
+              onClose={() => setRecalling(false)}
+              onConfirm={handleBulkRecall}
+            />
+          )}
         </div>
       ) : (
         <div className="mt-6">

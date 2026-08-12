@@ -163,6 +163,66 @@ export async function updateMileageApplicationStatus(
   });
 }
 
+/** 여러 신청의 지급 완료 여부를 한 번에 표시한다 (체크박스 일괄 처리용). */
+export async function setMileagePaid(ids: string[], paid: boolean): Promise<void> {
+  await Promise.all(
+    ids.map((id) =>
+      updateDoc(doc(db, "mileageApplications", id), {
+        paid,
+        paidAt: paid ? serverTimestamp() : null,
+      })
+    )
+  );
+}
+
+/** 이미 승인된 마일리지를 관리자가 사유를 남기고 회수한다 (예: 중고급 이수
+ * 신청 처리 시 기존에 지급된 마일리지를 회수해야 하는 경우). status는
+ * "승인"으로 유지하고 recalled 플래그만 세워, 이후에도 원래 승인 이력을
+ * 그대로 조회할 수 있게 한다. */
+export async function recallMileageApplications(ids: string[], reason: string): Promise<void> {
+  await Promise.all(
+    ids.map((id) =>
+      updateDoc(doc(db, "mileageApplications", id), {
+        recalled: true,
+        recalledAt: serverTimestamp(),
+        recallReason: reason,
+      })
+    )
+  );
+}
+
+/** 잘못 회수 처리한 건을 되돌린다. */
+export async function cancelMileageRecall(ids: string[]): Promise<void> {
+  await Promise.all(
+    ids.map((id) =>
+      updateDoc(doc(db, "mileageApplications", id), {
+        recalled: false,
+      })
+    )
+  );
+}
+
+export interface BulkGrantResult {
+  studentId: string;
+  studentName: string;
+  ok: boolean;
+  error?: string;
+}
+
+/** 여러 학생에게 동일하거나 각기 다른 사유로 마일리지를 한 번에 지급한다
+ * (체크박스 일괄 지급 · 엑셀 업로드 일괄 지급 공통 진입점). 각 건은
+ * grantMileage와 동일한 규칙으로 검증되며, 한 건이 실패해도 나머지 건은
+ * 계속 처리되고 결과를 학번별로 반환한다. */
+export async function bulkGrantMileage(inputs: GrantMileageInput[]): Promise<BulkGrantResult[]> {
+  const results = await Promise.allSettled(inputs.map((input) => grantMileage(input)));
+  return results.map((r, i) => ({
+    studentId: inputs[i].studentId,
+    studentName: inputs[i].studentName,
+    ok: r.status === "fulfilled",
+    error: r.status === "rejected" ? String(r.reason) : undefined,
+  }));
+}
+
 export function computeSemesterCap(student: Student): number {
   const isParticipating =
     student.isParticipating || PARTICIPATING_DEPARTMENTS.includes(student.department);
@@ -175,7 +235,7 @@ export function computeSemesterCap(student: Student): number {
 export async function computeStudentSummary(student: Student, semester?: string): Promise<StudentMileageSummary> {
   const applications = await listApplicationsForStudent(student.studentId);
   const approvedMileage = applications
-    .filter((a) => a.status === "승인" && (!semester || a.semester === semester))
+    .filter((a) => a.status === "승인" && !a.recalled && (!semester || a.semester === semester))
     .reduce((sum, a) => sum + a.mileage, 0);
   const pendingCount = applications.filter((a) => a.status === "검토중").length;
   const rejectedCount = applications.filter((a) => a.status === "반려").length;
@@ -193,7 +253,7 @@ export async function computeStudentSummary(student: Student, semester?: string)
 export function summarizeApprovedBySemester(applications: MileageApplication[]): { semester: string; mileage: number }[] {
   const totals = new Map<string, number>();
   for (const a of applications) {
-    if (a.status !== "승인") continue;
+    if (a.status !== "승인" || a.recalled) continue;
     const key = a.semester ?? "미지정";
     totals.set(key, (totals.get(key) ?? 0) + a.mileage);
   }

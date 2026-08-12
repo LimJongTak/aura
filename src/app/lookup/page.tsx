@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, StatCard } from "@/components/ui/Card";
-import { StatusBadge } from "@/components/ui/Badge";
+import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import {
   computeStudentSummary,
@@ -178,7 +178,18 @@ function LookupResult({ student }: { student: Student }) {
                     <td className="px-4 py-2.5">{a.activityName}</td>
                     <td className="px-4 py-2.5 text-right font-semibold">{a.mileage}점</td>
                     <td className="px-4 py-2.5">
-                      <StatusBadge status={a.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge status={a.status} />
+                        {a.recalled && (
+                          <Badge
+                            tone="danger"
+                            title={a.recallReason ? `회수 사유: ${a.recallReason}` : undefined}
+                          >
+                            회수됨
+                          </Badge>
+                        )}
+                        {a.paid && <Badge tone="success">지급완료</Badge>}
+                      </div>
                     </td>
                   </tr>
                 ))}
