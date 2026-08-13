@@ -10,6 +10,15 @@ import { cn } from "@/lib/utils/cn";
 
 const PERIODS: VisitPeriod[] = ["day", "week", "month", "year"];
 
+const HEADLINE_LABEL: Record<VisitPeriod, string> = {
+  day: "오늘",
+  week: "이번 주",
+  month: "이번 달",
+  year: "올해",
+};
+
+const GRAPH_HEIGHT = 160;
+
 export default function AdminAnalyticsPage() {
   const [stats, setStats] = useState<VisitStat[] | null>(null);
   const [period, setPeriod] = useState<VisitPeriod>("day");
@@ -20,8 +29,13 @@ export default function AdminAnalyticsPage() {
   }, []);
 
   const buckets = useMemo(() => (stats ? bucketizeVisitStats(stats, period) : []), [stats, period]);
-  const total = buckets.reduce((sum, b) => sum + b.count, 0);
+  const current = buckets[buckets.length - 1];
   const max = Math.max(1, ...buckets.map((b) => b.count));
+  const n = buckets.length;
+
+  const xPct = (i: number) => (n <= 1 ? 50 : 3 + (i / (n - 1)) * 94);
+  const yPx = (count: number) => GRAPH_HEIGHT - (count / max) * (GRAPH_HEIGHT - 16);
+  const linePoints = buckets.map((b, i) => `${xPct(i)},${yPx(b.count)}`).join(" ");
 
   return (
     <div className="max-w-4xl">
@@ -48,30 +62,63 @@ export default function AdminAnalyticsPage() {
         <>
           <Card className="mt-6">
             <p className="text-sm text-muted">
-              {buckets[0]?.start} ~ {buckets[buckets.length - 1]?.end} 방문자 수
+              {HEADLINE_LABEL[period]} 방문자 수{current ? ` (${current.label})` : ""}
             </p>
-            <p className="mt-1 text-3xl font-extrabold text-foreground">{total.toLocaleString()}명</p>
+            <p className="mt-1 text-3xl font-extrabold text-foreground">{(current?.count ?? 0).toLocaleString()}명</p>
 
-            <div className="mt-8 flex h-48 items-end gap-2">
-              {buckets.map((b, i) => (
-                <div
-                  key={b.start}
-                  className="relative flex flex-1 flex-col items-center justify-end"
-                  onMouseEnter={() => setHoverIndex(i)}
-                  onMouseLeave={() => setHoverIndex((cur) => (cur === i ? null : cur))}
-                >
-                  {hoverIndex === i && (
-                    <div className="absolute -top-9 z-10 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1 text-xs font-semibold text-white shadow">
-                      {b.label} · {b.count.toLocaleString()}명
-                    </div>
-                  )}
+            <div className="mt-8">
+              <div className="relative" style={{ height: GRAPH_HEIGHT }}>
+                {[0, 0.5, 1].map((f) => (
                   <div
-                    className="w-full rounded-t-md bg-primary transition-all"
-                    style={{ height: `${Math.max(2, (b.count / max) * 100)}%` }}
+                    key={f}
+                    className="absolute left-0 right-0 border-t border-border/60"
+                    style={{ top: GRAPH_HEIGHT * f }}
                   />
-                  <span className="mt-2 truncate text-[11px] text-muted">{b.label}</span>
-                </div>
-              ))}
+                ))}
+
+                <svg
+                  className="absolute inset-0 h-full w-full overflow-visible"
+                  viewBox={`0 0 100 ${GRAPH_HEIGHT}`}
+                  preserveAspectRatio="none"
+                >
+                  <polyline
+                    points={linePoints}
+                    fill="none"
+                    stroke="var(--color-primary)"
+                    strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+
+                {buckets.map((b, i) => (
+                  <div
+                    key={b.start}
+                    className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+                    style={{ left: `${xPct(i)}%`, top: yPx(b.count) }}
+                    onMouseEnter={() => setHoverIndex(i)}
+                    onMouseLeave={() => setHoverIndex((cur) => (cur === i ? null : cur))}
+                  >
+                    {hoverIndex === i && (
+                      <div className="absolute -top-10 z-10 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1 text-xs font-semibold text-white shadow">
+                        {b.label} · {b.count.toLocaleString()}명
+                      </div>
+                    )}
+                    <span className="h-2.5 w-2.5 rounded-full border-2 border-white bg-primary shadow" />
+                  </div>
+                ))}
+              </div>
+
+              <div className="relative mt-2 h-4">
+                {buckets.map((b, i) => (
+                  <span
+                    key={b.start}
+                    className="absolute -translate-x-1/2 truncate text-[11px] text-muted"
+                    style={{ left: `${xPct(i)}%` }}
+                  >
+                    {b.label}
+                  </span>
+                ))}
+              </div>
             </div>
           </Card>
 
