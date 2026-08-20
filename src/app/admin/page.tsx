@@ -58,6 +58,8 @@ export default function AdminPage() {
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semesterChoice, setSemesterChoice] = useState<Record<string, string>>({});
+  const [rejectTarget, setRejectTarget] = useState<MileageApplication | null>(null);
+  const [rejectDraft, setRejectDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -101,11 +103,39 @@ export default function AdminPage() {
     return (duplicateGroups.get(key) ?? []).filter((m) => m.id !== app.id);
   }
 
-  async function handleMileageDecision(id: string, status: "승인" | "반려") {
+  async function handleMileageApprove(id: string) {
     setBusyId(id);
     try {
-      await updateMileageApplicationStatus(id, status, undefined, semesterChoice[id]);
+      await updateMileageApplicationStatus(id, "승인", undefined, semesterChoice[id]);
       await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function openRejectModal(app: MileageApplication) {
+    setRejectTarget(app);
+    setRejectDraft("");
+  }
+
+  function closeRejectModal() {
+    setRejectTarget(null);
+    setRejectDraft("");
+  }
+
+  async function confirmReject() {
+    if (!rejectTarget) return;
+    const reason = rejectDraft.trim();
+    if (!reason) {
+      alert("반려 사유를 입력해주세요.");
+      return;
+    }
+    const id = rejectTarget.id;
+    setBusyId(id);
+    try {
+      await updateMileageApplicationStatus(id, "반려", reason, semesterChoice[id]);
+      await refresh();
+      closeRejectModal();
     } finally {
       setBusyId(null);
     }
@@ -190,7 +220,7 @@ export default function AdminPage() {
                         <Button
                           size="sm"
                           loading={busyId === a.id}
-                          onClick={() => handleMileageDecision(a.id, "승인")}
+                          onClick={() => handleMileageApprove(a.id)}
                         >
                           승인
                         </Button>
@@ -198,7 +228,7 @@ export default function AdminPage() {
                           size="sm"
                           variant="danger"
                           loading={busyId === a.id}
-                          onClick={() => handleMileageDecision(a.id, "반려")}
+                          onClick={() => openRejectModal(a)}
                         >
                           반려
                         </Button>
@@ -297,6 +327,41 @@ export default function AdminPage() {
           )}
         </Card>
       </div>
+
+      {rejectTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={closeRejectModal}
+        >
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-foreground">반려 사유 입력</h3>
+            <p className="mt-1 text-xs text-muted">
+              {rejectTarget.studentId} {rejectTarget.studentName} · {rejectTarget.activityName}
+            </p>
+            <textarea
+              autoFocus
+              rows={6}
+              value={rejectDraft}
+              onChange={(e) => setRejectDraft(e.target.value)}
+              placeholder="학생이 확인할 수 있는 반려 사유를 입력해주세요."
+              className="mt-3 w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={closeRejectModal}>
+                취소
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={busyId === rejectTarget.id}
+                onClick={confirmReject}
+              >
+                반려 확정
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

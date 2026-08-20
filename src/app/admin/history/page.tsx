@@ -223,10 +223,21 @@ export default function AdminHistoryPage() {
   const pagedAdvanced = filteredAdvanced.slice((advancedPage - 1) * PAGE_SIZE, advancedPage * PAGE_SIZE);
 
   async function handleMileageChange(id: string, next: ApplicationStatus) {
-    if (!confirm(`이 신청의 상태를 "${STATUS_CHANGE_LABEL[next]}"(으)로 변경할까요?`)) return;
+    let reason: string | undefined;
+    if (next === "반려") {
+      const input = prompt("반려 사유를 입력해주세요.");
+      if (input === null) return;
+      if (!input.trim()) {
+        alert("반려 사유를 입력해주세요.");
+        return;
+      }
+      reason = input.trim();
+    } else {
+      if (!confirm(`이 신청의 상태를 "${STATUS_CHANGE_LABEL[next]}"(으)로 변경할까요?`)) return;
+    }
     setBusyId(id);
     try {
-      await updateMileageApplicationStatus(id, next);
+      await updateMileageApplicationStatus(id, next, reason);
       await refresh();
     } finally {
       setBusyId(null);
