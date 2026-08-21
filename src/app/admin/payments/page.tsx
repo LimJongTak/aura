@@ -367,6 +367,15 @@ function MileageTab({
           <p className="mt-3 text-sm">
             이 점당 금액 적용 시 총 지급액{" "}
             <span className="font-bold text-primary-dark">{formatWon(totalAtPerPointRate)}</span>
+            {budgetInput > 0 && (
+              <>
+                {" "}
+                · 남은 예산{" "}
+                <span className={`font-bold ${budgetInput - totalAtPerPointRate < 0 ? "text-danger" : "text-primary-dark"}`}>
+                  {formatWon(budgetInput - totalAtPerPointRate)}
+                </span>
+              </>
+            )}
           </p>
         )}
       </Card>
