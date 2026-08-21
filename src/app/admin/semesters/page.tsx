@@ -34,12 +34,29 @@ function toDatetimeLocal(ms: number | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+type Tab = "mileage" | "completion" | "immersive";
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+        active ? "bg-primary text-white" : "border border-border text-muted hover:border-primary hover:text-primary"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function AdminSemestersPage() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [editing, setEditing] = useState<Semester | "new" | null>(null);
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
   const [completionSemesters, setCompletionSemesters] = useState<CompletionSemesterOption[]>([]);
   const [immersiveSemesters, setImmersiveSemesters] = useState<ImmersiveSemesterOption[]>([]);
+  const [tab, setTab] = useState<Tab>("mileage");
 
   const refresh = useCallback(async () => {
     setSemesters(await listSemesters());
@@ -73,6 +90,19 @@ export default function AdminSemestersPage() {
     <div className="max-w-2xl">
       <PageHeader title="학기 관리" description="마일리지·중고급 이수·몰입형 각각의 학기를 따로 관리해요." />
 
+      <div className="mt-6 flex gap-2">
+        <TabButton active={tab === "mileage"} onClick={() => setTab("mileage")}>
+          마일리지
+        </TabButton>
+        <TabButton active={tab === "completion"} onClick={() => setTab("completion")}>
+          중고급 이수 학기
+        </TabButton>
+        <TabButton active={tab === "immersive"} onClick={() => setTab("immersive")}>
+          몰입형 학기
+        </TabButton>
+      </div>
+
+      {tab === "mileage" && (
       <Card className="mt-6">
         <p className="font-bold text-foreground">마일리지 신청 학기 관리</p>
         <p className="mt-1 text-xs text-muted">
@@ -121,7 +151,9 @@ export default function AdminSemestersPage() {
           <SemesterForm initial={editing === "new" ? null : editing} onDone={() => { setEditing(null); refresh(); }} />
         )}
       </Card>
+      )}
 
+      {tab === "completion" && (
       <SimpleSemesterList
         title="중고급 이수 학기 관리"
         description={
@@ -141,7 +173,9 @@ export default function AdminSemestersPage() {
           ]).then(() => undefined);
         }}
       />
+      )}
 
+      {tab === "immersive" && (
       <SimpleSemesterList
         title="몰입형 학기 관리"
         description={
@@ -161,6 +195,7 @@ export default function AdminSemestersPage() {
           ]).then(() => undefined);
         }}
       />
+      )}
     </div>
   );
 }
