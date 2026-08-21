@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { History, X } from "lucide-react";
+import { Download, History, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -19,6 +19,7 @@ import {
   subscribeScholarshipPayments,
   type RecordScholarshipPaymentInput,
 } from "@/lib/firestore/scholarshipPayments";
+import { exportAdvancedPaymentExcel, exportMileagePaymentExcel } from "@/lib/excel/scholarshipPaymentsExport";
 import {
   ADVANCED_SCHOLARSHIP_AMOUNT,
   type AdvancedApplication,
@@ -270,6 +271,21 @@ function MileageTab({
     }
   }
 
+  function handleExport() {
+    const targets = selected.size > 0 ? rows.filter((r) => selected.has(r.student.studentId)) : rows;
+    exportMileagePaymentExcel(
+      semester,
+      targets.map((r) => ({
+        studentId: r.student.studentId,
+        studentName: r.student.name,
+        department: r.student.department,
+        approvedMileage: r.approvedMileage,
+        amount: effectiveAmount(r),
+        paid: !!r.payment,
+      }))
+    );
+  }
+
   return (
     <Card className="overflow-x-auto p-0">
       <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -279,11 +295,16 @@ function MileageTab({
             <span> · 확정 환산율 1점당 {formatWon(settings.conversionRate)} (금액은 자동으로 미리 채워집니다)</span>
           )}
         </p>
-        {selected.size > 0 && (
-          <Button size="sm" onClick={payBulk} loading={busy}>
-            선택한 {selected.size}명 일괄 지급완료 처리
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+            <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
           </Button>
-        )}
+          {selected.size > 0 && (
+            <Button size="sm" onClick={payBulk} loading={busy}>
+              선택한 {selected.size}명 일괄 지급완료 처리
+            </Button>
+          )}
+        </div>
       </div>
       {error && <p className="border-b border-border px-4 py-2 text-sm font-medium text-danger">{error}</p>}
 
@@ -498,17 +519,36 @@ function AdvancedTab({
     }
   }
 
+  function handleExport() {
+    const targets = selected.size > 0 ? rows.filter((r) => selected.has(r.studentId)) : rows;
+    exportAdvancedPaymentExcel(
+      semester,
+      targets.map((r) => ({
+        studentId: r.studentId,
+        studentName: r.studentName,
+        levels: r.levels.join(" · "),
+        amount: ADVANCED_SCHOLARSHIP_AMOUNT,
+        paid: !!r.payment,
+      }))
+    );
+  }
+
   return (
     <Card className="overflow-x-auto p-0">
       <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-xs text-muted">
           {semester} 기준 승인된 중고급 이수 신청 학생 {rows.length}명 · 1인당 {formatWon(ADVANCED_SCHOLARSHIP_AMOUNT)} 고정
         </p>
-        {selected.size > 0 && (
-          <Button size="sm" onClick={payBulk} loading={busy}>
-            선택한 {selected.size}명 일괄 지급완료 처리
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+            <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
           </Button>
-        )}
+          {selected.size > 0 && (
+            <Button size="sm" onClick={payBulk} loading={busy}>
+              선택한 {selected.size}명 일괄 지급완료 처리
+            </Button>
+          )}
+        </div>
       </div>
 
       {loading ? (
