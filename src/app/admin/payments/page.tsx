@@ -239,6 +239,14 @@ function MileageTab({
     setAmountOverrides((prev) => ({ ...prev, ...next }));
   }
 
+  function handleBulkApplyZero() {
+    const next: Record<string, number> = {};
+    for (const row of rows) {
+      next[row.student.studentId] = 0;
+    }
+    setAmountOverrides((prev) => ({ ...prev, ...next }));
+  }
+
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.student.studentId));
 
   function toggleAll() {
@@ -347,7 +355,14 @@ function MileageTab({
             <label className="mb-1.5 block text-xs font-semibold text-muted">학기 총 예산 (원)</label>
             <div className="flex gap-2">
               <NumberInput value={budgetInput} onChange={setBudgetInput} />
-              <Button type="button" variant="outline" size="sm" onClick={handleApplyBudget} disabled={totalMileage <= 0}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleApplyBudget}
+                disabled={totalMileage <= 0}
+                className="shrink-0 whitespace-nowrap"
+              >
                 점당 금액 계산
               </Button>
             </div>
@@ -356,9 +371,26 @@ function MileageTab({
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">점당 금액 (원)</label>
             <div className="flex gap-2">
-              <NumberInput value={perPointAmount} onChange={setPerPointAmount} />
-              <Button type="button" size="sm" onClick={handleBulkApplyPerPoint} disabled={perPointAmount <= 0}>
+              <div className="w-36 shrink-0">
+                <NumberInput value={perPointAmount} onChange={setPerPointAmount} />
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleBulkApplyPerPoint}
+                disabled={perPointAmount <= 0}
+                className="shrink-0 whitespace-nowrap"
+              >
                 전체 적용
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleBulkApplyZero}
+                className="shrink-0 whitespace-nowrap"
+              >
+                0점 적용
               </Button>
             </div>
           </div>
