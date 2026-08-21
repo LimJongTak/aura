@@ -9,6 +9,7 @@
     "lint": "eslint",
     "seed": "node scripts/seed-from-excel.mjs",
     "seed-advanced-tracks": "node scripts/seed-advanced-tracks.mjs",
+    "migrate-advanced-semesters": "node scripts/migrate-advanced-semesters.mjs",
     "create-student-accounts": "node scripts/create-student-accounts.mjs"
   },
   "dependencies": {

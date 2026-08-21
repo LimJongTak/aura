@@ -83,6 +83,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 이수 교과목 / 몰입형 교과목의 "이수 학기" 목록 — 신청 폼에 필요한 공개 참조 데이터.
+    match /completionSemesters/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /immersiveSemesters/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 학생별 장학금 지급 완료 기록 (금액 포함) — 관리자만 조회·기록한다.
     match /scholarshipPayments/{id} {
       allow read, write: if isAdmin();

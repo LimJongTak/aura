@@ -8,6 +8,8 @@ import { Input, Select } from "@/components/ui/Input";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import { submitAdvancedApplication } from "@/lib/firestore/advancedApplications";
 import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
+import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
+import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
 import { listSemesters } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
@@ -15,7 +17,9 @@ import {
   type AdvancedTrack,
   type CompletedSubjectEntry,
   type CompletionLevel,
+  type CompletionSemesterOption,
   type EducationProgram,
+  type ImmersiveSemesterOption,
   type Semester,
   type Student,
   type YesNo,
@@ -98,6 +102,7 @@ function SubjectRow({
   onChange,
   programOptions,
   subjectOptions,
+  semesterOptions,
 }: {
   label: string;
   value: CompletedSubjectEntry;
@@ -106,6 +111,9 @@ function SubjectRow({
   programOptions: EducationProgram[];
   /** 이 행에서 고를 수 있는 교과목명 (선택한 트랙·등급 또는 몰입형 목록 기준). */
   subjectOptions: readonly string[];
+  /** 이 행에서 고를 수 있는 이수 학기 (이수 교과목은 completionSemesters, 몰입형은
+   *  immersiveSemesters 목록에서 온다). */
+  semesterOptions: { id: string; name: string }[];
 }) {
   return (
     <div className="rounded-xl border border-border p-3">
@@ -136,11 +144,20 @@ function SubjectRow({
         </Select>
       </div>
       <div className="mt-2">
-        <Input
-          type="month"
+        <Select
           value={value.completedYearMonth}
           onChange={(e) => onChange({ ...value, completedYearMonth: e.target.value })}
-        />
+        >
+          <option value="">이수 학기 선택</option>
+          {semesterOptions.map((s) => (
+            <option key={s.id} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </Select>
+        {semesterOptions.length === 0 && (
+          <p className="mt-1.5 text-xs text-muted">등록된 이수 학기가 없습니다. 사업단에 문의해주세요.</p>
+        )}
       </div>
     </div>
   );
@@ -166,6 +183,8 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [level, setLevel] = useState<CompletionLevel>("중급");
   const [tracks, setTracks] = useState<AdvancedTrack[] | null>(null);
   const [trackId, setTrackId] = useState("");
+  const [completionSemesters, setCompletionSemesters] = useState<CompletionSemesterOption[]>([]);
+  const [immersiveSemesters, setImmersiveSemesters] = useState<ImmersiveSemesterOption[]>([]);
   const [subject1, setSubject1] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [subject2, setSubject2] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [immersive, setImmersive] = useState<CompletedSubjectEntry>(emptySubject("AI-Bridge Professional"));
@@ -192,6 +211,16 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
       setTracks(list);
       setTrackId((prev) => (prev && list.some((t) => t.id === prev) ? prev : (list[0]?.id ?? "")));
     });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeCompletionSemesters(setCompletionSemesters);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeImmersiveSemesters(setImmersiveSemesters);
     return () => unsub();
   }, []);
 
@@ -398,6 +427,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   onChange={setSubject1}
                   programOptions={[LEVEL_PROGRAM[level]]}
                   subjectOptions={selectedTrack.subjectsByLevel[level]}
+                  semesterOptions={completionSemesters}
                 />
                 <SubjectRow
                   label="이수 교과목 2"
@@ -405,6 +435,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   onChange={setSubject2}
                   programOptions={[LEVEL_PROGRAM[level]]}
                   subjectOptions={selectedTrack.subjectsByLevel[level]}
+                  semesterOptions={completionSemesters}
                 />
               </div>
             </div>
@@ -420,6 +451,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
               onChange={setImmersive}
               programOptions={["AI-Bridge Professional"]}
               subjectOptions={IMMERSIVE_SUBJECTS}
+              semesterOptions={immersiveSemesters}
             />
           </div>
 

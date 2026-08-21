@@ -108,12 +108,35 @@ export type YesNo = "Y" | "N";
 export const EDUCATION_PROGRAMS = ["AI Beginner", "AI Growing", "AI Advanced", "AI-Bridge Professional"] as const;
 export type EducationProgram = (typeof EDUCATION_PROGRAMS)[number];
 
+/**
+ * 이수 교과목의 이수 학기 목록 (예: "2026학년도 제1학기"). 관리자가 /admin/semesters에서
+ * 추가·삭제·순서 변경한다. → completionSemesters/{id}
+ */
+export interface CompletionSemesterOption {
+  id: string;
+  name: string;
+  order: number;
+}
+
+/**
+ * 몰입형 교과목의 이수 학기 목록 (예: "2026학년도 여름 학기"). 규칙적인 학기 단위가 아니라
+ * 방학 중 진행되는 부트캠프라 별도 목록으로 관리한다. 관리자가 /admin/semesters에서
+ * 추가·삭제·순서 변경한다. → immersiveSemesters/{id}
+ */
+export interface ImmersiveSemesterOption {
+  id: string;
+  name: string;
+  order: number;
+}
+
 /** 중고급 이수 신청의 교과목 1건(이수 교과목 또는 몰입형 교과목 공통 입력 단위). */
 export interface CompletedSubjectEntry {
   program: EducationProgram;
   subjectName: string;
   completed: YesNo;
-  /** 이수연월, 예: "2026-07" */
+  /** 이수한 학기 — 이수 교과목은 completionSemesters, 몰입형 교과목은 immersiveSemesters
+   *  목록에서 고른 학기 이름(예: "2026학년도 제1학기" / "2026학년도 여름 학기")이 들어간다.
+   *  필드명은 과거 "YYYY-MM" 값(예: "2026-06")을 직접 입력받던 시절 이름을 그대로 쓰고 있다. */
   completedYearMonth: string;
 }
 

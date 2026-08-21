@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, Plus, Trash2 } from "lucide-react";
 import {
   createSemester,
   listSemesters,
@@ -9,7 +9,19 @@ import {
   updateSemester,
   type SemesterInput,
 } from "@/lib/firestore/semesters";
-import type { Semester } from "@/types/models";
+import {
+  createCompletionSemester,
+  deleteCompletionSemester,
+  setCompletionSemesterOrder,
+  subscribeCompletionSemesters,
+} from "@/lib/firestore/completionSemesters";
+import {
+  createImmersiveSemester,
+  deleteImmersiveSemester,
+  setImmersiveSemesterOrder,
+  subscribeImmersiveSemesters,
+} from "@/lib/firestore/immersiveSemesters";
+import type { CompletionSemesterOption, ImmersiveSemesterOption, Semester } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -26,6 +38,8 @@ export default function AdminSemestersPage() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [editing, setEditing] = useState<Semester | "new" | null>(null);
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
+  const [completionSemesters, setCompletionSemesters] = useState<CompletionSemesterOption[]>([]);
+  const [immersiveSemesters, setImmersiveSemesters] = useState<ImmersiveSemesterOption[]>([]);
 
   const refresh = useCallback(async () => {
     setSemesters(await listSemesters());
@@ -34,6 +48,16 @@ export default function AdminSemestersPage() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const unsub = subscribeCompletionSemesters(setCompletionSemesters);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeImmersiveSemesters(setImmersiveSemesters);
+    return () => unsub();
+  }, []);
 
   async function handleSetCurrent(semester: Semester) {
     setSettingCurrentId(semester.id);
@@ -47,26 +71,17 @@ export default function AdminSemestersPage() {
 
   return (
     <div className="max-w-2xl">
-      <PageHeader
-        title="학기 관리"
-        description={
-          <>&quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.</>
-        }
-        actions={
-          <Button size="sm" onClick={() => setEditing("new")}>
-            <Plus size={16} /> 새 학기
-          </Button>
-        }
-      />
+      <PageHeader title="학기 관리" description="마일리지·중고급 이수·몰입형 각각의 학기를 따로 관리해요." />
 
-      {editing && (
-        <SemesterForm initial={editing === "new" ? null : editing} onDone={() => { setEditing(null); refresh(); }} />
-      )}
+      <Card className="mt-6">
+        <p className="font-bold text-foreground">마일리지 신청 학기 관리</p>
+        <p className="mt-1 text-xs text-muted">
+          &quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.
+        </p>
 
-      <ul className="mt-6 flex flex-col gap-3">
-        {semesters.map((s) => (
-          <li key={s.id}>
-            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <ul className="mt-3 flex flex-col gap-3">
+          {semesters.map((s) => (
+            <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4">
               <div>
                 <div className="flex items-center gap-2">
                   <p className="font-bold">{s.name}</p>
@@ -93,12 +108,153 @@ export default function AdminSemestersPage() {
                   수정
                 </Button>
               </div>
-            </Card>
+            </li>
+          ))}
+          {semesters.length === 0 && !editing && <p className="py-4 text-center text-xs text-muted">등록된 학기가 없어요.</p>}
+        </ul>
+
+        <Button size="sm" className="mt-3" onClick={() => setEditing("new")}>
+          <Plus size={16} /> 새 학기
+        </Button>
+
+        {editing && (
+          <SemesterForm initial={editing === "new" ? null : editing} onDone={() => { setEditing(null); refresh(); }} />
+        )}
+      </Card>
+
+      <SimpleSemesterList
+        title="중고급 이수 학기 관리"
+        description={
+          <>중고급 이수 신청에서 &quot;이수 교과목&quot;의 이수 학기를 고를 때 쓰는 목록이에요 (예: 2026학년도 제1학기).</>
+        }
+        placeholder="예: 2026학년도 제1학기"
+        items={completionSemesters}
+        onCreate={(name) => createCompletionSemester(name, completionSemesters.length)}
+        onDelete={deleteCompletionSemester}
+        onMove={(index, direction) => {
+          const target = completionSemesters[index + direction];
+          const current = completionSemesters[index];
+          if (!target) return Promise.resolve();
+          return Promise.all([
+            setCompletionSemesterOrder(current.id, target.order),
+            setCompletionSemesterOrder(target.id, current.order),
+          ]).then(() => undefined);
+        }}
+      />
+
+      <SimpleSemesterList
+        title="몰입형 학기 관리"
+        description={
+          <>중고급 이수 신청에서 &quot;몰입형 교과목&quot;의 이수 학기를 고를 때 쓰는 목록이에요 (예: 2026학년도 여름 학기).</>
+        }
+        placeholder="예: 2026학년도 여름 학기"
+        items={immersiveSemesters}
+        onCreate={(name) => createImmersiveSemester(name, immersiveSemesters.length)}
+        onDelete={deleteImmersiveSemester}
+        onMove={(index, direction) => {
+          const target = immersiveSemesters[index + direction];
+          const current = immersiveSemesters[index];
+          if (!target) return Promise.resolve();
+          return Promise.all([
+            setImmersiveSemesterOrder(current.id, target.order),
+            setImmersiveSemesterOrder(target.id, current.order),
+          ]).then(() => undefined);
+        }}
+      />
+    </div>
+  );
+}
+
+function SimpleSemesterList({
+  title,
+  description,
+  placeholder,
+  items,
+  onCreate,
+  onDelete,
+  onMove,
+}: {
+  title: string;
+  description: React.ReactNode;
+  placeholder: string;
+  items: { id: string; name: string; order: number }[];
+  onCreate: (name: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onMove: (index: number, direction: -1 | 1) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleAdd() {
+    const name = draft.trim();
+    if (!name) return;
+    setSubmitting(true);
+    try {
+      await onCreate(name);
+      setDraft("");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`"${name}" 학기를 삭제할까요?`)) return;
+    await onDelete(id);
+  }
+
+  return (
+    <Card className="mt-6">
+      <p className="font-bold text-foreground">{title}</p>
+      <p className="mt-1 text-xs text-muted">{description}</p>
+
+      <ul className="mt-3 flex flex-col gap-2">
+        {items.map((item, i) => (
+          <li
+            key={item.id}
+            className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2"
+          >
+            <span className="text-sm font-semibold text-foreground">{item.name}</span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                onClick={() => onMove(i, -1)}
+                disabled={i === 0}
+                className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <ArrowUp size={15} />
+              </button>
+              <button
+                onClick={() => onMove(i, 1)}
+                disabled={i === items.length - 1}
+                className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                <ArrowDown size={15} />
+              </button>
+              <button onClick={() => handleDelete(item.id, item.name)} className="ml-1 text-muted hover:text-danger">
+                <Trash2 size={15} />
+              </button>
+            </div>
           </li>
         ))}
-        {semesters.length === 0 && !editing && <p className="py-10 text-center text-sm text-muted">등록된 학기가 없습니다.</p>}
+        {items.length === 0 && <p className="py-4 text-center text-xs text-muted">등록된 학기가 없어요.</p>}
       </ul>
-    </div>
+
+      <div className="mt-3 flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleAdd();
+            }
+          }}
+          placeholder={placeholder}
+        />
+        <Button type="button" size="sm" onClick={handleAdd} loading={submitting} className="shrink-0 whitespace-nowrap">
+          <Plus size={16} /> 추가
+        </Button>
+      </div>
+    </Card>
   );
 }
 

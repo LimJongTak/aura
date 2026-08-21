@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createAdvancedTrack,
   deleteAdvancedTrack,
@@ -10,10 +10,13 @@ import {
   updateAdvancedTrack,
   type AdvancedTrackInput,
 } from "@/lib/firestore/advancedTracks";
-import type { AdvancedTrack, CompletionLevel } from "@/types/models";
+import { listApprovedAdvancedApplications } from "@/lib/firestore/advancedApplications";
+import { listSemesters } from "@/lib/firestore/semesters";
+import { exportAdvancedApplicationsExcel } from "@/lib/excel/advancedApplicationsExport";
+import type { AdvancedApplication, AdvancedTrack, CompletionLevel, Semester } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { PageHeader } from "@/components/admin/PageHeader";
 
 const LEVELS: CompletionLevel[] = ["중급", "고급"];
@@ -40,7 +43,7 @@ export default function AdminAdvancedTracksPage() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-5xl">
       <PageHeader
         title="중고급 이수 신청 트랙 관리"
         description="중고급 이수 신청 화면의 트랙 선택 및 등급별(중급/고급) 이수 교과목 목록을 관리해요."
@@ -110,7 +113,116 @@ export default function AdminAdvancedTracksPage() {
         ))}
         {tracks.length === 0 && !editing && <p className="py-10 text-center text-sm text-muted">등록된 트랙이 없어요.</p>}
       </ul>
+
+      <ApprovedStudentsSection />
     </div>
+  );
+}
+
+function ApprovedStudentsSection() {
+  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [semester, setSemester] = useState("");
+  const [applications, setApplications] = useState<AdvancedApplication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([listSemesters(), listApprovedAdvancedApplications()]).then(([semesterList, apps]) => {
+      setSemesters(semesterList);
+      setApplications(apps);
+      const current = semesterList.find((s) => s.isCurrent);
+      setSemester(current?.name ?? semesterList[0]?.name ?? "");
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => setSelected(new Set()), [semester]);
+
+  const rows = useMemo(
+    () => applications.filter((a) => a.targetSemester === semester),
+    [applications, semester]
+  );
+
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)));
+  }
+
+  function toggleOne(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleExport() {
+    const targets = selected.size > 0 ? rows.filter((r) => selected.has(r.id)) : rows;
+    exportAdvancedApplicationsExcel(semester, targets);
+  }
+
+  return (
+    <Card className="mt-6 overflow-x-auto p-0">
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="font-bold text-foreground">승인된 중고급 이수 학생</p>
+          <p className="mt-1 text-xs text-muted">
+            신청 학기별로 승인된 학생을 선택해서, 신청할 때 받은 정보(교과목·이수학기·비교과 등)를 엑셀로 내려받아요.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={semester} onChange={(e) => setSemester(e.target.value)} className="sm:w-48">
+            {semesters.length === 0 && <option value="">등록된 학기가 없습니다</option>}
+            {semesters.map((s) => (
+              <option key={s.id} value={s.name}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+            <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
+          </Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>
+      ) : rows.length === 0 ? (
+        <p className="p-8 text-center text-sm text-muted">{semester || "선택한 학기"}에 승인된 중고급 이수 신청이 없어요.</p>
+      ) : (
+        <table className="w-full text-left text-xs sm:text-sm">
+          <thead>
+            <tr className="border-b border-border bg-surface text-muted">
+              <th className="w-10 px-4 py-3">
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+              </th>
+              <th className="px-4 py-3 font-semibold">학번</th>
+              <th className="px-4 py-3 font-semibold">이름</th>
+              <th className="px-4 py-3 font-semibold">학과</th>
+              <th className="px-4 py-3 font-semibold">등급</th>
+              <th className="px-4 py-3 font-semibold">신청일</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((a) => (
+              <tr key={a.id} className="border-b border-border last:border-0">
+                <td className="px-4 py-2.5">
+                  <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggleOne(a.id)} />
+                </td>
+                <td className="px-4 py-2.5">{a.studentId}</td>
+                <td className="px-4 py-2.5 font-semibold">{a.studentName}</td>
+                <td className="px-4 py-2.5">{a.department}</td>
+                <td className="px-4 py-2.5">{a.level}</td>
+                <td className="px-4 py-2.5 text-muted">{new Date(a.appliedAt).toLocaleDateString("ko-KR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }
 
