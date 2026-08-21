@@ -146,6 +146,8 @@ function MileageTab({
   const [amountOverrides, setAmountOverrides] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [budgetInput, setBudgetInput] = useState(0);
+  const [perPointAmount, setPerPointAmount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -164,6 +166,8 @@ function MileageTab({
     setSelected(new Set());
     setAmountOverrides({});
     setError(null);
+    setBudgetInput(0);
+    setPerPointAmount(0);
     return () => unsub();
   }, [semester]);
 
@@ -189,6 +193,27 @@ function MileageTab({
     if (row.student.studentId in amountOverrides) return amountOverrides[row.student.studentId];
     if (row.payment) return row.payment.amount;
     return suggestSuggestedAmount(row, settings, semester);
+  }
+
+  const totalMileage = useMemo(() => rows.reduce((sum, r) => sum + r.approvedMileage, 0), [rows]);
+  const totalAtPerPointRate = useMemo(
+    () => rows.reduce((sum, r) => sum + Math.min(Math.round(r.approvedMileage * perPointAmount), r.cap), 0),
+    [rows, perPointAmount]
+  );
+
+  function handleApplyBudget() {
+    if (!budgetInput || budgetInput <= 0 || totalMileage <= 0) return;
+    setPerPointAmount(Math.floor(budgetInput / totalMileage));
+  }
+
+  function handleBulkApplyPerPoint() {
+    if (!perPointAmount || perPointAmount <= 0) return;
+    const next: Record<string, number> = {};
+    for (const row of rows) {
+      if (effectiveAmount(row) !== 0) continue;
+      next[row.student.studentId] = Math.min(Math.round(row.approvedMileage * perPointAmount), row.cap);
+    }
+    setAmountOverrides((prev) => ({ ...prev, ...next }));
   }
 
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.student.studentId));
@@ -287,108 +312,159 @@ function MileageTab({
   }
 
   return (
-    <Card className="overflow-x-auto p-0">
-      <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted">
-          {semester} 기준 승인 마일리지가 있는 학생 {rows.length}명
-          {settings?.isFinalized && settings.appliedSemester === semester && settings.conversionRate && (
-            <span> · 확정 환산율 1점당 {formatWon(settings.conversionRate)} (금액은 자동으로 미리 채워집니다)</span>
-          )}
+    <div className="flex flex-col gap-4">
+      <Card>
+        <p className="text-sm font-bold text-foreground">마일리지 계산기</p>
+        <p className="mt-1 text-xs text-muted">
+          점당 금액을 정하면, 아래 표에서 아직 0원인 학생들에게 &quot;마일리지 × 점당 금액&quot;(학기 한도 이내)을 한
+          번에 채워줍니다. 이미 값이 입력됐거나 지급완료된 학생은 바뀌지 않아요.
         </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
-            <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
-          </Button>
-          {selected.size > 0 && (
-            <Button size="sm" onClick={payBulk} loading={busy}>
-              선택한 {selected.size}명 일괄 지급완료 처리
-            </Button>
-          )}
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">학기 총 예산 (원)</label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={0}
+                step={100000}
+                value={budgetInput}
+                onChange={(e) => setBudgetInput(Number(e.target.value))}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={handleApplyBudget} disabled={totalMileage <= 0}>
+                점당 금액 계산
+              </Button>
+            </div>
+            <p className="mt-1 text-[11px] text-muted">총 마일리지 {totalMileage.toLocaleString("ko-KR")}점 기준</p>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">점당 금액 (원)</label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min={0}
+                step={100}
+                value={perPointAmount}
+                onChange={(e) => setPerPointAmount(Number(e.target.value))}
+              />
+              <Button type="button" size="sm" onClick={handleBulkApplyPerPoint} disabled={perPointAmount <= 0}>
+                0원 항목 일괄적용
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
-      {error && <p className="border-b border-border px-4 py-2 text-sm font-medium text-danger">{error}</p>}
+        {perPointAmount > 0 && (
+          <p className="mt-3 text-sm">
+            이 점당 금액 적용 시 총 지급액{" "}
+            <span className="font-bold text-primary-dark">{formatWon(totalAtPerPointRate)}</span>
+          </p>
+        )}
+      </Card>
 
-      {loading ? (
-        <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>
-      ) : rows.length === 0 ? (
-        <p className="p-8 text-center text-sm text-muted">{semester}에 승인된 마일리지가 있는 학생이 없어요.</p>
-      ) : (
-        <table className="w-full text-left text-xs sm:text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface text-muted">
-              <th className="w-10 px-4 py-3">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-              </th>
-              <th className="px-4 py-3 font-semibold">학번</th>
-              <th className="px-4 py-3 font-semibold">이름</th>
-              <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
-              <th className="px-4 py-3 text-right font-semibold">학기 한도</th>
-              <th className="px-4 py-3 font-semibold">지급 금액</th>
-              <th className="px-4 py-3 font-semibold">상태</th>
-              <th className="px-4 py-3 font-semibold">처리</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.student.studentId} className="border-b border-border last:border-0">
-                <td className="px-4 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(row.student.studentId)}
-                    onChange={() => toggleOne(row.student.studentId)}
-                  />
-                </td>
-                <td className="px-4 py-2.5">{row.student.studentId}</td>
-                <td className="px-4 py-2.5 font-semibold">{row.student.name}</td>
-                <td className="px-4 py-2.5 text-right font-bold text-primary-dark">{row.approvedMileage}점</td>
-                <td className="px-4 py-2.5 text-right text-muted">{formatWon(row.cap)}</td>
-                <td className="px-4 py-2.5">
-                  <Input
-                    type="number"
-                    min={0}
-                    step={1000}
-                    value={effectiveAmount(row)}
-                    onChange={(e) =>
-                      setAmountOverrides((prev) => ({ ...prev, [row.student.studentId]: Number(e.target.value) }))
-                    }
-                    className="w-32"
-                  />
-                </td>
-                <td className="px-4 py-2.5">
-                  {row.payment ? (
-                    <Badge tone="success" title={new Date(row.payment.paidAt).toLocaleString("ko-KR")}>
-                      지급완료 · {formatWon(row.payment.amount)}
-                    </Badge>
-                  ) : (
-                    <Badge tone="muted">미지급</Badge>
-                  )}
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => onShowHistory({ studentId: row.student.studentId, studentName: row.student.name })}
-                      className="text-muted hover:text-primary"
-                      title="수혜내역 보기"
-                    >
-                      <History size={15} />
-                    </button>
-                    {row.payment ? (
-                      <Button variant="outline" size="sm" onClick={() => cancel(row)} disabled={busy}>
-                        취소
-                      </Button>
-                    ) : (
-                      <Button size="sm" onClick={() => payOne(row)} disabled={busy}>
-                        지급완료 처리
-                      </Button>
-                    )}
-                  </div>
-                </td>
+      <Card className="overflow-x-auto p-0">
+        <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted">
+            {semester} 기준 승인 마일리지가 있는 학생 {rows.length}명
+            {settings?.isFinalized && settings.appliedSemester === semester && settings.conversionRate && (
+              <span> · 확정 환산율 1점당 {formatWon(settings.conversionRate)} (금액은 자동으로 미리 채워집니다)</span>
+            )}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+              <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
+            </Button>
+            {selected.size > 0 && (
+              <Button size="sm" onClick={payBulk} loading={busy}>
+                선택한 {selected.size}명 일괄 지급완료 처리
+              </Button>
+            )}
+          </div>
+        </div>
+        {error && <p className="border-b border-border px-4 py-2 text-sm font-medium text-danger">{error}</p>}
+
+        {loading ? (
+          <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>
+        ) : rows.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted">{semester}에 승인된 마일리지가 있는 학생이 없어요.</p>
+        ) : (
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface text-muted">
+                <th className="w-10 px-4 py-3">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                </th>
+                <th className="px-4 py-3 font-semibold">학번</th>
+                <th className="px-4 py-3 font-semibold">이름</th>
+                <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
+                <th className="px-4 py-3 text-right font-semibold">학기 한도</th>
+                <th className="px-4 py-3 font-semibold">지급 금액</th>
+                <th className="px-4 py-3 font-semibold">상태</th>
+                <th className="px-4 py-3 font-semibold">처리</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Card>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.student.studentId} className="border-b border-border last:border-0">
+                  <td className="px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.student.studentId)}
+                      onChange={() => toggleOne(row.student.studentId)}
+                    />
+                  </td>
+                  <td className="px-4 py-2.5">{row.student.studentId}</td>
+                  <td className="px-4 py-2.5 font-semibold">{row.student.name}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-primary-dark">{row.approvedMileage}점</td>
+                  <td className="px-4 py-2.5 text-right text-muted">{formatWon(row.cap)}</td>
+                  <td className="px-4 py-2.5">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={effectiveAmount(row)}
+                      onChange={(e) =>
+                        setAmountOverrides((prev) => ({ ...prev, [row.student.studentId]: Number(e.target.value) }))
+                      }
+                      className="w-32"
+                    />
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {row.payment ? (
+                      <Badge tone="success" title={new Date(row.payment.paidAt).toLocaleString("ko-KR")}>
+                        지급완료 · {formatWon(row.payment.amount)}
+                      </Badge>
+                    ) : (
+                      <Badge tone="muted">미지급</Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() =>
+                          onShowHistory({ studentId: row.student.studentId, studentName: row.student.name })
+                        }
+                        className="text-muted hover:text-primary"
+                        title="수혜내역 보기"
+                      >
+                        <History size={15} />
+                      </button>
+                      {row.payment ? (
+                        <Button variant="outline" size="sm" onClick={() => cancel(row)} disabled={busy}>
+                          취소
+                        </Button>
+                      ) : (
+                        <Button size="sm" onClick={() => payOne(row)} disabled={busy}>
+                          지급완료 처리
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -533,90 +609,114 @@ function AdvancedTab({
     );
   }
 
-  return (
-    <Card className="overflow-x-auto p-0">
-      <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-muted">
-          {semester} 기준 승인된 중고급 이수 신청 학생 {rows.length}명 · 1인당 {formatWon(ADVANCED_SCHOLARSHIP_AMOUNT)} 고정
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
-            <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
-          </Button>
-          {selected.size > 0 && (
-            <Button size="sm" onClick={payBulk} loading={busy}>
-              선택한 {selected.size}명 일괄 지급완료 처리
-            </Button>
-          )}
-        </div>
-      </div>
+  const totalPayout = rows.length * ADVANCED_SCHOLARSHIP_AMOUNT;
+  const selectedPayout = selected.size * ADVANCED_SCHOLARSHIP_AMOUNT;
 
-      {loading ? (
-        <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>
-      ) : rows.length === 0 ? (
-        <p className="p-8 text-center text-sm text-muted">{semester}에 승인된 중고급 이수 신청이 없어요.</p>
-      ) : (
-        <table className="w-full text-left text-xs sm:text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface text-muted">
-              <th className="w-10 px-4 py-3">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
-              </th>
-              <th className="px-4 py-3 font-semibold">학번</th>
-              <th className="px-4 py-3 font-semibold">이름</th>
-              <th className="px-4 py-3 font-semibold">등급</th>
-              <th className="px-4 py-3 text-right font-semibold">지급 금액</th>
-              <th className="px-4 py-3 font-semibold">상태</th>
-              <th className="px-4 py-3 font-semibold">처리</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.studentId} className="border-b border-border last:border-0">
-                <td className="px-4 py-2.5">
-                  <input type="checkbox" checked={selected.has(row.studentId)} onChange={() => toggleOne(row.studentId)} />
-                </td>
-                <td className="px-4 py-2.5">{row.studentId}</td>
-                <td className="px-4 py-2.5 font-semibold">{row.studentName}</td>
-                <td className="px-4 py-2.5">{row.levels.join(" · ")}</td>
-                <td className="px-4 py-2.5 text-right font-bold text-primary-dark">
-                  {formatWon(ADVANCED_SCHOLARSHIP_AMOUNT)}
-                </td>
-                <td className="px-4 py-2.5">
-                  {row.payment ? (
-                    <Badge tone="success" title={new Date(row.payment.paidAt).toLocaleString("ko-KR")}>
-                      지급완료
-                    </Badge>
-                  ) : (
-                    <Badge tone="muted">미지급</Badge>
-                  )}
-                </td>
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => onShowHistory({ studentId: row.studentId, studentName: row.studentName })}
-                      className="text-muted hover:text-primary"
-                      title="수혜내역 보기"
-                    >
-                      <History size={15} />
-                    </button>
-                    {row.payment ? (
-                      <Button variant="outline" size="sm" onClick={() => cancel(row)} disabled={busy}>
-                        취소
-                      </Button>
-                    ) : (
-                      <Button size="sm" onClick={() => payOne(row)} disabled={busy}>
-                        지급완료 처리
-                      </Button>
-                    )}
-                  </div>
-                </td>
+  return (
+    <div className="flex flex-col gap-4">
+      <Card>
+        <p className="text-sm">
+          전체 지급 대상 {rows.length}명 · 총 지급 금액{" "}
+          <span className="font-bold text-primary-dark">{formatWon(totalPayout)}</span>
+          {selected.size > 0 && (
+            <>
+              {" "}
+              · 선택한 {selected.size}명{" "}
+              <span className="font-bold text-primary-dark">{formatWon(selectedPayout)}</span>
+            </>
+          )}
+        </p>
+      </Card>
+
+      <Card className="overflow-x-auto p-0">
+        <div className="flex flex-col gap-2 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted">
+            {semester} 기준 승인된 중고급 이수 신청 학생 {rows.length}명 · 1인당{" "}
+            {formatWon(ADVANCED_SCHOLARSHIP_AMOUNT)} 고정
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+              <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
+            </Button>
+            {selected.size > 0 && (
+              <Button size="sm" onClick={payBulk} loading={busy}>
+                선택한 {selected.size}명 일괄 지급완료 처리
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {loading ? (
+          <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>
+        ) : rows.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted">{semester}에 승인된 중고급 이수 신청이 없어요.</p>
+        ) : (
+          <table className="w-full text-left text-xs sm:text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface text-muted">
+                <th className="w-10 px-4 py-3">
+                  <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                </th>
+                <th className="px-4 py-3 font-semibold">학번</th>
+                <th className="px-4 py-3 font-semibold">이름</th>
+                <th className="px-4 py-3 font-semibold">등급</th>
+                <th className="px-4 py-3 text-right font-semibold">지급 금액</th>
+                <th className="px-4 py-3 font-semibold">상태</th>
+                <th className="px-4 py-3 font-semibold">처리</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Card>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.studentId} className="border-b border-border last:border-0">
+                  <td className="px-4 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.studentId)}
+                      onChange={() => toggleOne(row.studentId)}
+                    />
+                  </td>
+                  <td className="px-4 py-2.5">{row.studentId}</td>
+                  <td className="px-4 py-2.5 font-semibold">{row.studentName}</td>
+                  <td className="px-4 py-2.5">{row.levels.join(" · ")}</td>
+                  <td className="px-4 py-2.5 text-right font-bold text-primary-dark">
+                    {formatWon(ADVANCED_SCHOLARSHIP_AMOUNT)}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {row.payment ? (
+                      <Badge tone="success" title={new Date(row.payment.paidAt).toLocaleString("ko-KR")}>
+                        지급완료
+                      </Badge>
+                    ) : (
+                      <Badge tone="muted">미지급</Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onShowHistory({ studentId: row.studentId, studentName: row.studentName })}
+                        className="text-muted hover:text-primary"
+                        title="수혜내역 보기"
+                      >
+                        <History size={15} />
+                      </button>
+                      {row.payment ? (
+                        <Button variant="outline" size="sm" onClick={() => cancel(row)} disabled={busy}>
+                          취소
+                        </Button>
+                      ) : (
+                        <Button size="sm" onClick={() => payOne(row)} disabled={busy}>
+                          지급완료 처리
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+    </div>
   );
 }
 
