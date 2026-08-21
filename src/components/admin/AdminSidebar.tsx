@@ -12,6 +12,7 @@ import {
   Link2,
   LogOut,
   type LucideIcon,
+  Megaphone,
   Send,
   UserPlus,
   Users,
@@ -36,6 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/semesters", label: "학기 관리", icon: CalendarDays },
   { href: "/admin/registrations", label: "등록 신청", icon: UserPlus, badge: "registrations" },
   { href: "/admin/quicklinks", label: "퀵메뉴 관리", icon: Link2 },
+  { href: "/admin/announcements", label: "공지사항 관리", icon: Megaphone },
   { href: "/admin/analytics", label: "방문자 통계", icon: BarChart3 },
   { href: "/admin/help", label: "사용법 안내", icon: HelpCircle },
 ];

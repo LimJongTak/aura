@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils/cn";
 
 const NAV = [
   { href: "/", label: "마일리지 안내" },
+  { href: "/announcements", label: "공지사항" },
   { href: "/lookup", label: "마일리지 조회" },
   { href: "/apply", label: "마일리지 신청" },
   { href: "/apply-advanced", label: "중고급 이수 신청" },

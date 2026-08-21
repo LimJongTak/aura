@@ -197,6 +197,15 @@ export interface QuickLink {
   isActive: boolean;
 }
 
+/** 공지사항 → announcements/{id}. 공개 읽기, 관리자만 쓰기. */
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number; // epoch ms
+  updatedAt?: number;
+}
+
 /**
  * 학생명단에 없는 학생이 스스로 등록을 신청하는 요청. 관리자 승인 시
  * students/{studentId} 문서가 새로 생성된다. 승인 전까지는 비공개(관리자만 조회).

@@ -70,6 +70,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 공지사항: 공개 읽기, 관리자만 쓰기.
+    match /announcements/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 비밀번호 변경 인증번호: Cloud Functions(Admin SDK)만 접근한다.
     match /passwordResets/{id} {
       allow read, write: if false;
