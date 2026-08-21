@@ -7,10 +7,12 @@ import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import { submitAdvancedApplication } from "@/lib/firestore/advancedApplications";
+import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { listSemesters } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
   EDUCATION_PROGRAMS,
+  type AdvancedTrack,
   type CompletedSubjectEntry,
   type CompletionLevel,
   type EducationProgram,
@@ -30,36 +32,6 @@ const PROGRAM_GUIDE: Record<EducationProgram, string> = {
   "AI Advanced": "고급(3~4학년) 과정 — 트랙별 전공 교과목·프로젝트·현장실습입니다. 고급 이수 신청 시 이 프로그램의 교과목 2개가 필요합니다.",
   "AI-Bridge Professional": "몰입형(3~4학년) 과정 — 클라우드 기업 연계 부트캠프입니다. 중급·고급 공통으로 1개 필요합니다.",
 };
-
-const TRACKS = [
-  {
-    id: "core",
-    label: "코어 AI 이매지니어",
-    summary: "머신러닝·딥러닝, AI 알고리즘 설계, 데이터 분석·처리에 집중하는 트랙",
-    subjectsByLevel: {
-      중급: ["인공지능", "머신러닝", "딥러닝기초", "클라우드컴퓨팅"],
-      고급: ["심층강화학습", "이매지니어프로젝트1", "이매지니어프로젝트2", "현장실습 또는 인턴쉽"],
-    },
-  },
-  {
-    id: "energy",
-    label: "에너지 AI 이매지니어",
-    summary: "스마트에너지변환공학, 에너지 시스템 최적화, 신재생에너지 AI 적용에 집중하는 트랙",
-    subjectsByLevel: {
-      중급: ["딥러닝입문", "디지털회로공학", "스마트전동기 제어공학", "스마트그리드 시스템"],
-      고급: ["심층강화학습", "이매지니어프로젝트1", "이매지니어프로젝트2", "현장실습 또는 인턴쉽"],
-    },
-  },
-  {
-    id: "physical",
-    label: "피지컬 AI 트랙",
-    summary: "로봇공학, 자율주행 시스템, IoT·센서 융합에 집중하는 트랙",
-    subjectsByLevel: {
-      중급: ["데이터구조 및 알고리즘", "기초인공지능", "기계학습", "로봇공학"],
-      고급: ["스마트정보시스템공학", "캡스톤디자인1", "캡스톤디자인2", "현장실습 또는 인턴쉽"],
-    },
-  },
-] as const;
 
 const IMMERSIVE_SUBJECTS = [
   "메가존클라우드부트캠프1",
@@ -192,7 +164,8 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [targetSemester, setTargetSemester] = useState("");
   const [level, setLevel] = useState<CompletionLevel>("중급");
-  const [trackId, setTrackId] = useState<(typeof TRACKS)[number]["id"]>(TRACKS[0].id);
+  const [tracks, setTracks] = useState<AdvancedTrack[] | null>(null);
+  const [trackId, setTrackId] = useState("");
   const [subject1, setSubject1] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [subject2, setSubject2] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [immersive, setImmersive] = useState<CompletedSubjectEntry>(emptySubject("AI-Bridge Professional"));
@@ -214,6 +187,14 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     });
   }, []);
 
+  useEffect(() => {
+    const unsub = subscribeAdvancedTracks((list) => {
+      setTracks(list);
+      setTrackId((prev) => (prev && list.some((t) => t.id === prev) ? prev : (list[0]?.id ?? "")));
+    });
+    return () => unsub();
+  }, []);
+
   function handleLevelChange(next: CompletionLevel) {
     setLevel(next);
     const program = LEVEL_PROGRAM[next];
@@ -221,7 +202,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     setSubject2((prev) => ({ ...prev, program, subjectName: "" }));
   }
 
-  function handleTrackChange(id: (typeof TRACKS)[number]["id"]) {
+  function handleTrackChange(id: string) {
     setTrackId(id);
     setSubject1((prev) => ({ ...prev, subjectName: "" }));
     setSubject2((prev) => ({ ...prev, subjectName: "" }));
@@ -231,7 +212,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     return !!s.subjectName.trim() && !!s.completedYearMonth;
   }
 
-  const selectedTrack = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0];
+  const selectedTrack = tracks?.find((t) => t.id === trackId) ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -373,8 +354,12 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
 
           <div>
             <label className="mb-2 block text-xs font-semibold text-muted">내 트랙 선택 (이수 교과목 선택 기준)</label>
+            {tracks === null && <p className="text-xs text-muted">트랙 목록을 불러오는 중...</p>}
+            {tracks !== null && tracks.length === 0 && (
+              <p className="text-xs text-muted">등록된 트랙이 없습니다. 사업단에 문의해주세요.</p>
+            )}
             <div className="flex flex-wrap gap-2">
-              {TRACKS.map((t) => (
+              {tracks?.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -389,37 +374,41 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                 </button>
               ))}
             </div>
-            <div className="mt-3 rounded-xl border border-border bg-surface p-3">
-              <p className="text-xs font-semibold text-foreground">{selectedTrack.label}</p>
-              <p className="mt-1 text-xs text-muted">{selectedTrack.summary}</p>
-              <p className="mt-2 text-[11px] text-muted">
-                아래 이수 교과목 1·2는 이 트랙의 {level} 교과목({selectedTrack.subjectsByLevel[level].join(", ")})
-                중에서만 고를 수 있습니다.
-              </p>
-            </div>
+            {selectedTrack && (
+              <div className="mt-3 rounded-xl border border-border bg-surface p-3">
+                <p className="text-xs font-semibold text-foreground">{selectedTrack.label}</p>
+                <p className="mt-1 text-xs text-muted">{selectedTrack.summary}</p>
+                <p className="mt-2 text-[11px] text-muted">
+                  아래 이수 교과목 1·2는 이 트랙의 {level} 교과목({selectedTrack.subjectsByLevel[level].join(", ")})
+                  중에서만 고를 수 있습니다.
+                </p>
+              </div>
+            )}
           </div>
 
-          <div>
-            <p className="mb-2 text-xs font-semibold text-muted">
-              이수 교과목 ({selectedTrack.label} · {level} 교과목 2과목, 교육프로그램은 {LEVEL_PROGRAM[level]}로 고정됩니다)
-            </p>
-            <div className="flex flex-col gap-3">
-              <SubjectRow
-                label="이수 교과목 1"
-                value={subject1}
-                onChange={setSubject1}
-                programOptions={[LEVEL_PROGRAM[level]]}
-                subjectOptions={selectedTrack.subjectsByLevel[level]}
-              />
-              <SubjectRow
-                label="이수 교과목 2"
-                value={subject2}
-                onChange={setSubject2}
-                programOptions={[LEVEL_PROGRAM[level]]}
-                subjectOptions={selectedTrack.subjectsByLevel[level]}
-              />
+          {selectedTrack && (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-muted">
+                이수 교과목 ({selectedTrack.label} · {level} 교과목 2과목, 교육프로그램은 {LEVEL_PROGRAM[level]}로 고정됩니다)
+              </p>
+              <div className="flex flex-col gap-3">
+                <SubjectRow
+                  label="이수 교과목 1"
+                  value={subject1}
+                  onChange={setSubject1}
+                  programOptions={[LEVEL_PROGRAM[level]]}
+                  subjectOptions={selectedTrack.subjectsByLevel[level]}
+                />
+                <SubjectRow
+                  label="이수 교과목 2"
+                  value={subject2}
+                  onChange={setSubject2}
+                  programOptions={[LEVEL_PROGRAM[level]]}
+                  subjectOptions={selectedTrack.subjectsByLevel[level]}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <div>
             <p className="mb-2 text-xs font-semibold text-muted">

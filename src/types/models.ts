@@ -90,6 +90,19 @@ export interface MileageApplication {
  *  교과목만 고급 교과목으로 대체). */
 export type CompletionLevel = "중급" | "고급";
 
+/**
+ * 중고급 이수 신청에서 학생이 고르는 트랙(코어 AI 이매지니어 등) 정의. 트랙별로
+ * 등급(중급/고급)에 따라 선택 가능한 이수 교과목 목록이 달라진다. 관리자가
+ * /admin/advanced-tracks에서 추가·수정·삭제한다. → advancedTracks/{id}
+ */
+export interface AdvancedTrack {
+  id: string;
+  label: string;
+  summary: string;
+  order: number;
+  subjectsByLevel: Record<CompletionLevel, string[]>;
+}
+
 export type YesNo = "Y" | "N";
 
 export const EDUCATION_PROGRAMS = ["AI Beginner", "AI Growing", "AI Advanced", "AI-Bridge Professional"] as const;

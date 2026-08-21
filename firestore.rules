@@ -76,6 +76,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 중고급 이수 신청 트랙(및 등급별 이수 교과목 목록): 신청 폼에 필요한 공개
+    // 참조 데이터 — 목록 조회까지 공개해도 안전하다. 수정은 관리자만.
+    match /advancedTracks/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 비밀번호 변경 인증번호: Cloud Functions(Admin SDK)만 접근한다.
     match /passwordResets/{id} {
       allow read, write: if false;

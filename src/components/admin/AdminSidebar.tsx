@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { signOut } from "firebase/auth";
 import {
   BarChart3,
+  BookOpen,
   CalendarDays,
   ClipboardList,
   HelpCircle,
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/students", label: "학생 관리", icon: Users },
   { href: "/admin/mileage/bulk-grant", label: "일괄지급", icon: Send },
   { href: "/admin/semesters", label: "학기 관리", icon: CalendarDays },
+  { href: "/admin/advanced-tracks", label: "중고급 트랙 관리", icon: BookOpen },
   { href: "/admin/registrations", label: "등록 신청", icon: UserPlus, badge: "registrations" },
   { href: "/admin/quicklinks", label: "퀵메뉴 관리", icon: Link2 },
   { href: "/admin/announcements", label: "공지사항 관리", icon: Megaphone },

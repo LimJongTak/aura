@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "node scripts/seed-from-excel.mjs",
+    "seed-advanced-tracks": "node scripts/seed-advanced-tracks.mjs",
     "create-student-accounts": "node scripts/create-student-accounts.mjs"
   },
   "dependencies": {
