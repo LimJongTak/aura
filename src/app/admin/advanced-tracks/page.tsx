@@ -11,9 +11,9 @@ import {
   type AdvancedTrackInput,
 } from "@/lib/firestore/advancedTracks";
 import { listApprovedAdvancedApplications } from "@/lib/firestore/advancedApplications";
-import { listSemesters } from "@/lib/firestore/semesters";
+import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { exportAdvancedApplicationsExcel } from "@/lib/excel/advancedApplicationsExport";
-import type { AdvancedApplication, AdvancedTrack, CompletionLevel, Semester } from "@/types/models";
+import type { AdvancedApplication, AdvancedTargetSemesterOption, AdvancedTrack, CompletionLevel } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -120,7 +120,7 @@ export default function AdminAdvancedTracksPage() {
 }
 
 function ApprovedStudentsSection() {
-  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [semesters, setSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [semester, setSemester] = useState("");
   const [applications, setApplications] = useState<AdvancedApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,13 +128,18 @@ function ApprovedStudentsSection() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([listSemesters(), listApprovedAdvancedApplications()]).then(([semesterList, apps]) => {
-      setSemesters(semesterList);
+    listApprovedAdvancedApplications().then((apps) => {
       setApplications(apps);
-      const current = semesterList.find((s) => s.isCurrent);
-      setSemester(current?.name ?? semesterList[0]?.name ?? "");
       setLoading(false);
     });
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeAdvancedTargetSemesters((list) => {
+      setSemesters(list);
+      setSemester((prev) => (prev && list.some((s) => s.name === prev) ? prev : (list[0]?.name ?? "")));
+    });
+    return () => unsub();
   }, []);
 
   useEffect(() => setSelected(new Set()), [semester]);

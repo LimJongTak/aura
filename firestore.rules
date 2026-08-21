@@ -94,6 +94,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 중고급 이수 신청의 "신청 학기" 목록 — 신청 폼에 필요한 공개 참조 데이터.
+    match /advancedTargetSemesters/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 학생별 장학금 지급 완료 기록 (금액 포함) — 관리자만 조회·기록한다.
     match /scholarshipPayments/{id} {
       allow read, write: if isAdmin();

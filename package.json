@@ -11,6 +11,7 @@
     "seed-advanced-tracks": "node scripts/seed-advanced-tracks.mjs",
     "migrate-advanced-semesters": "node scripts/migrate-advanced-semesters.mjs",
     "sort-completion-semesters": "node scripts/sort-completion-semesters.mjs",
+    "migrate-advanced-target-semester": "node scripts/migrate-advanced-target-semester.mjs",
     "create-student-accounts": "node scripts/create-student-accounts.mjs"
   },
   "dependencies": {

@@ -99,14 +99,13 @@ export async function updateSemester(id: string, input: SemesterInput): Promise<
     mileageApplyEnd: input.mileageApplyEnd ? Timestamp.fromDate(input.mileageApplyEnd) : null,
   });
 
-  // 학기 이름을 바꾸면 이미 그 이름으로 태그된 신청/지급 이력도 함께 갱신해야 한다 —
+  // 학기 이름을 바꾸면 이미 그 이름으로 태그된 마일리지 신청 이력도 함께 갱신해야 한다 —
   // 그렇지 않으면 이름 변경 직후 기존 승인 마일리지가 새 학기 필터에서 전부 사라져 보인다
-  // (실제로 2026-08-12에 이 문제로 마일리지가 0점으로 보이는 사고가 있었다).
+  // (실제로 2026-08-12에 이 문제로 마일리지가 0점으로 보이는 사고가 있었다). 중고급 이수
+  // 신청의 targetSemester는 이제 이 semesters 컬렉션이 아니라 별도의
+  // advancedTargetSemesters 목록에서 고르므로 함께 갱신하지 않는다.
   if (existing?.name && existing.name !== newName) {
-    await Promise.all([
-      retagField("mileageApplications", "semester", existing.name, newName),
-      retagField("advancedApplications", "targetSemester", existing.name, newName),
-    ]);
+    await retagField("mileageApplications", "semester", existing.name, newName);
     if (existing.isCurrent) {
       await setDoc(currentStateRef(), { semesterName: newName }, { merge: true });
     }

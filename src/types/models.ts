@@ -129,6 +129,18 @@ export interface ImmersiveSemesterOption {
   order: number;
 }
 
+/**
+ * 중고급 이수 신청(AdvancedApplication.targetSemester)에서 고르는 "신청 학기" 목록
+ * (예: "2026학년도 제1학기"). 마일리지는 연 단위(semesters 컬렉션, 예: "2026년도")로 신청을
+ * 받지만 중고급 이수는 학기 단위로 따로 받기 때문에 별도 목록으로 관리한다. 관리자가
+ * /admin/semesters에서 추가·삭제·순서 변경한다. → advancedTargetSemesters/{id}
+ */
+export interface AdvancedTargetSemesterOption {
+  id: string;
+  name: string;
+  order: number;
+}
+
 /** 중고급 이수 신청의 교과목 1건(이수 교과목 또는 몰입형 교과목 공통 입력 단위). */
 export interface CompletedSubjectEntry {
   program: EducationProgram;

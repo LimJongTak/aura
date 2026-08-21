@@ -12,6 +12,7 @@ import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/fires
 import { listApprovedAdvancedApplications } from "@/lib/firestore/advancedApplications";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { listSemesters } from "@/lib/firestore/semesters";
+import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import {
   cancelScholarshipPayment,
   listScholarshipPaymentsForStudent,
@@ -23,6 +24,7 @@ import { exportAdvancedPaymentExcel, exportMileagePaymentExcel } from "@/lib/exc
 import {
   ADVANCED_SCHOLARSHIP_AMOUNT,
   type AdvancedApplication,
+  type AdvancedTargetSemesterOption,
   type ConversionSettings,
   type MileageApplication,
   type ScholarshipPayment,
@@ -76,17 +78,29 @@ function NumberInput({
 
 export default function AdminPaymentsPage() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [advancedTargetSemesters, setAdvancedTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [semester, setSemester] = useState("");
   const [tab, setTab] = useState<Tab>("mileage");
   const [historyStudent, setHistoryStudent] = useState<{ studentId: string; studentName: string } | null>(null);
 
   useEffect(() => {
-    listSemesters().then((list) => {
-      setSemesters(list);
-      const current = list.find((s) => s.isCurrent);
-      setSemester(current?.name ?? list[0]?.name ?? "");
-    });
+    listSemesters().then((list) => setSemesters(list));
   }, []);
+
+  useEffect(() => {
+    const unsub = subscribeAdvancedTargetSemesters(setAdvancedTargetSemesters);
+    return () => unsub();
+  }, []);
+
+  const semesterOptions = tab === "mileage" ? semesters : advancedTargetSemesters;
+
+  useEffect(() => {
+    setSemester((prev) => {
+      if (prev && semesterOptions.some((s) => s.name === prev)) return prev;
+      const current = tab === "mileage" ? semesters.find((s) => s.isCurrent) : undefined;
+      return current?.name ?? semesterOptions[0]?.name ?? "";
+    });
+  }, [tab, semesters, advancedTargetSemesters, semesterOptions]);
 
   return (
     <div>
@@ -100,8 +114,8 @@ export default function AdminPaymentsPage() {
           <div className="flex items-center gap-2">
             <span className="shrink-0 text-xs font-semibold text-muted">학기</span>
             <Select value={semester} onChange={(e) => setSemester(e.target.value)} className="sm:w-56">
-              {semesters.length === 0 && <option value="">등록된 학기가 없습니다</option>}
-              {semesters.map((s) => (
+              {semesterOptions.length === 0 && <option value="">등록된 학기가 없습니다</option>}
+              {semesterOptions.map((s) => (
                 <option key={s.id} value={s.name}>
                   {s.name}
                 </option>

@@ -21,7 +21,18 @@ import {
   setImmersiveSemesterOrder,
   subscribeImmersiveSemesters,
 } from "@/lib/firestore/immersiveSemesters";
-import type { CompletionSemesterOption, ImmersiveSemesterOption, Semester } from "@/types/models";
+import {
+  createAdvancedTargetSemester,
+  deleteAdvancedTargetSemester,
+  setAdvancedTargetSemesterOrder,
+  subscribeAdvancedTargetSemesters,
+} from "@/lib/firestore/advancedTargetSemesters";
+import type {
+  AdvancedTargetSemesterOption,
+  CompletionSemesterOption,
+  ImmersiveSemesterOption,
+  Semester,
+} from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -34,7 +45,7 @@ function toDatetimeLocal(ms: number | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-type Tab = "mileage" | "completion" | "immersive";
+type Tab = "mileage" | "advancedTarget" | "completion" | "immersive";
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -56,6 +67,7 @@ export default function AdminSemestersPage() {
   const [settingCurrentId, setSettingCurrentId] = useState<string | null>(null);
   const [completionSemesters, setCompletionSemesters] = useState<CompletionSemesterOption[]>([]);
   const [immersiveSemesters, setImmersiveSemesters] = useState<ImmersiveSemesterOption[]>([]);
+  const [advancedTargetSemesters, setAdvancedTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [tab, setTab] = useState<Tab>("mileage");
 
   const refresh = useCallback(async () => {
@@ -76,6 +88,11 @@ export default function AdminSemestersPage() {
     return () => unsub();
   }, []);
 
+  useEffect(() => {
+    const unsub = subscribeAdvancedTargetSemesters(setAdvancedTargetSemesters);
+    return () => unsub();
+  }, []);
+
   async function handleSetCurrent(semester: Semester) {
     setSettingCurrentId(semester.id);
     try {
@@ -90,9 +107,12 @@ export default function AdminSemestersPage() {
     <div className="max-w-2xl">
       <PageHeader title="학기 관리" description="마일리지·중고급 이수·몰입형 각각의 학기를 따로 관리해요." />
 
-      <div className="mt-6 flex gap-2">
+      <div className="mt-6 flex flex-wrap gap-2">
         <TabButton active={tab === "mileage"} onClick={() => setTab("mileage")}>
           마일리지
+        </TabButton>
+        <TabButton active={tab === "advancedTarget"} onClick={() => setTab("advancedTarget")}>
+          중고급 신청 학기
         </TabButton>
         <TabButton active={tab === "completion"} onClick={() => setTab("completion")}>
           중고급 이수 학기
@@ -151,6 +171,31 @@ export default function AdminSemestersPage() {
           <SemesterForm initial={editing === "new" ? null : editing} onDone={() => { setEditing(null); refresh(); }} />
         )}
       </Card>
+      )}
+
+      {tab === "advancedTarget" && (
+      <SimpleSemesterList
+        title="중고급 신청 학기 관리"
+        description={
+          <>
+            중고급 이수 신청서의 &quot;지원 학기&quot;를 고를 때 쓰는 목록이에요 (예: 2026학년도 제1학기). 마일리지는
+            연 단위로 신청받지만, 중고급 이수는 학기 단위로 따로 신청받기 때문에 별도로 관리해요.
+          </>
+        }
+        placeholder="예: 2026학년도 제1학기"
+        items={advancedTargetSemesters}
+        onCreate={(name) => createAdvancedTargetSemester(name, advancedTargetSemesters.length)}
+        onDelete={deleteAdvancedTargetSemester}
+        onMove={(index, direction) => {
+          const target = advancedTargetSemesters[index + direction];
+          const current = advancedTargetSemesters[index];
+          if (!target) return Promise.resolve();
+          return Promise.all([
+            setAdvancedTargetSemesterOrder(current.id, target.order),
+            setAdvancedTargetSemesterOrder(target.id, current.order),
+          ]).then(() => undefined);
+        }}
+      />
       )}
 
       {tab === "completion" && (

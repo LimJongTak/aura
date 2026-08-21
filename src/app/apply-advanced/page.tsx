@@ -8,19 +8,19 @@ import { Input, Select } from "@/components/ui/Input";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import { submitAdvancedApplication } from "@/lib/firestore/advancedApplications";
 import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
+import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
 import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
-import { listSemesters } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
   EDUCATION_PROGRAMS,
+  type AdvancedTargetSemesterOption,
   type AdvancedTrack,
   type CompletedSubjectEntry,
   type CompletionLevel,
   type CompletionSemesterOption,
   type EducationProgram,
   type ImmersiveSemesterOption,
-  type Semester,
   type Student,
   type YesNo,
 } from "@/types/models";
@@ -178,7 +178,7 @@ export default function ApplyAdvancedPage() {
 }
 
 function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boolean }) {
-  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [targetSemesters, setTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [targetSemester, setTargetSemester] = useState("");
   const [level, setLevel] = useState<CompletionLevel>("중급");
   const [tracks, setTracks] = useState<AdvancedTrack[] | null>(null);
@@ -199,11 +199,11 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    listSemesters().then((list) => {
-      setSemesters(list);
-      const current = list.find((s) => s.isCurrent);
-      if (current) setTargetSemester(current.name);
+    const unsub = subscribeAdvancedTargetSemesters((list) => {
+      setTargetSemesters(list);
+      setTargetSemester((prev) => (prev && list.some((s) => s.name === prev) ? prev : (list[0]?.name ?? "")));
     });
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -347,13 +347,13 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             <label className="mb-1.5 block text-xs font-semibold text-muted">지원 학기</label>
             <Select value={targetSemester} onChange={(e) => setTargetSemester(e.target.value)}>
               <option value="">선택해주세요</option>
-              {semesters.map((s) => (
+              {targetSemesters.map((s) => (
                 <option key={s.id} value={s.name}>
                   {s.name}
                 </option>
               ))}
             </Select>
-            {semesters.length === 0 && (
+            {targetSemesters.length === 0 && (
               <p className="mt-1.5 text-xs text-muted">등록된 학기가 없습니다. 사업단에 문의해주세요.</p>
             )}
           </div>
