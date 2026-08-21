@@ -83,6 +83,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 학생별 장학금 지급 완료 기록 (금액 포함) — 관리자만 조회·기록한다.
+    match /scholarshipPayments/{id} {
+      allow read, write: if isAdmin();
+    }
+
     // 비밀번호 변경 인증번호: Cloud Functions(Admin SDK)만 접근한다.
     match /passwordResets/{id} {
       allow read, write: if false;

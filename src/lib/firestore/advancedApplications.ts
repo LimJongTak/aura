@@ -57,6 +57,16 @@ export async function listPendingAdvancedApplications(): Promise<AdvancedApplica
   });
 }
 
+/** 지급 관리 화면용 — 승인된 중고급 이수 신청 전체 (학번 필터 없이). */
+export async function listApprovedAdvancedApplications(): Promise<AdvancedApplication[]> {
+  const q = query(advancedRef(), where("status", "==", "승인"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return { id: d.id, ...data, appliedAt: toMillis(data.appliedAt) } as AdvancedApplication;
+  });
+}
+
 /** 관리자가 승인/반려 처리를 마친 중고급 이수 신청 전체 (처리 내역 화면용). */
 export async function listProcessedAdvancedApplications(): Promise<AdvancedApplication[]> {
   const statuses: ApplicationStatus[] = ["승인", "반려"];

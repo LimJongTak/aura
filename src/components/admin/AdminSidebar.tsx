@@ -17,6 +17,7 @@ import {
   Send,
   UserPlus,
   Users,
+  Wallet,
 } from "lucide-react";
 import { auth } from "@/lib/firebase/client";
 import { useAdminPendingCounts, type AdminPendingCounts } from "@/lib/auth/useAdminPendingCounts";
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/history", label: "처리 내역", icon: ClipboardList },
   { href: "/admin/students", label: "학생 관리", icon: Users },
   { href: "/admin/mileage/bulk-grant", label: "일괄지급", icon: Send },
+  { href: "/admin/payments", label: "지급 관리", icon: Wallet },
   { href: "/admin/semesters", label: "학기 관리", icon: CalendarDays },
   { href: "/admin/advanced-tracks", label: "중고급 트랙 관리", icon: BookOpen },
   { href: "/admin/registrations", label: "등록 신청", icon: UserPlus, badge: "registrations" },

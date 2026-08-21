@@ -184,6 +184,27 @@ export interface StudentMileageSummary {
 export const SEMESTER_CAP_PARTICIPATING = 1_500_000;
 export const SEMESTER_CAP_NON_PARTICIPATING = 1_000_000;
 
+/** 중고급 이수 장학금은 등급·트랙과 무관하게 학기당 정액이다. */
+export const ADVANCED_SCHOLARSHIP_AMOUNT = 1_500_000;
+
+export type ScholarshipPaymentType = "mileage" | "advanced";
+
+/**
+ * 지급 관리 페이지에서 관리자가 학생별로 남기는 장학금 지급 완료 기록. 학번·학기·
+ * 유형(마일리지/중고급 이수) 조합당 1건만 존재하도록 결정적 문서 ID
+ * (`{type}_{semester}_{studentId}`)를 사용한다 — 다시 지급 처리하면 새로 만들지
+ * 않고 금액만 덮어쓴다. → scholarshipPayments/{id}
+ */
+export interface ScholarshipPayment {
+  id: string;
+  studentId: string;
+  studentName: string;
+  semester: string;
+  type: ScholarshipPaymentType;
+  amount: number;
+  paidAt: number; // epoch ms
+}
+
 export const PARTICIPATING_DEPARTMENTS = [
   "인공지능공학전공",
   "전기공학전공",
