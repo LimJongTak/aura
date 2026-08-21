@@ -50,6 +50,30 @@ function formatWon(n: number): string {
   return `${n.toLocaleString("ko-KR")}원`;
 }
 
+/** 숫자 입력칸에 1,000 같은 천 단위 콤마를 보여주면서, 값 자체는 숫자로 주고받는다. */
+function NumberInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  className?: string;
+}) {
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      value={value === 0 ? "" : value.toLocaleString("ko-KR")}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/[^0-9]/g, "");
+        onChange(digits ? Number(digits) : 0);
+      }}
+      className={className}
+    />
+  );
+}
+
 export default function AdminPaymentsPage() {
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semester, setSemester] = useState("");
@@ -210,7 +234,6 @@ function MileageTab({
     if (!perPointAmount || perPointAmount <= 0) return;
     const next: Record<string, number> = {};
     for (const row of rows) {
-      if (effectiveAmount(row) !== 0) continue;
       next[row.student.studentId] = Math.min(Math.round(row.approvedMileage * perPointAmount), row.cap);
     }
     setAmountOverrides((prev) => ({ ...prev, ...next }));
@@ -316,20 +339,14 @@ function MileageTab({
       <Card>
         <p className="text-sm font-bold text-foreground">마일리지 계산기</p>
         <p className="mt-1 text-xs text-muted">
-          점당 금액을 정하면, 아래 표에서 아직 0원인 학생들에게 &quot;마일리지 × 점당 금액&quot;(학기 한도 이내)을 한
-          번에 채워줍니다. 이미 값이 입력됐거나 지급완료된 학생은 바뀌지 않아요.
+          점당 금액을 정하고 &quot;전체 적용&quot;을 누르면, 아래 표의 지급 금액이 모두 &quot;마일리지 × 점당
+          금액&quot;(학기 한도 이내)으로 다시 채워집니다. 점당 금액을 바꿔가며 여러 번 눌러 비교해볼 수 있어요.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">학기 총 예산 (원)</label>
             <div className="flex gap-2">
-              <Input
-                type="number"
-                min={0}
-                step={100000}
-                value={budgetInput}
-                onChange={(e) => setBudgetInput(Number(e.target.value))}
-              />
+              <NumberInput value={budgetInput} onChange={setBudgetInput} />
               <Button type="button" variant="outline" size="sm" onClick={handleApplyBudget} disabled={totalMileage <= 0}>
                 점당 금액 계산
               </Button>
@@ -339,15 +356,9 @@ function MileageTab({
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">점당 금액 (원)</label>
             <div className="flex gap-2">
-              <Input
-                type="number"
-                min={0}
-                step={100}
-                value={perPointAmount}
-                onChange={(e) => setPerPointAmount(Number(e.target.value))}
-              />
+              <NumberInput value={perPointAmount} onChange={setPerPointAmount} />
               <Button type="button" size="sm" onClick={handleBulkApplyPerPoint} disabled={perPointAmount <= 0}>
-                0원 항목 일괄적용
+                전체 적용
               </Button>
             </div>
           </div>
@@ -416,14 +427,9 @@ function MileageTab({
                   <td className="px-4 py-2.5 text-right font-bold text-primary-dark">{row.approvedMileage}점</td>
                   <td className="px-4 py-2.5 text-right text-muted">{formatWon(row.cap)}</td>
                   <td className="px-4 py-2.5">
-                    <Input
-                      type="number"
-                      min={0}
-                      step={1000}
+                    <NumberInput
                       value={effectiveAmount(row)}
-                      onChange={(e) =>
-                        setAmountOverrides((prev) => ({ ...prev, [row.student.studentId]: Number(e.target.value) }))
-                      }
+                      onChange={(n) => setAmountOverrides((prev) => ({ ...prev, [row.student.studentId]: n }))}
                       className="w-32"
                     />
                   </td>
