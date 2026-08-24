@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   createQuickLink,
   deleteQuickLink,
@@ -10,6 +10,7 @@ import {
   updateQuickLink,
   type QuickLinkInput,
 } from "@/lib/firestore/quickLinks";
+import { useDragReorder } from "@/lib/hooks/useDragReorder";
 import { DEFAULT_QUICK_LINK_ICON, QUICK_LINK_ICONS } from "@/lib/constants/quickLinkIcons";
 import type { QuickLink, QuickLinkIcon } from "@/types/models";
 import { Button } from "@/components/ui/Button";
@@ -39,6 +40,10 @@ export default function AdminQuickLinksPage() {
     await Promise.all([setQuickLinkOrder(current.id, target.order), setQuickLinkOrder(target.id, current.order)]);
   }
 
+  const { getDragHandleProps, getRowProps } = useDragReorder(links, async (next) => {
+    await Promise.all(next.map((link, i) => setQuickLinkOrder(link.id, i)));
+  });
+
   return (
     <div className="max-w-2xl">
       <PageHeader
@@ -58,10 +63,17 @@ export default function AdminQuickLinksPage() {
       <ul className="mt-6 flex flex-col gap-3">
         {links.map((link, i) => {
           const { Icon } = QUICK_LINK_ICONS[link.icon] ?? QUICK_LINK_ICONS[DEFAULT_QUICK_LINK_ICON];
+          const { isDragging, isDragOver, ...rowProps } = getRowProps(i);
           return (
-            <li key={link.id}>
-              <Card className="flex items-center justify-between gap-3 p-4">
+            <li key={link.id} {...rowProps} className={isDragging ? "opacity-40" : ""}>
+              <Card className={`flex items-center justify-between gap-3 p-4 transition ${isDragOver ? "border-primary bg-primary-light" : ""}`}>
                 <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    {...getDragHandleProps(i)}
+                    className="cursor-grab text-muted/60 hover:text-primary active:cursor-grabbing"
+                  >
+                    <GripVertical size={16} />
+                  </span>
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-light text-primary-dark">
                     <Icon size={18} />
                   </span>

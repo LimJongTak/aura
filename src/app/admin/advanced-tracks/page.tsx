@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import {
   createAdvancedTrack,
   deleteAdvancedTrack,
@@ -10,6 +10,7 @@ import {
   updateAdvancedTrack,
   type AdvancedTrackInput,
 } from "@/lib/firestore/advancedTracks";
+import { useDragReorder } from "@/lib/hooks/useDragReorder";
 import { listApprovedAdvancedApplications } from "@/lib/firestore/advancedApplications";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { exportAdvancedApplicationsExcel } from "@/lib/excel/advancedApplicationsExport";
@@ -42,6 +43,10 @@ export default function AdminAdvancedTracksPage() {
     await Promise.all([setAdvancedTrackOrder(current.id, target.order), setAdvancedTrackOrder(target.id, current.order)]);
   }
 
+  const { getDragHandleProps, getRowProps } = useDragReorder(tracks, async (next) => {
+    await Promise.all(next.map((track, i) => setAdvancedTrackOrder(track.id, i)));
+  });
+
   return (
     <div className="max-w-5xl">
       <PageHeader
@@ -59,58 +64,69 @@ export default function AdminAdvancedTracksPage() {
       )}
 
       <ul className="mt-6 flex flex-col gap-3">
-        {tracks.map((track, i) => (
-          <li key={track.id}>
-            <Card>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-bold text-foreground">{track.label}</p>
-                  <p className="mt-1 text-xs text-muted">{track.summary}</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    onClick={() => handleMove(i, -1)}
-                    disabled={i === 0}
-                    className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <ArrowUp size={16} />
-                  </button>
-                  <button
-                    onClick={() => handleMove(i, 1)}
-                    disabled={i === tracks.length - 1}
-                    className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    <ArrowDown size={16} />
-                  </button>
-                  <button onClick={() => setEditing(track)} className="ml-2 text-muted hover:text-primary">
-                    <Pencil size={16} />
-                  </button>
-                  <button onClick={() => handleDelete(track.id)} className="text-muted hover:text-danger">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
-                {LEVELS.map((level) => (
-                  <div key={level} className="flex flex-wrap items-center gap-1.5">
-                    <span className="mr-1 shrink-0 text-xs font-semibold text-muted">{level}</span>
-                    {track.subjectsByLevel[level].length === 0 && (
-                      <span className="text-xs text-muted">등록된 교과목 없음</span>
-                    )}
-                    {track.subjectsByLevel[level].map((subject) => (
-                      <span
-                        key={subject}
-                        className="rounded-full bg-primary-light px-2.5 py-1 text-xs font-medium text-primary-dark"
-                      >
-                        {subject}
-                      </span>
-                    ))}
+        {tracks.map((track, i) => {
+          const { isDragging, isDragOver, ...rowProps } = getRowProps(i);
+          return (
+            <li key={track.id} {...rowProps} className={isDragging ? "opacity-40" : ""}>
+              <Card className={`transition ${isDragOver ? "border-primary bg-primary-light" : ""}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-2">
+                    <span
+                      {...getDragHandleProps(i)}
+                      className="mt-0.5 cursor-grab text-muted/60 hover:text-primary active:cursor-grabbing"
+                    >
+                      <GripVertical size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-bold text-foreground">{track.label}</p>
+                      <p className="mt-1 text-xs text-muted">{track.summary}</p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </Card>
-          </li>
-        ))}
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => handleMove(i, -1)}
+                      disabled={i === 0}
+                      className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <ArrowUp size={16} />
+                    </button>
+                    <button
+                      onClick={() => handleMove(i, 1)}
+                      disabled={i === tracks.length - 1}
+                      className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <ArrowDown size={16} />
+                    </button>
+                    <button onClick={() => setEditing(track)} className="ml-2 text-muted hover:text-primary">
+                      <Pencil size={16} />
+                    </button>
+                    <button onClick={() => handleDelete(track.id)} className="text-muted hover:text-danger">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                  {LEVELS.map((level) => (
+                    <div key={level} className="flex flex-wrap items-center gap-1.5">
+                      <span className="mr-1 shrink-0 text-xs font-semibold text-muted">{level}</span>
+                      {track.subjectsByLevel[level].length === 0 && (
+                        <span className="text-xs text-muted">등록된 교과목 없음</span>
+                      )}
+                      {track.subjectsByLevel[level].map((subject) => (
+                        <span
+                          key={subject}
+                          className="rounded-full bg-primary-light px-2.5 py-1 text-xs font-medium text-primary-dark"
+                        >
+                          {subject}
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            </li>
+          );
+        })}
         {tracks.length === 0 && !editing && <p className="py-10 text-center text-sm text-muted">등록된 트랙이 없어요.</p>}
       </ul>
 

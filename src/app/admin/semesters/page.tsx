@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, CheckCircle2, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, GripVertical, Plus, Trash2 } from "lucide-react";
+import { useDragReorder } from "@/lib/hooks/useDragReorder";
 import {
   createSemester,
   listSemesters,
@@ -195,6 +196,9 @@ export default function AdminSemestersPage() {
             setAdvancedTargetSemesterOrder(target.id, current.order),
           ]).then(() => undefined);
         }}
+        onDragReorder={(items) =>
+          Promise.all(items.map((item, i) => setAdvancedTargetSemesterOrder(item.id, i))).then(() => undefined)
+        }
       />
       )}
 
@@ -217,6 +221,9 @@ export default function AdminSemestersPage() {
             setCompletionSemesterOrder(target.id, current.order),
           ]).then(() => undefined);
         }}
+        onDragReorder={(items) =>
+          Promise.all(items.map((item, i) => setCompletionSemesterOrder(item.id, i))).then(() => undefined)
+        }
       />
       )}
 
@@ -239,6 +246,9 @@ export default function AdminSemestersPage() {
             setImmersiveSemesterOrder(target.id, current.order),
           ]).then(() => undefined);
         }}
+        onDragReorder={(items) =>
+          Promise.all(items.map((item, i) => setImmersiveSemesterOrder(item.id, i))).then(() => undefined)
+        }
       />
       )}
     </div>
@@ -253,6 +263,7 @@ function SimpleSemesterList({
   onCreate,
   onDelete,
   onMove,
+  onDragReorder,
 }: {
   title: string;
   description: React.ReactNode;
@@ -261,9 +272,11 @@ function SimpleSemesterList({
   onCreate: (name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onMove: (index: number, direction: -1 | 1) => Promise<void>;
+  onDragReorder: (items: { id: string; name: string; order: number }[]) => Promise<void>;
 }) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { getDragHandleProps, getRowProps } = useDragReorder(items, onDragReorder);
 
   async function handleAdd() {
     const name = draft.trim();
@@ -288,33 +301,47 @@ function SimpleSemesterList({
       <p className="mt-1 text-xs text-muted">{description}</p>
 
       <ul className="mt-3 flex flex-col gap-2">
-        {items.map((item, i) => (
-          <li
-            key={item.id}
-            className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2"
-          >
-            <span className="text-sm font-semibold text-foreground">{item.name}</span>
-            <div className="flex shrink-0 items-center gap-1">
-              <button
-                onClick={() => onMove(i, -1)}
-                disabled={i === 0}
-                className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <ArrowUp size={15} />
-              </button>
-              <button
-                onClick={() => onMove(i, 1)}
-                disabled={i === items.length - 1}
-                className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <ArrowDown size={15} />
-              </button>
-              <button onClick={() => handleDelete(item.id, item.name)} className="ml-1 text-muted hover:text-danger">
-                <Trash2 size={15} />
-              </button>
-            </div>
-          </li>
-        ))}
+        {items.map((item, i) => {
+          const { isDragging, isDragOver, ...rowProps } = getRowProps(i);
+          return (
+            <li
+              key={item.id}
+              {...rowProps}
+              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition ${
+                isDragOver ? "border-primary bg-primary-light" : "border-border"
+              } ${isDragging ? "opacity-40" : ""}`}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  {...getDragHandleProps(i)}
+                  className="cursor-grab text-muted/60 hover:text-primary active:cursor-grabbing"
+                >
+                  <GripVertical size={15} />
+                </span>
+                <span className="text-sm font-semibold text-foreground">{item.name}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => onMove(i, -1)}
+                  disabled={i === 0}
+                  className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  onClick={() => onMove(i, 1)}
+                  disabled={i === items.length - 1}
+                  className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ArrowDown size={15} />
+                </button>
+                <button onClick={() => handleDelete(item.id, item.name)} className="ml-1 text-muted hover:text-danger">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
         {items.length === 0 && <p className="py-4 text-center text-xs text-muted">등록된 학기가 없어요.</p>}
       </ul>
 
