@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Menu, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Menu, X } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
@@ -49,10 +49,15 @@ export function Header() {
   const { loading, user, student } = useStudentSession();
   const { loading: adminLoading, isAdmin } = useAdminUser();
   const [menuOpen, setMenuOpen] = useState(false);
+  // 사업단 홈페이지(scnu.ac.kr/scnuai)처럼 메뉴에 커서를 올리면 그 메뉴의
+  // 하위 링크만 헤더 바로 아래 전체 폭 바로 펼쳐지고, 다른 메뉴로 커서를
+  // 옮기면 그쪽 내용으로 바로 바뀐다 — 한 번에 하나만 열려 있는 공유 상태다.
   const [openGroupId, setOpenGroupId] = useState<string | null>(null);
   const [mobileOpenGroupId, setMobileOpenGroupId] = useState<string | null>(null);
   const [navGroups, setNavGroups] = useState<NavMenuGroup[]>(DEFAULT_NAV_GROUPS);
   const navRef = useRef<HTMLElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionLoading = loading || adminLoading;
 
   useEffect(() => {
@@ -69,15 +74,43 @@ export function Header() {
     setMobileOpenGroupId(null);
   }, [pathname]);
 
-  // 드롭다운 바깥을 클릭하면 닫기
+  // 드롭다운 바깥을 클릭하면 닫기 (터치 기기에서 눌러 연 경우 대비)
   useEffect(() => {
     if (!openGroupId) return;
     function handleClick(e: MouseEvent) {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) setOpenGroupId(null);
+      const target = e.target as Node;
+      const insideNav = navRef.current?.contains(target);
+      const insidePanel = panelRef.current?.contains(target);
+      if (!insideNav && !insidePanel) setOpenGroupId(null);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [openGroupId]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
+  // 마우스를 올리면 바로 펼쳐지도록 hover로 연다. 메뉴 사이, 또는 메뉴와
+  // 드롭다운 패널 사이 살짝 뜬 틈을 지나갈 때 깜빡이지 않도록, 닫는 쪽만
+  // 약간 지연시키고 다시 진입하면(다른 메뉴로 옮겨가는 경우 포함) 그 지연을
+  // 취소한다 — 그래서 메뉴 사이를 옮겨 다닐 때도 깜빡이지 않고 바로 전환된다.
+  function openGroupOnHover(id: string) {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setOpenGroupId(id);
+  }
+
+  function scheduleCloseGroup() {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => setOpenGroupId(null), 150);
+  }
+
+  const activeGroup = navGroups.find((g) => g.id === openGroupId && g.items.length > 1) ?? null;
 
   async function handleLogout() {
     const wasAdmin = isAdmin;
@@ -97,18 +130,24 @@ export function Header() {
           </span>
         </Link>
 
-        <nav ref={navRef} className="hidden items-center gap-1 sm:flex">
+        <nav ref={navRef} className="hidden items-center gap-8 sm:flex">
           {navGroups.map((group) => {
             const soleItem = group.items.length === 1 ? group.items[0] : null;
+            const active = soleItem
+              ? pathname === soleItem.href
+              : group.items.some((item) => item.href === pathname);
+            const highlighted = active || openGroupId === group.id;
+
             if (soleItem) {
-              const active = pathname === soleItem.href;
               return (
                 <Link
                   key={group.id}
                   href={soleItem.href}
                   className={cn(
-                    "rounded-full px-4 py-2 text-sm font-medium transition",
-                    active ? "bg-primary-light text-primary-dark" : "text-muted hover:text-foreground"
+                    "border-b-2 py-2 text-sm font-medium transition",
+                    highlighted
+                      ? "border-primary text-primary-dark"
+                      : "border-transparent text-muted hover:text-foreground"
                   )}
                 >
                   {group.label}
@@ -116,41 +155,24 @@ export function Header() {
               );
             }
 
-            const active = group.items.some((item) => item.href === pathname);
-            const open = openGroupId === group.id;
             return (
-              <div key={group.id} className="relative">
+              <div
+                key={group.id}
+                onMouseEnter={() => openGroupOnHover(group.id)}
+                onMouseLeave={scheduleCloseGroup}
+              >
                 <button
                   type="button"
                   onClick={() => setOpenGroupId((prev) => (prev === group.id ? null : group.id))}
                   className={cn(
-                    "flex items-center gap-1 rounded-full px-4 py-2 text-sm font-medium transition",
-                    active ? "bg-primary-light text-primary-dark" : "text-muted hover:text-foreground"
+                    "border-b-2 py-2 text-sm font-medium transition",
+                    highlighted
+                      ? "border-primary text-primary-dark"
+                      : "border-transparent text-muted hover:text-foreground"
                   )}
                 >
                   {group.label}
-                  <ChevronDown size={14} className={cn("transition-transform", open && "rotate-180")} />
                 </button>
-                {open && (
-                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[9rem] overflow-hidden rounded-xl border border-border bg-white py-1 shadow-lg">
-                    {group.items.map((item) => {
-                      const itemActive = pathname === item.href;
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          onClick={() => setOpenGroupId(null)}
-                          className={cn(
-                            "block whitespace-nowrap px-4 py-2 text-sm font-medium transition",
-                            itemActive ? "bg-primary-light text-primary-dark" : "text-foreground hover:bg-surface"
-                          )}
-                        >
-                          {item.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -202,6 +224,39 @@ export function Header() {
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
       </div>
+
+      {activeGroup && (
+        <div
+          ref={panelRef}
+          onMouseEnter={() => openGroupOnHover(activeGroup.id)}
+          onMouseLeave={scheduleCloseGroup}
+          className="absolute inset-x-0 top-full hidden border-b border-t border-border bg-white sm:block"
+        >
+          <div
+            className="mx-auto grid max-w-6xl px-4 sm:px-6"
+            style={{ gridTemplateColumns: `repeat(${activeGroup.items.length}, minmax(0, 1fr))` }}
+          >
+            {activeGroup.items.map((item, i) => {
+              const itemActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setOpenGroupId(null)}
+                  className={cn(
+                    "flex items-center justify-between gap-2 border-border px-5 py-4 text-sm font-medium transition",
+                    i > 0 && "border-l",
+                    itemActive ? "text-primary-dark" : "text-foreground hover:bg-surface hover:text-primary-dark"
+                  )}
+                >
+                  {item.label}
+                  <ChevronRight size={14} className="shrink-0 text-muted" />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {menuOpen && (
         <nav className="flex flex-col gap-1 border-t border-border px-4 py-3 sm:hidden">
