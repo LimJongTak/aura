@@ -216,8 +216,9 @@ service cloud.firestore {
     }
 
     // 중고급 이수요건 확인 신청: 실제 장학금 신청(advancedApplications) 전에 이수요건이
-    // 성립하는지 미리 확인받는 자기 신고용 신청. 성적증명서가 없고, 상태값이
-    // "검토중"/"충족"/"미충족"이라는 점만 advancedApplications와 다르다.
+    // 성립하는지 미리 확인받는 자기 신고용 신청. 상태값이 "검토중"/"충족"/"미충족"이고
+    // 세부 항목별 판정(criteria)이 있다는 점만 advancedApplications와 다르다 — 그 외
+    // 입력 필드(성적증명서 포함)는 동일하다.
     match /eligibilityChecks/{id} {
       allow read: if true;
 
@@ -234,11 +235,19 @@ service cloud.firestore {
         request.resource.data.immersive is map &&
         request.resource.data.nonCurricularPlanned is bool &&
         request.resource.data.nonCurricularProgram is string &&
+        request.resource.data.nonCurricularYearMonth is string &&
+        request.resource.data.transcriptFileUrl is string &&
+        request.resource.data.transcriptFileUrl.size() > 0 &&
+        // 세부 항목 판정은 항상 "검토중"에서 시작해야 한다 — 신청자가 직접
+        // 충족 상태로 만들어서 제출하는 걸 막는다.
+        request.resource.data.criteria == {
+          "subject1": "검토중", "subject2": "검토중", "immersive": "검토중", "nonCurricular": "검토중"
+        } &&
         exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
 
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["status", "note", "processedAt"]);
+          .hasOnly(["status", "note", "processedAt", "criteria"]);
 
       allow delete: if isAdmin();
     }

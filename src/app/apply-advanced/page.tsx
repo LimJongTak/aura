@@ -79,6 +79,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [nonCurricularYearMonth, setNonCurricularYearMonth] = useState("");
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [transcriptFileError, setTranscriptFileError] = useState<string | null>(null);
+  const [prefillTranscriptUrl, setPrefillTranscriptUrl] = useState<string | null>(null);
   const [ackConfirmed, setAckConfirmed] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
@@ -119,9 +120,10 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   }, []);
 
   // "요건 확인" 결과가 충족인 신청서를 보고 넘어온 경우, 그때 입력했던 이수
-  // 교과목·몰입형 교과목을 그대로 채워준다. 비교과는 "참여 예정"만 확인한
-  // 자기 신고였을 뿐 실제 이수 증빙이 아니므로 일부러 채우지 않는다 — 학생이
-  // 실제 참여를 마친 뒤 직접 입력해야 한다.
+  // 교과목·몰입형 교과목·성적증명서를 그대로 채워준다 (성적증명서는 재업로드
+  // 없이 같은 URL을 그대로 재사용한다). 비교과는 그때는 "참여 예정"이었을
+  // 수도 있어 실제 참여 여부가 바뀌었을 수 있으므로 일부러 채우지 않는다 —
+  // 학생이 실제 참여를 마친 뒤 직접 입력해야 한다.
   useEffect(() => {
     if (!fromEligibilityId || prefillApplied || tracks === null) return;
     let cancelled = false;
@@ -136,6 +138,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
         if (check.subjects[1]) setSubject2(check.subjects[1]);
         setImmersive(check.immersive);
         setTargetSemester(check.targetSemester);
+        if (check.transcriptFileUrl) setPrefillTranscriptUrl(check.transcriptFileUrl);
       }
       if (!cancelled) setPrefillApplied(true);
     })();
@@ -181,7 +184,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
       setSubmitError("모든 항목을 입력해주세요.");
       return;
     }
-    if (!transcriptFile) {
+    if (!transcriptFile && !prefillTranscriptUrl) {
       setSubmitError("성적증명서(PDF)를 첨부해주세요.");
       return;
     }
@@ -191,7 +194,9 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     }
     setSubmitting(true);
     try {
-      const transcriptFileUrl = await uploadEvidenceFile(student.studentId, transcriptFile);
+      const transcriptFileUrl = transcriptFile
+        ? await uploadEvidenceFile(student.studentId, transcriptFile)
+        : (prefillTranscriptUrl as string);
       await submitAdvancedApplication({
         studentId: student.studentId,
         studentName: student.name,
@@ -397,9 +402,27 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             <label className="mb-1.5 block text-xs font-semibold text-muted">
               성적증명서 첨부 (PDF 파일만 가능, 필수)
             </label>
+            {prefillTranscriptUrl && !transcriptFile && (
+              <p className="mb-1.5 text-xs text-success">
+                이수요건 확인 때 첨부한 파일을 그대로 사용합니다 —{" "}
+                <a
+                  href={prefillTranscriptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold underline underline-offset-2"
+                >
+                  보기
+                </a>
+                . 다른 파일을 선택하면 그 파일로 바뀝니다.
+              </p>
+            )}
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-sm text-muted transition hover:border-primary hover:text-primary">
               <Upload size={16} />
-              {transcriptFile ? transcriptFile.name : "PDF 파일을 선택해주세요"}
+              {transcriptFile
+                ? transcriptFile.name
+                : prefillTranscriptUrl
+                  ? "다른 PDF 파일로 변경하려면 선택해주세요"
+                  : "PDF 파일을 선택해주세요"}
               <input
                 type="file"
                 accept=".pdf,application/pdf"

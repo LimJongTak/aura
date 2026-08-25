@@ -193,12 +193,31 @@ export interface AdvancedApplication {
 
 export type EligibilityCheckStatus = "검토중" | "충족" | "미충족";
 
+/** 이수요건 확인의 세부 항목별 판정 상태 (전체 status와 같은 값 집합을 쓴다). */
+export type CriterionStatus = "검토중" | "충족" | "미충족";
+
+/**
+ * 이수요건 확인의 세부 항목별 판정. 관리자가 이수 교과목1·이수 교과목2·몰입형
+ * 교과목·비교과 프로그램을 각각 따로 충족/미충족으로 표시하면, 전체
+ * {@link EligibilityCheck.status}는 넷 다 충족일 때만 충족으로, 하나라도
+ * 미충족이면 미충족으로 자동 계산된다 (둘 다 아니면 검토중) —
+ * `computeOverallEligibilityStatus`(lib/firestore/eligibilityChecks.ts) 참고.
+ */
+export interface EligibilityCriteria {
+  subject1: CriterionStatus;
+  subject2: CriterionStatus;
+  immersive: CriterionStatus;
+  nonCurricular: CriterionStatus;
+}
+
 /**
  * 중고급 이수 신청(실제 장학금 신청, {@link AdvancedApplication})을 넣기 전에
- * 이수요건이 성립하는지 미리 확인받는 신청. 성적증명서 없이 자기 신고 형태로
- * 제출하고, 비교과 프로그램은 이미 이수한 게 아니라 "참여 예정"만 체크한다.
- * 관리자가 검토 후 충족/미충족(사유)로 판정하며, 학생은 /lookup에서 결과와
- * 미충족 사유를 확인할 수 있다. → eligibilityChecks/{id}
+ * 이수요건이 성립하는지 미리 확인받는 신청. 성적증명서 첨부·비교과 참여
+ * 입력까지 실제 신청과 동일하게 받는다 (비교과는 이미 참여한 이력 또는 참여
+ * 예정 중 하나를 고른다). 관리자가 항목별로 충족/미충족을 매겨 전체 판정이
+ * 정해지며, 학생은 /lookup에서 전체 결과와 항목별 결과를 모두 확인할 수 있다.
+ * "충족" 신청은 /apply-advanced에서 "신청하러가기"로 넘어가면 비교과를 뺀
+ * 나머지 입력값(성적증명서 포함)이 그대로 채워진다. → eligibilityChecks/{id}
  */
 export interface EligibilityCheck {
   id: string;
@@ -213,13 +232,23 @@ export interface EligibilityCheck {
   subjects: CompletedSubjectEntry[];
   /** 몰입형 교과목 1과목 (AI-Bridge Professional) */
   immersive: CompletedSubjectEntry;
-  /** 비교과 프로그램 참여 예정 여부 */
+  /** 비교과 프로그램이 아직 참여 전(예정)인지 — false면 이미 참여한 이력이고
+   *  nonCurricularYearMonth에 실제 참여한 연월이 들어있다. */
   nonCurricularPlanned: boolean;
-  /** 참여 예정인 비교과 프로그램명 — nonCurricularPlanned가 true일 때만 값이 있다. */
+  /** 참여(예정) 비교과 프로그램명 — 항상 필수. */
   nonCurricularProgram: string;
+  /** 비교과 프로그램 참여 연월 — nonCurricularPlanned가 false(이미 참여)일 때만
+   *  필수로 채워지고, true(참여 예정)일 때는 빈 문자열이다. */
+  nonCurricularYearMonth: string;
+  /** 성적증명서(PDF) 첨부 다운로드 URL — 필수. "신청하러가기"로 실제 중고급
+   *  이수 신청으로 넘어갈 때 재업로드 없이 그대로 재사용된다. */
+  transcriptFileUrl: string;
+  /** 세부 항목별 판정 — {@link EligibilityCriteria} */
+  criteria: EligibilityCriteria;
   status: EligibilityCheckStatus;
   processedAt?: number;
-  /** 미충족 사유 — status가 "미충족"일 때 관리자가 남기고 학생에게 노출된다. */
+  /** 관리자가 남기는 참고 메모 — 특정 세부 항목이 아니라 신청 전체에 대한
+   *  보충 설명이며, 학생에게도 노출된다. */
   note?: string;
 }
 

@@ -11,18 +11,33 @@ import {
   summarizeApprovedBySemester,
 } from "@/lib/firestore/mileageApplications";
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
-import { listEligibilityChecksForStudent } from "@/lib/firestore/eligibilityChecks";
+import { DEFAULT_ELIGIBILITY_CRITERIA, listEligibilityChecksForStudent } from "@/lib/firestore/eligibilityChecks";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import type {
   AdvancedApplication,
   ConversionSettings,
+  CriterionStatus,
   EligibilityCheck,
   MileageApplication,
   Semester,
   Student,
   StudentMileageSummary,
 } from "@/types/models";
+
+const CRITERION_TONE: Record<CriterionStatus, "success" | "danger" | "muted"> = {
+  충족: "success",
+  미충족: "danger",
+  검토중: "muted",
+};
+
+function CriterionMiniBadge({ label, status }: { label: string; status: CriterionStatus }) {
+  return (
+    <Badge tone={CRITERION_TONE[status]}>
+      {label} {status}
+    </Badge>
+  );
+}
 
 export default function LookupPage() {
   return (
@@ -228,36 +243,67 @@ function LookupResult({ student }: { student: Student }) {
                   <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
                   <th className="px-4 py-3 font-semibold">등급</th>
                   <th className="px-4 py-3 font-semibold">이수 교과목</th>
-                  <th className="px-4 py-3 font-semibold">몰입형/비교과 참여 예정</th>
-                  <th className="px-4 py-3 font-semibold">결과</th>
+                  <th className="px-4 py-3 font-semibold">몰입형/비교과</th>
+                  <th className="px-4 py-3 font-semibold">성적증명서</th>
+                  <th className="px-4 py-3 font-semibold">항목별 결과</th>
+                  <th className="px-4 py-3 font-semibold">전체 결과</th>
                   <th className="px-4 py-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
-                {eligibilityChecks.map((e) => (
-                  <tr key={e.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5">{e.targetSemester}</td>
-                    <td className="px-4 py-2.5">{e.level}</td>
-                    <td className="px-4 py-2.5">{e.subjects?.map((s) => s.subjectName).join(" / ")}</td>
-                    <td className="px-4 py-2.5">
-                      {e.immersive?.subjectName} / {e.nonCurricularPlanned ? e.nonCurricularProgram : "예정 없음"}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <EligibilityStatusBadge status={e.status} />
-                      {e.status === "미충족" && e.note && <p className="mt-1 text-xs text-danger">미충족 사유: {e.note}</p>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {e.status === "충족" && (
-                        <Link
-                          href={`/apply-advanced?fromEligibility=${e.id}`}
-                          className="font-semibold text-primary hover:underline"
-                        >
-                          신청하러가기
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {eligibilityChecks.map((e) => {
+                  const criteria = e.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
+                  return (
+                    <tr key={e.id} className="border-b border-border last:border-0 align-top">
+                      <td className="px-4 py-2.5">{e.targetSemester}</td>
+                      <td className="px-4 py-2.5">{e.level}</td>
+                      <td className="px-4 py-2.5">{e.subjects?.map((s) => s.subjectName).join(" / ")}</td>
+                      <td className="px-4 py-2.5">
+                        {e.immersive?.subjectName} / {e.nonCurricularProgram}
+                        {e.nonCurricularPlanned ? " (예정)" : ` (${e.nonCurricularYearMonth})`}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {e.transcriptFileUrl ? (
+                          <a
+                            href={e.transcriptFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            보기
+                          </a>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex flex-wrap gap-1">
+                          <CriterionMiniBadge label="이수교과목1" status={criteria.subject1} />
+                          <CriterionMiniBadge label="이수교과목2" status={criteria.subject2} />
+                          <CriterionMiniBadge label="몰입형" status={criteria.immersive} />
+                          <CriterionMiniBadge label="비교과" status={criteria.nonCurricular} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <EligibilityStatusBadge status={e.status} />
+                        {e.status === "미충족" && e.note && (
+                          <p className="mt-1 text-xs text-danger">미충족 사유: {e.note}</p>
+                        )}
+                        {e.status === "충족" && e.note && <p className="mt-1 text-xs text-muted">메모: {e.note}</p>}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {e.status === "충족" && (
+                          <Link
+                            href={`/apply-advanced?fromEligibility=${e.id}`}
+                            className="font-semibold text-primary hover:underline"
+                          >
+                            신청하러가기
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

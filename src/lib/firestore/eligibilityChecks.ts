@@ -12,19 +12,28 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import type { EligibilityCheck, EligibilityCheckStatus } from "@/types/models";
+import type { EligibilityCheck, EligibilityCheckStatus, EligibilityCriteria } from "@/types/models";
 
 const eligibilityRef = () => collection(db, "eligibilityChecks");
 
+/** 신청 접수 시점의 기본값 — 관리자가 아직 아무 항목도 심사하지 않은 상태. */
+export const DEFAULT_ELIGIBILITY_CRITERIA: EligibilityCriteria = {
+  subject1: "검토중",
+  subject2: "검토중",
+  immersive: "검토중",
+  nonCurricular: "검토중",
+};
+
 export type SubmitEligibilityCheckInput = Omit<
   EligibilityCheck,
-  "id" | "appliedAt" | "status" | "processedAt" | "note"
+  "id" | "appliedAt" | "status" | "processedAt" | "note" | "criteria"
 >;
 
 export async function submitEligibilityCheck(input: SubmitEligibilityCheckInput): Promise<void> {
   await addDoc(eligibilityRef(), {
     ...input,
     status: "검토중" satisfies EligibilityCheckStatus,
+    criteria: DEFAULT_ELIGIBILITY_CRITERIA,
     appliedAt: serverTimestamp(),
   });
 }
@@ -71,14 +80,26 @@ export async function listPendingEligibilityChecks(): Promise<EligibilityCheck[]
   });
 }
 
-export async function updateEligibilityCheckStatus(
+/** 세부 항목 네 개가 모두 충족이면 충족, 하나라도 미충족이면 미충족, 그 외엔 검토중. */
+export function computeOverallEligibilityStatus(criteria: EligibilityCriteria): EligibilityCheckStatus {
+  const values = Object.values(criteria);
+  if (values.every((v) => v === "충족")) return "충족";
+  if (values.some((v) => v === "미충족")) return "미충족";
+  return "검토중";
+}
+
+/** 관리자가 세부 항목 하나를 충족/미충족/검토중으로 바꿀 때 쓴다. 전체
+ *  criteria 맵을 통째로 넘기면 전체 status를 다시 계산해 함께 저장한다.
+ *  note는 항상 명시적으로 넘겨야 한다 — 생략하면 기존 메모가 지워진다. */
+export async function updateEligibilityCriteria(
   id: string,
-  status: EligibilityCheckStatus,
-  note?: string
+  criteria: EligibilityCriteria,
+  note: string
 ): Promise<void> {
   await updateDoc(doc(db, "eligibilityChecks", id), {
-    status,
-    note: note ?? "",
+    criteria,
+    status: computeOverallEligibilityStatus(criteria),
+    note,
     processedAt: serverTimestamp(),
   });
 }
