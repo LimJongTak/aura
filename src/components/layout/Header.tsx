@@ -161,9 +161,9 @@ export function Header() {
                 onMouseEnter={() => openGroupOnHover(group.id)}
                 onMouseLeave={scheduleCloseGroup}
               >
-                <button
-                  type="button"
-                  onClick={() => setOpenGroupId((prev) => (prev === group.id ? null : group.id))}
+                <Link
+                  href={group.items[0].href}
+                  onClick={() => setOpenGroupId(null)}
                   className={cn(
                     "border-b-2 py-2 text-sm font-medium transition",
                     highlighted
@@ -172,7 +172,7 @@ export function Header() {
                   )}
                 >
                   {group.label}
-                </button>
+                </Link>
               </div>
             );
           })}
