@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils/cn";
-import type { ApplicationStatus } from "@/types/models";
+import type { ApplicationStatus, EligibilityCheckStatus } from "@/types/models";
 
 const STATUS_CLASSES: Record<ApplicationStatus, string> = {
   승인: "bg-success-light text-success",
@@ -13,6 +13,25 @@ export function StatusBadge({ status }: { status: ApplicationStatus }) {
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
         STATUS_CLASSES[status]
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+const ELIGIBILITY_STATUS_CLASSES: Record<EligibilityCheckStatus, string> = {
+  충족: "bg-success-light text-success",
+  검토중: "bg-warning-light text-warning",
+  미충족: "bg-danger-light text-danger",
+};
+
+export function EligibilityStatusBadge({ status }: { status: EligibilityCheckStatus }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
+        ELIGIBILITY_STATUS_CLASSES[status]
       )}
     >
       {status}

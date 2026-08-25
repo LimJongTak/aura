@@ -116,6 +116,10 @@ export interface CompletionSemesterOption {
   id: string;
   name: string;
   order: number;
+  /** 사업단이 2026년도부터 운영되어, 이수 교과목 2과목 중 최소 1과목은 이 학기
+   *  이후(2026학년도 1학기~)여야 한다는 규칙을 검증하는 데 쓰는 플래그. 관리자가
+   *  /admin/semesters의 "중고급 이수 학기" 탭에서 학기별로 켜고 끈다. */
+  isFrom2026H1Onward?: boolean;
 }
 
 /**
@@ -173,6 +177,38 @@ export interface AdvancedApplication {
   transcriptFileUrl: string;
   status: ApplicationStatus;
   processedAt?: number;
+  note?: string;
+}
+
+export type EligibilityCheckStatus = "검토중" | "충족" | "미충족";
+
+/**
+ * 중고급 이수 신청(실제 장학금 신청, {@link AdvancedApplication})을 넣기 전에
+ * 이수요건이 성립하는지 미리 확인받는 신청. 성적증명서 없이 자기 신고 형태로
+ * 제출하고, 비교과 프로그램은 이미 이수한 게 아니라 "참여 예정"만 체크한다.
+ * 관리자가 검토 후 충족/미충족(사유)로 판정하며, 학생은 /lookup에서 결과와
+ * 미충족 사유를 확인할 수 있다. → eligibilityChecks/{id}
+ */
+export interface EligibilityCheck {
+  id: string;
+  appliedAt: number;
+  studentId: string;
+  studentName: string;
+  department: string;
+  targetSemester: string;
+  level: CompletionLevel;
+  /** 이수기준상 등급별 교과목 2과목 — 2개 중 최소 1개는 completionSemesters에서
+   *  isFrom2026H1Onward로 표시된 학기여야 한다 (제출 시 클라이언트에서 검증). */
+  subjects: CompletedSubjectEntry[];
+  /** 몰입형 교과목 1과목 (AI-Bridge Professional) */
+  immersive: CompletedSubjectEntry;
+  /** 비교과 프로그램 참여 예정 여부 */
+  nonCurricularPlanned: boolean;
+  /** 참여 예정인 비교과 프로그램명 — nonCurricularPlanned가 true일 때만 값이 있다. */
+  nonCurricularProgram: string;
+  status: EligibilityCheckStatus;
+  processedAt?: number;
+  /** 미충족 사유 — status가 "미충족"일 때 관리자가 남기고 학생에게 노출된다. */
   note?: string;
 }
 

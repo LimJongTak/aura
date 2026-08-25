@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, StatCard } from "@/components/ui/Card";
-import { Badge, StatusBadge } from "@/components/ui/Badge";
+import { Badge, EligibilityStatusBadge, StatusBadge } from "@/components/ui/Badge";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import {
   computeStudentSummary,
@@ -11,11 +11,13 @@ import {
   summarizeApprovedBySemester,
 } from "@/lib/firestore/mileageApplications";
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
+import { listEligibilityChecksForStudent } from "@/lib/firestore/eligibilityChecks";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import type {
   AdvancedApplication,
   ConversionSettings,
+  EligibilityCheck,
   MileageApplication,
   Semester,
   Student,
@@ -39,6 +41,7 @@ function LookupResult({ student }: { student: Student }) {
   const [summary, setSummary] = useState<StudentMileageSummary | null>(null);
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
+  const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [currentSemester, setCurrentSemester] = useState<Semester | null>(null);
 
@@ -49,14 +52,16 @@ function LookupResult({ student }: { student: Student }) {
       getCurrentSemester(),
       listApplicationsForStudent(student.studentId),
       listAdvancedApplicationsForStudent(student.studentId),
+      listEligibilityChecksForStudent(student.studentId),
       getConversionSettings(),
-    ]).then(async ([semester, apps, advApps, convSettings]) => {
+    ]).then(async ([semester, apps, advApps, eligChecks, convSettings]) => {
       const studentSummary = await computeStudentSummary(student, semester?.name);
       if (cancelled) return;
       setCurrentSemester(semester);
       setSummary(studentSummary);
       setApplications(apps);
       setAdvanced(advApps);
+      setEligibilityChecks(eligChecks);
       setSettings(convSettings);
       setLoading(false);
     });
@@ -195,6 +200,50 @@ function LookupResult({ student }: { student: Student }) {
                           <p className="text-xs text-danger">반려 사유: {a.note}</p>
                         )}
                       </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
+
+      <div>
+        <h3 className="font-bold text-foreground">이수요건 확인 결과</h3>
+        <Card className="mt-3 overflow-x-auto p-0">
+          {eligibilityChecks.length === 0 ? (
+            <p className="p-6 text-sm text-muted">
+              신청 내역이 없습니다.{" "}
+              {summary.student.isParticipating && (
+                <Link href="/apply-advanced/eligibility-check" className="font-semibold text-primary hover:underline">
+                  이수요건 확인 신청하러 가기
+                </Link>
+              )}
+            </p>
+          ) : (
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
+                  <th className="px-4 py-3 font-semibold">등급</th>
+                  <th className="px-4 py-3 font-semibold">이수 교과목</th>
+                  <th className="px-4 py-3 font-semibold">몰입형/비교과 참여 예정</th>
+                  <th className="px-4 py-3 font-semibold">결과</th>
+                </tr>
+              </thead>
+              <tbody>
+                {eligibilityChecks.map((e) => (
+                  <tr key={e.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5">{e.targetSemester}</td>
+                    <td className="px-4 py-2.5">{e.level}</td>
+                    <td className="px-4 py-2.5">{e.subjects?.map((s) => s.subjectName).join(" / ")}</td>
+                    <td className="px-4 py-2.5">
+                      {e.immersive?.subjectName} / {e.nonCurricularPlanned ? e.nonCurricularProgram : "예정 없음"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <EligibilityStatusBadge status={e.status} />
+                      {e.status === "미충족" && e.note && <p className="mt-1 text-xs text-danger">미충족 사유: {e.note}</p>}
                     </td>
                   </tr>
                 ))}

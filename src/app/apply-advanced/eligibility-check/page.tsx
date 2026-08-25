@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Upload } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -17,12 +17,11 @@ import {
   SubjectRow,
   emptySubject,
 } from "@/components/advanced/shared";
-import { submitAdvancedApplication } from "@/lib/firestore/advancedApplications";
+import { submitEligibilityCheck } from "@/lib/firestore/eligibilityChecks";
 import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
 import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
-import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
   EDUCATION_PROGRAMS,
   type AdvancedTargetSemesterOption,
@@ -34,28 +33,32 @@ import {
   type Student,
 } from "@/types/models";
 
-export default function ApplyAdvancedPage() {
+export default function EligibilityCheckPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <h1 className="text-2xl font-extrabold text-foreground">중고급 이수 신청</h1>
-      <p className="mt-1.5 text-sm text-muted">참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청 가능합니다.</p>
-      <div className="mt-4 rounded-xl border border-primary/30 bg-primary-light px-4 py-3 text-sm text-primary-dark">
-        아직 이수 교과목·비교과 참여를 다 채우지 못했나요?{" "}
-        <Link href="/apply-advanced/eligibility-check" className="font-semibold underline underline-offset-2">
-          이수요건 확인 신청
+      <h1 className="text-2xl font-extrabold text-foreground">중고급 이수요건 확인</h1>
+      <p className="mt-1.5 text-sm text-muted">
+        참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청 가능합니다. 성적증명서 없이 지금까지의
+        이수 현황을 자기 신고 형태로 제출하면, 사업단이 이수요건 성립 여부(충족/미충족)를 확인해드립니다.
+      </p>
+      <div className="mt-4 rounded-xl border border-border bg-surface px-4 py-3 text-xs text-muted">
+        여기서 &quot;충족&quot; 판정을 받아도 자동으로 장학금이 지급되지 않습니다. 실제 장학금은 성적증명서를
+        첨부하는{" "}
+        <Link href="/apply-advanced" className="font-semibold text-primary hover:underline">
+          중고급 이수 신청
         </Link>
-        에서 지금 상태로 이수요건이 성립하는지 먼저 확인해볼 수 있습니다.
+        을 별도로 제출해야 합니다.
       </div>
       <div className="mt-4">
         <RequireStudentLogin>
-          {(student, { isPreview }) => <AdvancedForm student={student} isPreview={isPreview} />}
+          {(student, { isPreview }) => <EligibilityForm student={student} isPreview={isPreview} />}
         </RequireStudentLogin>
       </div>
     </div>
   );
 }
 
-function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boolean }) {
+function EligibilityForm({ student, isPreview }: { student: Student; isPreview: boolean }) {
   const [targetSemesters, setTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [targetSemester, setTargetSemester] = useState("");
   const [level, setLevel] = useState<CompletionLevel>("중급");
@@ -66,11 +69,8 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [subject1, setSubject1] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [subject2, setSubject2] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [immersive, setImmersive] = useState<CompletedSubjectEntry>(emptySubject("AI-Bridge Professional"));
+  const [nonCurricularPlanned, setNonCurricularPlanned] = useState(false);
   const [nonCurricularProgram, setNonCurricularProgram] = useState("");
-  const [nonCurricularYearMonth, setNonCurricularYearMonth] = useState("");
-  const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
-  const [transcriptFileError, setTranscriptFileError] = useState<string | null>(null);
-  const [ackConfirmed, setAckConfirmed] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -119,6 +119,13 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     return !!s.subjectName.trim() && !!s.completedYearMonth;
   }
 
+  /** 이수 학기 이름으로 completionSemesters에서 2026학년도 1학기 이후 학기인지 찾는다. */
+  function isFrom2026H1Onward(completedYearMonth: string) {
+    return completionSemesters.some((s) => s.name === completedYearMonth && s.isFrom2026H1Onward);
+  }
+
+  const hasRecentSubject = isFrom2026H1Onward(subject1.completedYearMonth) || isFrom2026H1Onward(subject2.completedYearMonth);
+
   const selectedTrack = tracks?.find((t) => t.id === trackId) ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -128,29 +135,21 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
       setSubmitError("미리보기 모드에서는 제출할 수 없습니다.");
       return;
     }
-    if (
-      !targetSemester ||
-      !isSubjectFilled(subject1) ||
-      !isSubjectFilled(subject2) ||
-      !isSubjectFilled(immersive) ||
-      !nonCurricularProgram.trim() ||
-      !nonCurricularYearMonth
-    ) {
+    if (!targetSemester || !isSubjectFilled(subject1) || !isSubjectFilled(subject2) || !isSubjectFilled(immersive)) {
       setSubmitError("모든 항목을 입력해주세요.");
       return;
     }
-    if (!transcriptFile) {
-      setSubmitError("성적증명서(PDF)를 첨부해주세요.");
+    if (!hasRecentSubject) {
+      setSubmitError("이수 교과목 1·2 중 최소 1과목은 2026학년도 1학기 이후 이수 학기여야 합니다.");
       return;
     }
-    if (!ackConfirmed) {
-      setSubmitError("중복 수혜 관련 유의사항을 확인해주세요.");
+    if (nonCurricularPlanned && !nonCurricularProgram.trim()) {
+      setSubmitError("참여 예정인 비교과 프로그램명을 입력해주세요.");
       return;
     }
     setSubmitting(true);
     try {
-      const transcriptFileUrl = await uploadEvidenceFile(student.studentId, transcriptFile);
-      await submitAdvancedApplication({
+      await submitEligibilityCheck({
         studentId: student.studentId,
         studentName: student.name,
         department: student.department,
@@ -158,9 +157,8 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
         level,
         subjects: [subject1, subject2],
         immersive,
-        nonCurricularProgram,
-        nonCurricularYearMonth,
-        transcriptFileUrl,
+        nonCurricularPlanned,
+        nonCurricularProgram: nonCurricularPlanned ? nonCurricularProgram.trim() : "",
       });
       setSubmitted(true);
     } catch {
@@ -174,7 +172,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     return (
       <Card>
         <p className="text-sm text-muted">
-          중고급 이수 신청은 참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 가능합니다.
+          중고급 이수요건 확인은 참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 가능합니다.
         </p>
       </Card>
     );
@@ -184,10 +182,9 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     return (
       <div className="py-10 text-center">
         <CheckCircle2 className="mx-auto text-success" size={48} />
-        <h2 className="mt-4 text-xl font-extrabold text-foreground">신청이 접수되었습니다</h2>
+        <h2 className="mt-4 text-xl font-extrabold text-foreground">이수요건 확인 신청이 접수되었습니다</h2>
         <p className="mt-2 text-sm text-muted">
-          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마일리지 조회&quot;에서 처리 상태를 확인할 수
-          있습니다.
+          사업단 검토 후 충족·미충족 여부가 확정됩니다. &quot;마일리지 조회&quot;에서 결과를 확인할 수 있습니다.
         </p>
       </div>
     );
@@ -209,20 +206,30 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             ))}
           </ul>
         </InfoCard>
-        <InfoCard title="비교과 프로그램 예시가 궁금해요">
-          <p className="mb-2">아래처럼 사업단이 주관하는 비교과 프로그램에 1회 이상 참여하면 됩니다. 클릭하면 참여 프로그램명 칸에 바로 채워집니다.</p>
+        <InfoCard title="비교과 프로그램 예시가 궁금해요" defaultOpen>
+          <p className="mb-2">
+            아래처럼 사업단이 주관하는 비교과 프로그램 참여를 계획하고 있다면 체크하고 프로그램명을 입력해주세요.
+            아직 참여한 게 아니어도 괜찮습니다 — 참여 예정 여부만 확인합니다. 클릭하면 참여 예정 프로그램명 칸에
+            바로 채워집니다.
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {NON_CURRICULAR_EXAMPLES.map((name) => (
               <Chip key={name} label={name} onClick={() => setNonCurricularProgram(name)} />
             ))}
           </div>
         </InfoCard>
+        <InfoCard title="2026학년도 이수 학기 규칙이 궁금해요" defaultOpen>
+          <p>
+            AI인재양성부트캠프사업단은 2026년도부터 운영되어, 이수 교과목 1·2 중 <b className="text-foreground">1과목은 2026년 이전에 이수한 과목도 인정</b>되지만, 나머지{" "}
+            <b className="text-foreground">1과목은 반드시 2026학년도 1학기 이후에 이수한 과목</b>이어야 합니다.
+          </p>
+        </InfoCard>
       </div>
 
       <Card className="mt-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted">지원 학기</label>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">확인 대상 학기</label>
             <Select value={targetSemester} onChange={(e) => setTargetSemester(e.target.value)}>
               <option value="">선택해주세요</option>
               {targetSemesters.map((s) => (
@@ -237,7 +244,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
           </div>
 
           <div>
-            <label className="mb-2 block text-xs font-semibold text-muted">신청 등급</label>
+            <label className="mb-2 block text-xs font-semibold text-muted">확인받을 등급</label>
             <div className="flex gap-2">
               {(["중급", "고급"] as CompletionLevel[]).map((lv) => (
                 <button
@@ -255,7 +262,8 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
               ))}
             </div>
             <p className="mt-1.5 text-xs text-muted">
-              {level} 이수기준: {level} 교과목 2과목 + 몰입형 1과목 + 비교과 참여 1회
+              {level} 이수기준: {level} 교과목 2과목(1과목은 2026학년도 1학기 이후 이수 필수) + 몰입형 1과목 + 비교과
+              참여 1회
             </p>
           </div>
 
@@ -316,6 +324,11 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   semesterOptions={completionSemesters}
                 />
               </div>
+              {(subject1.completedYearMonth || subject2.completedYearMonth) && !hasRecentSubject && (
+                <p className="mt-2 text-xs font-medium text-danger">
+                  이수 교과목 1·2 중 최소 1과목은 2026학년도 1학기 이후 이수 학기를 선택해주세요.
+                </p>
+              )}
             </div>
           )}
 
@@ -334,69 +347,39 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted">비교과 참여 (1회)</label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-muted">
+              <input
+                type="checkbox"
+                checked={nonCurricularPlanned}
+                onChange={(e) => {
+                  setNonCurricularPlanned(e.target.checked);
+                  if (!e.target.checked) setNonCurricularProgram("");
+                }}
+              />
+              비교과 프로그램 참여 예정이 있습니다
+            </label>
+            {nonCurricularPlanned && (
               <Input
+                className="mt-2"
                 value={nonCurricularProgram}
                 onChange={(e) => setNonCurricularProgram(e.target.value)}
-                placeholder="참여 프로그램명"
+                placeholder="참여 예정 프로그램명"
               />
-              <Input
-                type="month"
-                value={nonCurricularYearMonth}
-                onChange={(e) => setNonCurricularYearMonth(e.target.value)}
-              />
-            </div>
+            )}
+            {!nonCurricularPlanned && (
+              <p className="mt-1.5 text-xs text-muted">
+                아직 참여 예정인 비교과 프로그램이 없다면 체크하지 않아도 됩니다. 다만 실제 장학금 신청 시에는
+                비교과 참여가 필수입니다.
+              </p>
+            )}
           </div>
 
           <p className="text-xs text-muted">※ AI인재양성부트캠프사업단이 주관하는 비교과프로그램 참여가 필수입니다.</p>
 
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted">
-              성적증명서 첨부 (PDF 파일만 가능, 필수)
-            </label>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-surface px-4 py-6 text-sm text-muted transition hover:border-primary hover:text-primary">
-              <Upload size={16} />
-              {transcriptFile ? transcriptFile.name : "PDF 파일을 선택해주세요"}
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                onChange={(e) => {
-                  const selected = e.target.files?.[0] ?? null;
-                  if (selected && selected.type !== "application/pdf") {
-                    setTranscriptFile(null);
-                    setTranscriptFileError("PDF 파일만 첨부할 수 있습니다.");
-                    e.target.value = "";
-                    return;
-                  }
-                  setTranscriptFileError(null);
-                  setTranscriptFile(selected);
-                }}
-              />
-            </label>
-            {transcriptFileError && <p className="mt-1.5 text-xs font-medium text-danger">{transcriptFileError}</p>}
-          </div>
-
-          <div className="rounded-xl border border-warning/30 bg-warning-light p-4 text-sm text-warning">
-            <p className="font-bold">
-              중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지 않습니다 (중복 수혜
-              불가).
-            </p>
-            <p className="mt-2 font-bold">
-              AURA 마일리지는 학기별로 적용되는 시스템으로, 매 학기 0점부터 다시 시작됩니다 (이전 학기 마일리지는
-              다음 학기로 이월되지 않습니다).
-            </p>
-            <label className="mt-3 flex items-center gap-2 text-xs font-semibold">
-              <input type="checkbox" checked={ackConfirmed} onChange={(e) => setAckConfirmed(e.target.checked)} />
-              위 유의사항을 확인했습니다.
-            </label>
-          </div>
-
           {submitError && <p className="text-sm font-medium text-danger">{submitError}</p>}
 
-          <Button type="submit" size="lg" loading={submitting} disabled={!ackConfirmed || isPreview}>
-            {isPreview ? "미리보기 모드 (제출 불가)" : "중고급 이수 신청하기"}
+          <Button type="submit" size="lg" loading={submitting} disabled={isPreview}>
+            {isPreview ? "미리보기 모드 (제출 불가)" : "이수요건 확인 신청하기"}
           </Button>
         </form>
       </Card>

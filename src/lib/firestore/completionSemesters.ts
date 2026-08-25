@@ -22,3 +22,7 @@ export async function deleteCompletionSemester(id: string): Promise<void> {
 export async function setCompletionSemesterOrder(id: string, order: number): Promise<void> {
   await updateDoc(doc(db, "completionSemesters", id), { order });
 }
+
+export async function setCompletionSemesterEraFlag(id: string, isFrom2026H1Onward: boolean): Promise<void> {
+  await updateDoc(doc(db, "completionSemesters", id), { isFrom2026H1Onward });
+}

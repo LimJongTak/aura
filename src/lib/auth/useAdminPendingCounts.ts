@@ -13,13 +13,14 @@ const EMPTY: AdminPendingCounts = { review: 0, registrations: 0 };
 const POLL_INTERVAL_MS = 60_000;
 
 async function fetchCounts(): Promise<AdminPendingCounts> {
-  const [mileage, advanced, registrations] = await Promise.all([
+  const [mileage, advanced, eligibility, registrations] = await Promise.all([
     getCountFromServer(query(collection(db, "mileageApplications"), where("status", "==", "검토중"))),
     getCountFromServer(query(collection(db, "advancedApplications"), where("status", "==", "검토중"))),
+    getCountFromServer(query(collection(db, "eligibilityChecks"), where("status", "==", "검토중"))),
     getCountFromServer(query(collection(db, "studentRegistrationRequests"), where("status", "==", "검토중"))),
   ]);
   return {
-    review: mileage.data().count + advanced.data().count,
+    review: mileage.data().count + advanced.data().count + eligibility.data().count,
     registrations: registrations.data().count,
   };
 }

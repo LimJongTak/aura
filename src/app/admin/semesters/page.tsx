@@ -13,6 +13,7 @@ import {
 import {
   createCompletionSemester,
   deleteCompletionSemester,
+  setCompletionSemesterEraFlag,
   setCompletionSemesterOrder,
   subscribeCompletionSemesters,
 } from "@/lib/firestore/completionSemesters";
@@ -206,7 +207,11 @@ export default function AdminSemestersPage() {
       <SimpleSemesterList
         title="중고급 이수 학기 관리"
         description={
-          <>중고급 이수 신청에서 &quot;이수 교과목&quot;의 이수 학기를 고를 때 쓰는 목록이에요 (예: 2026학년도 제1학기).</>
+          <>
+            중고급 이수 신청에서 &quot;이수 교과목&quot;의 이수 학기를 고를 때 쓰는 목록이에요 (예: 2026학년도
+            제1학기). &quot;2026-1 이후&quot;로 표시한 학기는 이수요건 확인·신청에서 &quot;이수 교과목 2과목 중
+            최소 1과목은 2026학년도 1학기 이후&quot; 규칙을 검증할 때 기준으로 쓰입니다.
+          </>
         }
         placeholder="예: 2026학년도 제1학기"
         items={completionSemesters}
@@ -224,6 +229,11 @@ export default function AdminSemestersPage() {
         onDragReorder={(items) =>
           Promise.all(items.map((item, i) => setCompletionSemesterOrder(item.id, i))).then(() => undefined)
         }
+        eraFlag={{
+          label: "2026-1 이후",
+          getValue: (item) => !!item.isFrom2026H1Onward,
+          onToggle: (id, value) => setCompletionSemesterEraFlag(id, value),
+        }}
       />
       )}
 
@@ -264,19 +274,37 @@ function SimpleSemesterList({
   onDelete,
   onMove,
   onDragReorder,
+  eraFlag,
 }: {
   title: string;
   description: React.ReactNode;
   placeholder: string;
-  items: { id: string; name: string; order: number }[];
+  items: { id: string; name: string; order: number; isFrom2026H1Onward?: boolean }[];
   onCreate: (name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onMove: (index: number, direction: -1 | 1) => Promise<void>;
   onDragReorder: (items: { id: string; name: string; order: number }[]) => Promise<void>;
+  /** 이수 교과목 학기 목록에서만 쓰는 "2026-1 이후" 토글. 다른 학기 목록에는 없다. */
+  eraFlag?: {
+    label: string;
+    getValue: (item: { id: string; name: string; order: number; isFrom2026H1Onward?: boolean }) => boolean;
+    onToggle: (id: string, value: boolean) => Promise<void>;
+  };
 }) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const { getDragHandleProps, getRowProps } = useDragReorder(items, onDragReorder);
+
+  async function handleToggleFlag(id: string, value: boolean) {
+    if (!eraFlag) return;
+    setTogglingId(id);
+    try {
+      await eraFlag.onToggle(id, value);
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   async function handleAdd() {
     const name = draft.trim();
@@ -320,7 +348,24 @@ function SimpleSemesterList({
                 </span>
                 <span className="text-sm font-semibold text-foreground">{item.name}</span>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
+              <div className="flex shrink-0 items-center gap-2">
+                {eraFlag && (
+                  <label
+                    className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                      eraFlag.getValue(item)
+                        ? "border-primary bg-primary-light text-primary-dark"
+                        : "border-border text-muted"
+                    } ${togglingId === item.id ? "opacity-50" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={eraFlag.getValue(item)}
+                      disabled={togglingId === item.id}
+                      onChange={(e) => handleToggleFlag(item.id, e.target.checked)}
+                    />
+                    {eraFlag.label}
+                  </label>
+                )}
                 <button
                   onClick={() => onMove(i, -1)}
                   disabled={i === 0}

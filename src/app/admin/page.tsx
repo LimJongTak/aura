@@ -17,8 +17,9 @@ import {
   listPendingAdvancedApplications,
   updateAdvancedApplicationStatus,
 } from "@/lib/firestore/advancedApplications";
+import { listPendingEligibilityChecks, updateEligibilityCheckStatus } from "@/lib/firestore/eligibilityChecks";
 import { listSemesters } from "@/lib/firestore/semesters";
-import type { AdvancedApplication, MileageApplication, Semester } from "@/types/models";
+import type { AdvancedApplication, EligibilityCheck, MileageApplication, Semester } from "@/types/models";
 
 /** 같은 학생·구분·활동명·학기로 신청된 다른 이력(상태 무관)이 있는지 확인하는
  * 배지. 관리자가 중복 신청을 놓치지 않도록 승인/반려 버튼 옆에 붙는다. */
@@ -56,22 +57,27 @@ export default function AdminPage() {
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
   const [mileageHistory, setMileageHistory] = useState<MileageApplication[]>([]);
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
+  const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semesterChoice, setSemesterChoice] = useState<Record<string, string>>({});
   const [rejectTarget, setRejectTarget] = useState<MileageApplication | null>(null);
   const [rejectDraft, setRejectDraft] = useState("");
+  const [eligRejectTarget, setEligRejectTarget] = useState<EligibilityCheck | null>(null);
+  const [eligRejectDraft, setEligRejectDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [m, a, s, processed] = await Promise.all([
+    const [m, a, e, s, processed] = await Promise.all([
       listPendingMileageApplications(),
       listPendingAdvancedApplications(),
+      listPendingEligibilityChecks(),
       listSemesters(),
       listProcessedMileageApplications(),
     ]);
     setMileageApps(m);
     setMileageHistory([...m, ...processed]);
     setAdvancedApps(a);
+    setEligibilityChecks(e);
     setSemesters(s);
     setSemesterChoice((prev) => {
       const next = { ...prev };
@@ -146,6 +152,44 @@ export default function AdminPage() {
     try {
       await updateAdvancedApplicationStatus(id, status);
       await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleEligibilityApprove(id: string) {
+    setBusyId(id);
+    try {
+      await updateEligibilityCheckStatus(id, "충족");
+      await refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function openEligRejectModal(check: EligibilityCheck) {
+    setEligRejectTarget(check);
+    setEligRejectDraft("");
+  }
+
+  function closeEligRejectModal() {
+    setEligRejectTarget(null);
+    setEligRejectDraft("");
+  }
+
+  async function confirmEligReject() {
+    if (!eligRejectTarget) return;
+    const reason = eligRejectDraft.trim();
+    if (!reason) {
+      alert("미충족 사유를 입력해주세요.");
+      return;
+    }
+    const id = eligRejectTarget.id;
+    setBusyId(id);
+    try {
+      await updateEligibilityCheckStatus(id, "미충족", reason);
+      await refresh();
+      closeEligRejectModal();
     } finally {
       setBusyId(null);
     }
@@ -328,6 +372,76 @@ export default function AdminPage() {
         </Card>
       </div>
 
+      <div className="mt-10">
+        <h2 className="font-bold text-foreground">이수요건 확인 · 검토중 ({eligibilityChecks.length}건)</h2>
+        <p className="mt-1 text-xs text-muted">
+          중고급 이수 신청(장학금) 전에 학생이 미리 제출한 이수요건 자기 신고입니다. 충족/미충족을 확인해주세요.
+        </p>
+        <Card className="mt-3 overflow-x-auto p-0">
+          {eligibilityChecks.length === 0 ? (
+            <p className="p-6 text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
+          ) : (
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-4 py-3 font-semibold">학번/이름</th>
+                  <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
+                  <th className="px-4 py-3 font-semibold">등급</th>
+                  <th className="px-4 py-3 font-semibold">이수 교과목</th>
+                  <th className="px-4 py-3 font-semibold">몰입형</th>
+                  <th className="px-4 py-3 font-semibold">비교과 참여 예정</th>
+                  <th className="px-4 py-3 font-semibold">처리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {eligibilityChecks.map((e) => (
+                  <tr key={e.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5">
+                      {e.studentId} {e.studentName}
+                    </td>
+                    <td className="px-4 py-2.5">{e.targetSemester}</td>
+                    <td className="px-4 py-2.5">{e.level}</td>
+                    <td className="px-4 py-2.5">
+                      {e.subjects?.map((s) => (
+                        <div key={s.subjectName}>
+                          [{s.program}] {s.subjectName} ({s.completed}, {s.completedYearMonth})
+                        </div>
+                      ))}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {e.immersive && (
+                        <div>
+                          [{e.immersive.program}] {e.immersive.subjectName} ({e.immersive.completed},{" "}
+                          {e.immersive.completedYearMonth})
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {e.nonCurricularPlanned ? e.nonCurricularProgram || "(프로그램명 미입력)" : "예정 없음"}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex gap-1.5">
+                        <Button size="sm" loading={busyId === e.id} onClick={() => handleEligibilityApprove(e.id)}>
+                          충족
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={busyId === e.id}
+                          onClick={() => openEligRejectModal(e)}
+                        >
+                          미충족
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
+
       {rejectTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -357,6 +471,42 @@ export default function AdminPage() {
                 onClick={confirmReject}
               >
                 반려 확정
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {eligRejectTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={closeEligRejectModal}
+        >
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-bold text-foreground">미충족 사유 입력</h3>
+            <p className="mt-1 text-xs text-muted">
+              {eligRejectTarget.studentId} {eligRejectTarget.studentName} · {eligRejectTarget.targetSemester} ·{" "}
+              {eligRejectTarget.level}
+            </p>
+            <textarea
+              autoFocus
+              rows={6}
+              value={eligRejectDraft}
+              onChange={(e) => setEligRejectDraft(e.target.value)}
+              placeholder="학생이 확인할 수 있는 미충족 사유를 입력해주세요."
+              className="mt-3 w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={closeEligRejectModal}>
+                취소
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={busyId === eligRejectTarget.id}
+                onClick={confirmEligReject}
+              >
+                미충족 확정
               </Button>
             </div>
           </Card>
