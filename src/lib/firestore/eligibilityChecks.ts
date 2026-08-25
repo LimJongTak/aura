@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -46,6 +47,19 @@ export async function listEligibilityChecksForStudent(studentId: string): Promis
       processedAt: data.processedAt ? toMillis(data.processedAt) : undefined,
     } as EligibilityCheck;
   });
+}
+
+/** 신청하러가기(중고급 이수 신청 화면 사전 채움)용 단건 조회. */
+export async function getEligibilityCheck(id: string): Promise<EligibilityCheck | null> {
+  const snap = await getDoc(doc(db, "eligibilityChecks", id));
+  if (!snap.exists()) return null;
+  const data = snap.data();
+  return {
+    id: snap.id,
+    ...data,
+    appliedAt: toMillis(data.appliedAt),
+    processedAt: data.processedAt ? toMillis(data.processedAt) : undefined,
+  } as EligibilityCheck;
 }
 
 export async function listPendingEligibilityChecks(): Promise<EligibilityCheck[]> {

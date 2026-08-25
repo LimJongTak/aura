@@ -70,6 +70,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 헤더 상단 내비게이션 메뉴 그룹 — 공개 읽기, 관리자만 쓰기.
+    match /navMenuGroups/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 공지사항: 공개 읽기, 관리자만 쓰기.
     match /announcements/{id} {
       allow read: if true;

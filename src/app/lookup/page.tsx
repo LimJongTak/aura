@@ -230,6 +230,7 @@ function LookupResult({ student }: { student: Student }) {
                   <th className="px-4 py-3 font-semibold">이수 교과목</th>
                   <th className="px-4 py-3 font-semibold">몰입형/비교과 참여 예정</th>
                   <th className="px-4 py-3 font-semibold">결과</th>
+                  <th className="px-4 py-3 font-semibold" />
                 </tr>
               </thead>
               <tbody>
@@ -244,6 +245,16 @@ function LookupResult({ student }: { student: Student }) {
                     <td className="px-4 py-2.5">
                       <EligibilityStatusBadge status={e.status} />
                       {e.status === "미충족" && e.note && <p className="mt-1 text-xs text-danger">미충족 사유: {e.note}</p>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {e.status === "충족" && (
+                        <Link
+                          href={`/apply-advanced?fromEligibility=${e.id}`}
+                          className="font-semibold text-primary hover:underline"
+                        >
+                          신청하러가기
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -302,6 +302,25 @@ export interface QuickLink {
   isActive: boolean;
 }
 
+/** 헤더 내비게이션의 메뉴 항목 1개 (드롭다운 안의 링크, 또는 items가 1개뿐인
+ *  그룹의 단독 링크). */
+export interface NavMenuItem {
+  label: string;
+  href: string;
+}
+
+/**
+ * 헤더 상단 내비게이션 그룹. items가 1개면 드롭다운 없이 그룹 label을 눌러 바로
+ * 이동하는 단독 링크로, 2개 이상이면 label을 눌렀을 때 펼쳐지는 드롭다운 메뉴로
+ * 렌더링된다. 관리자가 /admin/menus에서 관리한다. → navMenuGroups/{id}
+ */
+export interface NavMenuGroup {
+  id: string;
+  label: string;
+  order: number;
+  items: NavMenuItem[];
+}
+
 /** 공지사항 → announcements/{id}. 공개 읽기, 관리자만 쓰기. */
 export interface Announcement {
   id: string;

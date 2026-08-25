@@ -12,7 +12,8 @@
     "migrate-advanced-semesters": "node scripts/migrate-advanced-semesters.mjs",
     "sort-completion-semesters": "node scripts/sort-completion-semesters.mjs",
     "migrate-advanced-target-semester": "node scripts/migrate-advanced-target-semester.mjs",
-    "create-student-accounts": "node scripts/create-student-accounts.mjs"
+    "create-student-accounts": "node scripts/create-student-accounts.mjs",
+    "seed-nav-menus": "node scripts/seed-nav-menus.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

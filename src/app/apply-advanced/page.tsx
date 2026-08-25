@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -21,6 +22,7 @@ import { submitAdvancedApplication } from "@/lib/firestore/advancedApplications"
 import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
+import { getEligibilityCheck } from "@/lib/firestore/eligibilityChecks";
 import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
@@ -47,15 +49,20 @@ export default function ApplyAdvancedPage() {
         에서 지금 상태로 이수요건이 성립하는지 먼저 확인해볼 수 있습니다.
       </div>
       <div className="mt-4">
-        <RequireStudentLogin>
-          {(student, { isPreview }) => <AdvancedForm student={student} isPreview={isPreview} />}
-        </RequireStudentLogin>
+        <Suspense fallback={<p className="py-10 text-center text-sm text-muted">불러오는 중...</p>}>
+          <RequireStudentLogin>
+            {(student, { isPreview }) => <AdvancedForm student={student} isPreview={isPreview} />}
+          </RequireStudentLogin>
+        </Suspense>
       </div>
     </div>
   );
 }
 
 function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boolean }) {
+  const searchParams = useSearchParams();
+  const fromEligibilityId = searchParams.get("fromEligibility");
+  const [prefillApplied, setPrefillApplied] = useState(false);
   const [targetSemesters, setTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [targetSemester, setTargetSemester] = useState("");
   const [level, setLevel] = useState<CompletionLevel>("중급");
@@ -101,6 +108,32 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     const unsub = subscribeImmersiveSemesters(setImmersiveSemesters);
     return () => unsub();
   }, []);
+
+  // "요건 확인" 결과가 충족인 신청서를 보고 넘어온 경우, 그때 입력했던 이수
+  // 교과목·몰입형 교과목을 그대로 채워준다. 비교과는 "참여 예정"만 확인한
+  // 자기 신고였을 뿐 실제 이수 증빙이 아니므로 일부러 채우지 않는다 — 학생이
+  // 실제 참여를 마친 뒤 직접 입력해야 한다.
+  useEffect(() => {
+    if (!fromEligibilityId || prefillApplied || tracks === null) return;
+    let cancelled = false;
+    (async () => {
+      const check = await getEligibilityCheck(fromEligibilityId);
+      if (!cancelled && check && check.studentId === student.studentId && check.status === "충족") {
+        setLevel(check.level);
+        const subjectNames = check.subjects.map((s) => s.subjectName);
+        const matchedTrack = tracks.find((t) => subjectNames.every((name) => t.subjectsByLevel[check.level].includes(name)));
+        if (matchedTrack) setTrackId(matchedTrack.id);
+        if (check.subjects[0]) setSubject1(check.subjects[0]);
+        if (check.subjects[1]) setSubject2(check.subjects[1]);
+        setImmersive(check.immersive);
+        setTargetSemester(check.targetSemester);
+      }
+      if (!cancelled) setPrefillApplied(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fromEligibilityId, prefillApplied, tracks, student.studentId]);
 
   function handleLevelChange(next: CompletionLevel) {
     setLevel(next);
@@ -304,7 +337,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   value={subject1}
                   onChange={setSubject1}
                   programOptions={[LEVEL_PROGRAM[level]]}
-                  subjectOptions={selectedTrack.subjectsByLevel[level]}
+                  subjectOptions={selectedTrack.subjectsByLevel[level].filter((name) => name !== subject2.subjectName)}
                   semesterOptions={completionSemesters}
                 />
                 <SubjectRow
@@ -312,7 +345,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   value={subject2}
                   onChange={setSubject2}
                   programOptions={[LEVEL_PROGRAM[level]]}
-                  subjectOptions={selectedTrack.subjectsByLevel[level]}
+                  subjectOptions={selectedTrack.subjectsByLevel[level].filter((name) => name !== subject1.subjectName)}
                   semesterOptions={completionSemesters}
                 />
               </div>

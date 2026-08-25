@@ -312,7 +312,7 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
                   value={subject1}
                   onChange={setSubject1}
                   programOptions={[LEVEL_PROGRAM[level]]}
-                  subjectOptions={selectedTrack.subjectsByLevel[level]}
+                  subjectOptions={selectedTrack.subjectsByLevel[level].filter((name) => name !== subject2.subjectName)}
                   semesterOptions={completionSemesters}
                 />
                 <SubjectRow
@@ -320,7 +320,7 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
                   value={subject2}
                   onChange={setSubject2}
                   programOptions={[LEVEL_PROGRAM[level]]}
-                  subjectOptions={selectedTrack.subjectsByLevel[level]}
+                  subjectOptions={selectedTrack.subjectsByLevel[level].filter((name) => name !== subject1.subjectName)}
                   semesterOptions={completionSemesters}
                 />
               </div>
