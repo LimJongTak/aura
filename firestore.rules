@@ -100,6 +100,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 몰입형 교과목명 목록 — 신청 폼에 필요한 공개 참조 데이터. 수정은 관리자만.
+    match /immersiveSubjects/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // 중고급 이수 신청의 "신청 학기" 목록 — 신청 폼에 필요한 공개 참조 데이터.
     match /advancedTargetSemesters/{id} {
       allow read: if true;

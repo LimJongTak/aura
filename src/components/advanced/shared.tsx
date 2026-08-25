@@ -17,7 +17,10 @@ export const PROGRAM_GUIDE: Record<EducationProgram, string> = {
   "AI-Bridge Professional": "몰입형(3~4학년) 과정 — 클라우드 기업 연계 부트캠프입니다. 중급·고급 공통으로 1개 필요합니다.",
 };
 
-export const IMMERSIVE_SUBJECTS = [
+/** immersiveSubjects 컬렉션이 아직 비어있거나 로딩 중일 때 쓰는 기본 몰입형 교과목
+ *  목록 — /admin/advanced-tracks에서 관리자가 구성을 바꾸면 그 값으로 대체된다.
+ *  scripts/seed-immersive-subjects.mjs가 심는 초기 데이터와 내용을 맞춰뒀다. */
+export const DEFAULT_IMMERSIVE_SUBJECTS = [
   "메가존클라우드부트캠프1",
   "네이버클라우드부트캠프1",
   "메가존클라우드부트캠프2",

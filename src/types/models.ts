@@ -134,6 +134,17 @@ export interface ImmersiveSemesterOption {
 }
 
 /**
+ * 몰입형 교과목명 목록 (예: "메가존클라우드부트캠프1"). 트랙별 이수 교과목(advancedTracks)과
+ * 마찬가지로 학생이 신청서에서 고르는 실제 교과목 옵션이라 관리자가 /admin/advanced-tracks에서
+ * 추가·삭제·순서 변경한다. → immersiveSubjects/{id}
+ */
+export interface ImmersiveSubjectOption {
+  id: string;
+  name: string;
+  order: number;
+}
+
+/**
  * 중고급 이수 신청(AdvancedApplication.targetSemester)에서 고르는 "신청 학기" 목록
  * (예: "2026학년도 제1학기"). 마일리지는 연 단위(semesters 컬렉션, 예: "2026년도")로 신청을
  * 받지만 중고급 이수는 학기 단위로 따로 받기 때문에 별도 목록으로 관리한다. 관리자가

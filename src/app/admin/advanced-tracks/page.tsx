@@ -13,8 +13,20 @@ import {
 import { useDragReorder } from "@/lib/hooks/useDragReorder";
 import { listApprovedAdvancedApplications } from "@/lib/firestore/advancedApplications";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
+import {
+  createImmersiveSubject,
+  deleteImmersiveSubject,
+  setImmersiveSubjectOrder,
+  subscribeImmersiveSubjects,
+} from "@/lib/firestore/immersiveSubjects";
 import { exportAdvancedApplicationsExcel } from "@/lib/excel/advancedApplicationsExport";
-import type { AdvancedApplication, AdvancedTargetSemesterOption, AdvancedTrack, CompletionLevel } from "@/types/models";
+import type {
+  AdvancedApplication,
+  AdvancedTargetSemesterOption,
+  AdvancedTrack,
+  CompletionLevel,
+  ImmersiveSubjectOption,
+} from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -130,8 +142,126 @@ export default function AdminAdvancedTracksPage() {
         {tracks.length === 0 && !editing && <p className="py-10 text-center text-sm text-muted">등록된 트랙이 없어요.</p>}
       </ul>
 
+      <ImmersiveSubjectsSection />
+
       <ApprovedStudentsSection />
     </div>
+  );
+}
+
+/** 몰입형 교과목명 목록 관리 — 중고급 이수 신청·이수요건 확인 두 화면 모두
+ *  이 컬렉션을 실시간 구독하므로, 여기서 추가·삭제·순서 변경하면 두 화면에
+ *  바로 반영된다. */
+function ImmersiveSubjectsSection() {
+  const [subjects, setSubjects] = useState<ImmersiveSubjectOption[]>([]);
+  const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const unsub = subscribeImmersiveSubjects(setSubjects);
+    return () => unsub();
+  }, []);
+
+  async function handleAdd() {
+    const name = draft.trim();
+    if (!name) return;
+    setSubmitting(true);
+    try {
+      await createImmersiveSubject(name, subjects.length);
+      setDraft("");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!confirm(`"${name}" 교과목을 삭제할까요?`)) return;
+    await deleteImmersiveSubject(id);
+  }
+
+  async function handleMove(index: number, direction: -1 | 1) {
+    const target = subjects[index + direction];
+    const current = subjects[index];
+    if (!target) return;
+    await Promise.all([
+      setImmersiveSubjectOrder(current.id, target.order),
+      setImmersiveSubjectOrder(target.id, current.order),
+    ]);
+  }
+
+  const { getDragHandleProps, getRowProps } = useDragReorder(subjects, async (next) => {
+    await Promise.all(next.map((s, i) => setImmersiveSubjectOrder(s.id, i)));
+  });
+
+  return (
+    <Card className="mt-6">
+      <p className="font-bold text-foreground">몰입형 교과목 관리</p>
+      <p className="mt-1 text-xs text-muted">
+        중고급 이수 신청·이수요건 확인 화면의 &quot;몰입형 교과목&quot;에서 고를 수 있는 교과목명 목록이에요.
+      </p>
+
+      <ul className="mt-3 flex flex-col gap-2">
+        {subjects.map((subject, i) => {
+          const { isDragging, isDragOver, ...rowProps } = getRowProps(i);
+          return (
+            <li
+              key={subject.id}
+              {...rowProps}
+              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 transition ${
+                isDragOver ? "border-primary bg-primary-light" : "border-border"
+              } ${isDragging ? "opacity-40" : ""}`}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  {...getDragHandleProps(i)}
+                  className="cursor-grab text-muted/60 hover:text-primary active:cursor-grabbing"
+                >
+                  <GripVertical size={15} />
+                </span>
+                <span className="text-sm font-semibold text-foreground">{subject.name}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => handleMove(i, -1)}
+                  disabled={i === 0}
+                  className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ArrowUp size={15} />
+                </button>
+                <button
+                  onClick={() => handleMove(i, 1)}
+                  disabled={i === subjects.length - 1}
+                  className="text-muted hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  <ArrowDown size={15} />
+                </button>
+                <button onClick={() => handleDelete(subject.id, subject.name)} className="ml-1 text-muted hover:text-danger">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+        {subjects.length === 0 && <p className="py-4 text-center text-xs text-muted">등록된 몰입형 교과목이 없어요.</p>}
+      </ul>
+
+      <div className="mt-3 flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleAdd();
+            }
+          }}
+          placeholder="예: 메가존클라우드부트캠프1"
+        />
+        <Button type="button" size="sm" onClick={handleAdd} loading={submitting} className="shrink-0 whitespace-nowrap">
+          <Plus size={16} /> 추가
+        </Button>
+      </div>
+    </Card>
   );
 }
 

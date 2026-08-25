@@ -9,7 +9,7 @@ import { Input, Select } from "@/components/ui/Input";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import {
   Chip,
-  IMMERSIVE_SUBJECTS,
+  DEFAULT_IMMERSIVE_SUBJECTS,
   InfoCard,
   LEVEL_PROGRAM,
   NON_CURRICULAR_EXAMPLES,
@@ -22,6 +22,7 @@ import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
 import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
+import { subscribeImmersiveSubjects } from "@/lib/firestore/immersiveSubjects";
 import {
   EDUCATION_PROGRAMS,
   type AdvancedTargetSemesterOption,
@@ -66,6 +67,7 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
   const [trackId, setTrackId] = useState("");
   const [completionSemesters, setCompletionSemesters] = useState<CompletionSemesterOption[]>([]);
   const [immersiveSemesters, setImmersiveSemesters] = useState<ImmersiveSemesterOption[]>([]);
+  const [immersiveSubjectNames, setImmersiveSubjectNames] = useState<string[]>(DEFAULT_IMMERSIVE_SUBJECTS);
   const [subject1, setSubject1] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [subject2, setSubject2] = useState<CompletedSubjectEntry>(emptySubject(LEVEL_PROGRAM["중급"]));
   const [immersive, setImmersive] = useState<CompletedSubjectEntry>(emptySubject("AI-Bridge Professional"));
@@ -99,6 +101,13 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
 
   useEffect(() => {
     const unsub = subscribeImmersiveSemesters(setImmersiveSemesters);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeImmersiveSubjects((list) => {
+      if (list.length > 0) setImmersiveSubjectNames(list.map((s) => s.name));
+    });
     return () => unsub();
   }, []);
 
@@ -341,7 +350,7 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
               value={immersive}
               onChange={setImmersive}
               programOptions={["AI-Bridge Professional"]}
-              subjectOptions={IMMERSIVE_SUBJECTS}
+              subjectOptions={immersiveSubjectNames}
               semesterOptions={immersiveSemesters}
             />
           </div>
