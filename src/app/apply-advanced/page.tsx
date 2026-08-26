@@ -403,7 +403,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             <label className="mb-1.5 block text-xs font-semibold text-muted">
               성적증명서 첨부 (PDF 파일만 가능, 필수)
             </label>
-            <p className="mb-1.5 text-xs text-muted">신청일 기준으로 발급받은 성적증명서를 첨부해주세요.</p>
+            <p className="mb-1.5 text-xs font-bold text-danger">신청일 기준으로 발급받은 성적증명서를 첨부해주세요.</p>
             {prefillTranscriptUrl && !transcriptFile && (
               <p className="mb-1.5 text-xs text-success">
                 이수요건 확인 때 첨부한 파일을 그대로 사용합니다 —{" "}
