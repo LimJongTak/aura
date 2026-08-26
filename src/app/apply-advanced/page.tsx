@@ -304,6 +304,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             <p className="mt-1.5 text-xs text-muted">
               {level} 이수기준: {level} 교과목 2과목 + 몰입형 1과목 + 비교과 참여 1회
             </p>
+            <p className="mt-1 text-sm font-bold text-danger">1과목은 2026학년도 1학기 이후 이수 필수</p>
           </div>
 
           <div>
@@ -402,6 +403,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
             <label className="mb-1.5 block text-xs font-semibold text-muted">
               성적증명서 첨부 (PDF 파일만 가능, 필수)
             </label>
+            <p className="mb-1.5 text-xs text-muted">신청일 기준으로 발급받은 성적증명서를 첨부해주세요.</p>
             {prefillTranscriptUrl && !transcriptFile && (
               <p className="mb-1.5 text-xs text-success">
                 이수요건 확인 때 첨부한 파일을 그대로 사용합니다 —{" "}
