@@ -5,22 +5,31 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
-import { Badge, StatusBadge } from "@/components/ui/Badge";
+import { Badge, EligibilityStatusBadge, StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { listProcessedMileageApplications, updateMileageApplicationStatus } from "@/lib/firestore/mileageApplications";
 import {
   listProcessedAdvancedApplications,
   updateAdvancedApplicationStatus,
 } from "@/lib/firestore/advancedApplications";
+import { listProcessedEligibilityChecks } from "@/lib/firestore/eligibilityChecks";
 import { listSemesters } from "@/lib/firestore/semesters";
-import type { AdvancedApplication, ApplicationStatus, MileageApplication, Semester } from "@/types/models";
+import type {
+  AdvancedApplication,
+  ApplicationStatus,
+  EligibilityCheck,
+  EligibilityCheckStatus,
+  MileageApplication,
+  Semester,
+} from "@/types/models";
 
 const STATUS_FILTERS: ("전체" | ApplicationStatus)[] = ["전체", "승인", "반려"];
 const STATUS_CHANGE_OPTIONS: ApplicationStatus[] = ["승인", "반려", "검토중"];
+const ELIGIBILITY_STATUS_FILTERS: ("전체" | EligibilityCheckStatus)[] = ["전체", "충족", "미충족"];
 const ALL_SEMESTERS = "전체";
 const PAGE_SIZE = 10;
 
-type Category = "mileage" | "advanced";
+type Category = "mileage" | "advanced" | "eligibility";
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -154,29 +163,34 @@ function PaidRecalledTags({ app }: { app: MileageApplication }) {
 export default function AdminHistoryPage() {
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
+  const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [category, setCategory] = useState<Category>("mileage");
   const [mileageStatus, setMileageStatus] = useState<"전체" | ApplicationStatus>("전체");
   const [advancedStatus, setAdvancedStatus] = useState<"전체" | ApplicationStatus>("전체");
+  const [eligibilityStatus, setEligibilityStatus] = useState<"전체" | EligibilityCheckStatus>("전체");
   const [search, setSearch] = useState("");
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [mileagePage, setMileagePage] = useState(1);
   const [advancedPage, setAdvancedPage] = useState(1);
+  const [eligibilityPage, setEligibilityPage] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
     try {
-      const [m, a, s] = await Promise.all([
+      const [m, a, el, s] = await Promise.all([
         listProcessedMileageApplications(),
         listProcessedAdvancedApplications(),
+        listProcessedEligibilityChecks(),
         listSemesters(),
       ]);
       setMileageApps(m);
       setAdvancedApps(a);
+      setEligibilityChecks(el);
       setSemesters(s);
     } finally {
       setDataLoading(false);
@@ -190,10 +204,12 @@ export default function AdminHistoryPage() {
   useEffect(() => {
     setMileagePage(1);
     setAdvancedPage(1);
+    setEligibilityPage(1);
   }, [search, dateFrom, dateTo, semesterFilter]);
 
   useEffect(() => setMileagePage(1), [mileageStatus]);
   useEffect(() => setAdvancedPage(1), [advancedStatus]);
+  useEffect(() => setEligibilityPage(1), [eligibilityStatus]);
 
   const filteredMileage = useMemo(() => {
     const q = search.trim();
@@ -217,10 +233,26 @@ export default function AdminHistoryPage() {
     });
   }, [advancedApps, advancedStatus, search, semesterFilter, dateFrom, dateTo]);
 
+  const filteredEligibility = useMemo(() => {
+    const q = search.trim();
+    return eligibilityChecks.filter((e) => {
+      if (eligibilityStatus !== "전체" && e.status !== eligibilityStatus) return false;
+      if (q && !e.studentName.includes(q) && !e.studentId.includes(q)) return false;
+      if (semesterFilter !== ALL_SEMESTERS && e.targetSemester !== semesterFilter) return false;
+      if (!inDateRange(e.processedAt, dateFrom, dateTo)) return false;
+      return true;
+    });
+  }, [eligibilityChecks, eligibilityStatus, search, semesterFilter, dateFrom, dateTo]);
+
   const mileageTotalPages = Math.max(1, Math.ceil(filteredMileage.length / PAGE_SIZE));
   const advancedTotalPages = Math.max(1, Math.ceil(filteredAdvanced.length / PAGE_SIZE));
+  const eligibilityTotalPages = Math.max(1, Math.ceil(filteredEligibility.length / PAGE_SIZE));
   const pagedMileage = filteredMileage.slice((mileagePage - 1) * PAGE_SIZE, mileagePage * PAGE_SIZE);
   const pagedAdvanced = filteredAdvanced.slice((advancedPage - 1) * PAGE_SIZE, advancedPage * PAGE_SIZE);
+  const pagedEligibility = filteredEligibility.slice(
+    (eligibilityPage - 1) * PAGE_SIZE,
+    eligibilityPage * PAGE_SIZE
+  );
 
   async function handleMileageChange(id: string, next: ApplicationStatus) {
     let reason: string | undefined;
@@ -257,7 +289,10 @@ export default function AdminHistoryPage() {
 
   return (
     <div>
-      <PageHeader title="처리 내역" description="승인·반려 처리가 완료된 마일리지·중고급 이수 신청 내역입니다." />
+      <PageHeader
+        title="처리 내역"
+        description="승인·반려 처리가 완료된 마일리지·중고급 이수 신청, 그리고 결과가 확정된 중고급 이수요건 확인 내역입니다."
+      />
 
       <div className="mt-5 flex gap-2">
         <TabButton active={category === "mileage"} onClick={() => setCategory("mileage")}>
@@ -265,6 +300,9 @@ export default function AdminHistoryPage() {
         </TabButton>
         <TabButton active={category === "advanced"} onClick={() => setCategory("advanced")}>
           중고급 이수 신청 ({filteredAdvanced.length})
+        </TabButton>
+        <TabButton active={category === "eligibility"} onClick={() => setCategory("eligibility")}>
+          이수요건 확인 ({filteredEligibility.length})
         </TabButton>
       </div>
 
@@ -391,7 +429,7 @@ export default function AdminHistoryPage() {
             <Pagination page={mileagePage} totalPages={mileageTotalPages} onChange={setMileagePage} />
           </Card>
         </div>
-      ) : (
+      ) : category === "advanced" ? (
         <div className="mt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-bold text-foreground">중고급 이수 신청 처리 내역 ({filteredAdvanced.length}건)</h2>
@@ -484,6 +522,113 @@ export default function AdminHistoryPage() {
               </table>
             )}
             <Pagination page={advancedPage} totalPages={advancedTotalPages} onChange={setAdvancedPage} />
+          </Card>
+        </div>
+      ) : (
+        <div className="mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-bold text-foreground">이수요건 확인 처리 내역 ({filteredEligibility.length}건)</h2>
+            <div className="flex gap-2">
+              {ELIGIBILITY_STATUS_FILTERS.map((s) => (
+                <TabButton key={s} active={eligibilityStatus === s} onClick={() => setEligibilityStatus(s)}>
+                  {s}
+                </TabButton>
+              ))}
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            항목별 판정 및 결과 확정은 관리자 홈의 &quot;이수요건 확인 · 검토중&quot;에서 처리합니다. 여기서는
+            결과가 확정된(충족/미충족) 내역만 조회할 수 있습니다.
+          </p>
+          <Card className="mt-3 overflow-x-auto p-0">
+            {dataLoading ? (
+              <p className="p-6 text-sm text-muted">불러오는 중...</p>
+            ) : filteredEligibility.length === 0 ? (
+              <p className="p-6 text-sm text-muted">처리 내역이 없습니다.</p>
+            ) : (
+              <table className="w-full text-left text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-surface text-muted">
+                    <th className="px-4 py-3 font-semibold">처리일시</th>
+                    <th className="px-4 py-3 font-semibold">학번/이름</th>
+                    <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
+                    <th className="px-4 py-3 font-semibold">등급</th>
+                    <th className="px-4 py-3 font-semibold">이수 교과목 1</th>
+                    <th className="px-4 py-3 font-semibold">이수 교과목 2</th>
+                    <th className="px-4 py-3 font-semibold">몰입형 교과목</th>
+                    <th className="px-4 py-3 font-semibold">비교과 프로그램</th>
+                    <th className="px-4 py-3 font-semibold">메모</th>
+                    <th className="px-4 py-3 font-semibold">결과</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedEligibility.map((e) => (
+                    <tr key={e.id} className="border-b border-border last:border-0 align-top">
+                      <td className="px-4 py-2.5 text-muted">
+                        {e.processedAt ? new Date(e.processedAt).toLocaleString("ko-KR") : "-"}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {e.studentId} {e.studentName}
+                      </td>
+                      <td className="px-4 py-2.5">{e.targetSemester}</td>
+                      <td className="px-4 py-2.5">{e.level}</td>
+                      <td className="px-4 py-2.5">
+                        {e.subjects?.[0] && (
+                          <div>
+                            [{e.subjects[0].program}] {e.subjects[0].subjectName} ({e.subjects[0].completedYearMonth})
+                          </div>
+                        )}
+                        {e.criteria && (
+                          <div className="mt-1">
+                            <EligibilityStatusBadge status={e.criteria.subject1} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {e.subjects?.[1] && (
+                          <div>
+                            [{e.subjects[1].program}] {e.subjects[1].subjectName} ({e.subjects[1].completedYearMonth})
+                          </div>
+                        )}
+                        {e.criteria && (
+                          <div className="mt-1">
+                            <EligibilityStatusBadge status={e.criteria.subject2} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {e.immersive && (
+                          <div>
+                            [{e.immersive.program}] {e.immersive.subjectName} ({e.immersive.completedYearMonth})
+                          </div>
+                        )}
+                        {e.criteria && (
+                          <div className="mt-1">
+                            <EligibilityStatusBadge status={e.criteria.immersive} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div>
+                          {e.nonCurricularProgram}
+                          {e.nonCurricularPlanned ? " (참여 예정)" : ` (${e.nonCurricularYearMonth})`}
+                        </div>
+                        {e.criteria && (
+                          <div className="mt-1">
+                            <EligibilityStatusBadge status={e.criteria.nonCurricular} />
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted">{e.note || "-"}</td>
+                      <td className="px-4 py-2.5">
+                        <EligibilityStatusBadge status={e.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <Pagination page={eligibilityPage} totalPages={eligibilityTotalPages} onChange={setEligibilityPage} />
           </Card>
         </div>
       )}

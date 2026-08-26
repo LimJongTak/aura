@@ -21,6 +21,7 @@ import {
   DEFAULT_ELIGIBILITY_CRITERIA,
   listPendingEligibilityChecks,
   updateEligibilityCriteria,
+  updateEligibilityNote,
 } from "@/lib/firestore/eligibilityChecks";
 import { listSemesters } from "@/lib/firestore/semesters";
 import type {
@@ -31,7 +32,22 @@ import type {
   MileageApplication,
   Semester,
 } from "@/types/models";
-import { EligibilityStatusBadge } from "@/components/ui/Badge";
+
+type Category = "mileage" | "advanced" | "eligibility";
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
+        active ? "bg-primary text-white" : "border border-border text-muted hover:border-primary hover:text-primary"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
 
 /** 세부 항목 하나의 충족/미충족 토글 버튼 쌍. */
 function CriterionToggle({
@@ -115,7 +131,9 @@ export default function AdminPage() {
   const [rejectTarget, setRejectTarget] = useState<MileageApplication | null>(null);
   const [rejectDraft, setRejectDraft] = useState("");
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [criteriaDrafts, setCriteriaDrafts] = useState<Record<string, EligibilityCriteria>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [category, setCategory] = useState<Category>("mileage");
 
   const refresh = useCallback(async () => {
     const [m, a, e, s, processed] = await Promise.all([
@@ -143,6 +161,13 @@ export default function AdminPage() {
       const next = { ...prev };
       for (const check of e) {
         if (next[check.id] === undefined) next[check.id] = check.note ?? "";
+      }
+      return next;
+    });
+    setCriteriaDrafts((prev) => {
+      const next = { ...prev };
+      for (const check of e) {
+        if (next[check.id] === undefined) next[check.id] = check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
       }
       return next;
     });
@@ -217,21 +242,34 @@ export default function AdminPage() {
     }
   }
 
-  async function handleCriterionChange(check: EligibilityCheck, key: keyof EligibilityCriteria, next: CriterionStatus) {
+  /** 토글 클릭은 화면 초안(criteriaDrafts)만 바꾼다 — 실제 저장(전체 결과 확정 및
+   *  검토 대기 목록에서 제외)은 네 항목을 모두 정한 뒤 "결과 내보내기"를 눌러야 일어난다. */
+  function handleCriterionChange(check: EligibilityCheck, key: keyof EligibilityCriteria, next: CriterionStatus) {
+    setCriteriaDrafts((prev) => ({
+      ...prev,
+      [check.id]: { ...(prev[check.id] ?? check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA), [key]: next },
+    }));
+  }
+
+  async function handleSaveNote(check: EligibilityCheck) {
     setBusyId(check.id);
     try {
-      const criteria = { ...(check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA), [key]: next };
-      await updateEligibilityCriteria(check.id, criteria, noteDrafts[check.id] ?? check.note ?? "");
+      await updateEligibilityNote(check.id, noteDrafts[check.id] ?? "");
       await refresh();
     } finally {
       setBusyId(null);
     }
   }
 
-  async function handleSaveNote(check: EligibilityCheck) {
+  async function handleExportEligibilityResult(check: EligibilityCheck) {
+    const criteria = criteriaDrafts[check.id] ?? check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
+    if (Object.values(criteria).some((v) => v === "검토중")) {
+      alert("이수 교과목 1·2, 몰입형, 비교과 네 항목 모두 충족/미충족을 선택해야 결과를 내보낼 수 있습니다.");
+      return;
+    }
     setBusyId(check.id);
     try {
-      await updateEligibilityCriteria(check.id, check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA, noteDrafts[check.id] ?? "");
+      await updateEligibilityCriteria(check.id, criteria, noteDrafts[check.id] ?? check.note ?? "");
       await refresh();
     } finally {
       setBusyId(null);
@@ -242,7 +280,20 @@ export default function AdminPage() {
     <div>
       <PageHeader title="관리자 대시보드" description={user?.email ? `${user.email.split("@")[0]}님으로 로그인됨` : undefined} />
 
-      <div className="mt-8">
+      <div className="mt-5 flex gap-2">
+        <TabButton active={category === "mileage"} onClick={() => setCategory("mileage")}>
+          마일리지 신청 ({mileageApps.length})
+        </TabButton>
+        <TabButton active={category === "advanced"} onClick={() => setCategory("advanced")}>
+          중고급 이수 신청 ({advancedApps.length})
+        </TabButton>
+        <TabButton active={category === "eligibility"} onClick={() => setCategory("eligibility")}>
+          이수요건 확인 ({eligibilityChecks.length})
+        </TabButton>
+      </div>
+
+      {category === "mileage" && (
+      <div className="mt-6">
         <h2 className="font-bold text-foreground">마일리지 신청 · 검토중 ({mileageApps.length}건)</h2>
         <Card className="mt-3 overflow-x-auto p-0">
           {mileageApps.length === 0 ? (
@@ -328,8 +379,10 @@ export default function AdminPage() {
           )}
         </Card>
       </div>
+      )}
 
-      <div className="mt-10">
+      {category === "advanced" && (
+      <div className="mt-6">
         <h2 className="font-bold text-foreground">중고급 이수 신청 · 검토중 ({advancedApps.length}건)</h2>
         <Card className="mt-3 overflow-x-auto p-0">
           {advancedApps.length === 0 ? (
@@ -414,13 +467,15 @@ export default function AdminPage() {
           )}
         </Card>
       </div>
+      )}
 
-      <div className="mt-10">
+      {category === "eligibility" && (
+      <div className="mt-6">
         <h2 className="font-bold text-foreground">이수요건 확인 · 검토중 ({eligibilityChecks.length}건)</h2>
         <p className="mt-1 text-xs text-muted">
-          중고급 이수 신청(장학금) 전에 학생이 미리 제출한 이수요건 자기 신고입니다. 항목별로 충족/미충족을
-          매기면, 네 항목이 모두 충족일 때만 전체 결과가 충족으로 확정되고 하나라도 미충족이면 바로 미충족으로
-          확정됩니다.
+          중고급 이수 신청(장학금) 전에 학생이 미리 제출한 이수요건 자기 신고입니다. 이수 교과목 1·2, 몰입형,
+          비교과 네 항목 모두 충족/미충족을 고른 뒤 &quot;결과 내보내기&quot;를 눌러야 전체 결과가 확정되어
+          학생에게 전달됩니다 — 항목 하나만 미충족으로 눌러도 나머지를 다 정하기 전에는 확정되지 않습니다.
         </p>
         <Card className="mt-3 overflow-x-auto p-0">
           {eligibilityChecks.length === 0 ? (
@@ -443,8 +498,9 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {eligibilityChecks.map((e) => {
-                  const criteria = e.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
+                  const criteria = criteriaDrafts[e.id] ?? e.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
                   const busy = busyId === e.id;
+                  const allDecided = Object.values(criteria).every((v) => v !== "검토중");
                   return (
                     <tr key={e.id} className="border-b border-border last:border-0 align-top">
                       <td className="px-4 py-2.5">
@@ -526,7 +582,15 @@ export default function AdminPage() {
                         />
                       </td>
                       <td className="px-4 py-2.5">
-                        <EligibilityStatusBadge status={e.status} />
+                        <Button
+                          size="sm"
+                          loading={busy}
+                          disabled={!allDecided}
+                          onClick={() => handleExportEligibilityResult(e)}
+                        >
+                          결과 내보내기
+                        </Button>
+                        {!allDecided && <p className="mt-1 text-[11px] text-muted">모든 항목 판정 후 가능</p>}
                       </td>
                     </tr>
                   );
@@ -536,6 +600,7 @@ export default function AdminPage() {
           )}
         </Card>
       </div>
+      )}
 
       {rejectTarget && (
         <div

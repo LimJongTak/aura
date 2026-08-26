@@ -80,6 +80,27 @@ export async function listPendingEligibilityChecks(): Promise<EligibilityCheck[]
   });
 }
 
+/** 관리자가 항목별 심사를 마쳐 충족/미충족으로 확정된(처리 완료) 이수요건 확인 내역. */
+export async function listProcessedEligibilityChecks(): Promise<EligibilityCheck[]> {
+  const statuses: EligibilityCheckStatus[] = ["충족", "미충족"];
+  const grouped = await Promise.all(
+    statuses.map(async (status) => {
+      const q = query(eligibilityRef(), where("status", "==", status), orderBy("appliedAt", "desc"));
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          ...data,
+          appliedAt: toMillis(data.appliedAt),
+          processedAt: data.processedAt ? toMillis(data.processedAt) : undefined,
+        } as EligibilityCheck;
+      });
+    })
+  );
+  return grouped.flat().sort((a, b) => (b.processedAt ?? 0) - (a.processedAt ?? 0));
+}
+
 /** 세부 항목 네 개가 모두 충족이면 충족, 하나라도 미충족이면 미충족, 그 외엔 검토중. */
 export function computeOverallEligibilityStatus(criteria: EligibilityCriteria): EligibilityCheckStatus {
   const values = Object.values(criteria);
@@ -102,4 +123,11 @@ export async function updateEligibilityCriteria(
     note,
     processedAt: serverTimestamp(),
   });
+}
+
+/** 메모만 저장한다 — criteria/status/processedAt은 건드리지 않는다. 메모를 적는 도중에
+ *  결과가 미리 확정되지 않도록, 항목별 판정 확정은 반드시 updateEligibilityCriteria(결과
+ *  내보내기)를 통해서만 이뤄지게 한다. */
+export async function updateEligibilityNote(id: string, note: string): Promise<void> {
+  await updateDoc(doc(db, "eligibilityChecks", id), { note });
 }
