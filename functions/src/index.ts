@@ -75,8 +75,11 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
   if (!code || typeof code !== "string") {
     throw new HttpsError("invalid-argument", "인증번호를 입력해주세요.");
   }
-  if (!newPassword || newPassword.length < 4) {
-    throw new HttpsError("invalid-argument", "비밀번호는 4자 이상이어야 합니다.");
+  if (!newPassword || newPassword.length < 8) {
+    throw new HttpsError("invalid-argument", "비밀번호는 8자 이상이어야 합니다.");
+  }
+  if (newPassword === "000000") {
+    throw new HttpsError("invalid-argument", "초기 비밀번호(000000)는 새 비밀번호로 쓸 수 없습니다.");
   }
 
   const ref = admin.firestore().collection("passwordResets").doc(studentId);

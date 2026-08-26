@@ -51,8 +51,8 @@ export default function ChangePasswordPage() {
       setVerifyError("인증번호를 입력해주세요.");
       return;
     }
-    if (newPassword.length < 4) {
-      setVerifyError("비밀번호는 4자 이상이어야 합니다.");
+    if (newPassword.length < 8) {
+      setVerifyError("비밀번호는 8자 이상이어야 합니다.");
       return;
     }
     if (newPassword !== newPassword2) {
