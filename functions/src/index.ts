@@ -268,3 +268,12 @@ export const exportBankAccountsForPayment = onCall({ secrets: [BANK_ACCOUNT_ENC_
 
   return { accounts };
 });
+
+/** 학생 관리 화면에서 "계좌등록 여부"만 표시하기 위한 조회. select()로 필드 없이
+ * 문서 ID만 가져오므로 은행명·예금주·계좌번호(암호문 포함) 그 무엇도 응답에
+ * 실리지 않는다 — 등록했는지 여부만 알 수 있다. */
+export const listBankAccountStudentIds = onCall(async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const snap = await admin.firestore().collection("bankAccounts").select().get();
+  return { studentIds: snap.docs.map((d) => d.id) };
+});

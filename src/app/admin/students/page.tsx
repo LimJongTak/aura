@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Download, Eye, Pencil, Search, UserX } from "lucide-react";
 import { deleteStudent, listAllStudents, upsertStudent } from "@/lib/firestore/students";
 import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/firestore/mileageApplications";
+import { listBankAccountStudentIds } from "@/lib/firestore/bankAccounts";
 import { listSemesters } from "@/lib/firestore/semesters";
 import type { MileageApplication, Semester, Student } from "@/types/models";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +16,7 @@ import { PageHeader } from "@/components/admin/PageHeader";
 interface StudentRow extends Student {
   approvedMileage: number;
   rank: number;
+  bankRegistered: boolean;
 }
 
 const ALL_SEMESTERS = "전체 학기";
@@ -22,6 +24,7 @@ const ALL_SEMESTERS = "전체 학기";
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [approvedApps, setApprovedApps] = useState<MileageApplication[]>([]);
+  const [bankRegisteredIds, setBankRegisteredIds] = useState<Set<string>>(new Set());
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
   const [dataLoading, setDataLoading] = useState(false);
@@ -34,14 +37,16 @@ export default function AdminStudentsPage() {
   const refresh = useCallback(async () => {
     setDataLoading(true);
     try {
-      const [studentList, apps, semesterList] = await Promise.all([
+      const [studentList, apps, semesterList, bankIds] = await Promise.all([
         listAllStudents(),
         listApprovedMileageApplications(),
         listSemesters(),
+        listBankAccountStudentIds(),
       ]);
       setStudents(studentList);
       setApprovedApps(apps);
       setSemesters(semesterList);
+      setBankRegisteredIds(bankIds);
       const current = semesterList.find((s) => s.isCurrent);
       if (current) setSemesterFilter(current.name);
     } finally {
@@ -62,10 +67,14 @@ export default function AdminStudentsPage() {
       totals.set(app.studentId, (totals.get(app.studentId) ?? 0) + app.mileage);
     }
     return students
-      .map((s) => ({ ...s, approvedMileage: totals.get(s.studentId) ?? 0 }))
+      .map((s) => ({
+        ...s,
+        approvedMileage: totals.get(s.studentId) ?? 0,
+        bankRegistered: bankRegisteredIds.has(s.studentId),
+      }))
       .sort((a, b) => b.approvedMileage - a.approvedMileage)
       .map((s, i) => ({ ...s, rank: i + 1 }));
-  }, [students, approvedApps, semesterFilter]);
+  }, [students, approvedApps, semesterFilter, bankRegisteredIds]);
 
   const departments = useMemo(() => {
     const set = new Set(rows.map((r) => r.department).filter(Boolean));
@@ -96,9 +105,18 @@ export default function AdminStudentsPage() {
   }
 
   function handleExportCsv() {
-    const header = ["순위", "학번", "이름", "학과", "참여학과", "승인 마일리지", "학기 한도(원)"];
+    const header = ["순위", "학번", "이름", "학과", "참여학과", "계좌등록", "승인 마일리지", "학기 한도(원)"];
     const lines = filtered.map((r) =>
-      [r.rank, r.studentId, r.name, r.department, r.isParticipating ? "Y" : "N", r.approvedMileage, computeSemesterCap(r)].join(",")
+      [
+        r.rank,
+        r.studentId,
+        r.name,
+        r.department,
+        r.isParticipating ? "Y" : "N",
+        r.bankRegistered ? "Y" : "N",
+        r.approvedMileage,
+        computeSemesterCap(r),
+      ].join(",")
     );
     const csv = [header.join(","), ...lines].join("\n");
     const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
@@ -169,6 +187,7 @@ export default function AdminStudentsPage() {
                 <th className="px-4 py-3 font-semibold">이름</th>
                 <th className="px-4 py-3 font-semibold">학과</th>
                 <th className="px-4 py-3 font-semibold">참여학과</th>
+                <th className="px-4 py-3 font-semibold">계좌등록</th>
                 <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
                 <th className="px-4 py-3 font-semibold">상세</th>
                 <th className="px-4 py-3 font-semibold">수정</th>
@@ -186,6 +205,17 @@ export default function AdminStudentsPage() {
                     {r.isParticipating && (
                       <span className="rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
                         참여
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {r.bankRegistered ? (
+                      <span className="rounded-full bg-success-light px-2 py-0.5 text-xs font-semibold text-success">
+                        등록
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-muted">
+                        미등록
                       </span>
                     )}
                   </td>

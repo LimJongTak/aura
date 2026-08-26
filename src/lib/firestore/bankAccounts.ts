@@ -48,3 +48,15 @@ export async function exportBankAccountsForPayment(
   const result = await exportBankAccountsFn({ studentIds });
   return result.data.accounts;
 }
+
+const listBankAccountStudentIdsFn = httpsCallable<void, { studentIds: string[] }>(
+  functions,
+  "listBankAccountStudentIds"
+);
+
+/** 관리자 전용 — 계좌를 등록한 학번 목록만 가져온다(은행명·예금주 등은 전혀
+ *  포함되지 않는다). 학생 관리 화면의 "계좌등록" 여부 표시에 쓴다. */
+export async function listBankAccountStudentIds(): Promise<Set<string>> {
+  const result = await listBankAccountStudentIdsFn();
+  return new Set(result.data.studentIds);
+}
