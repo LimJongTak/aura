@@ -22,6 +22,9 @@
   실제 장학금 신청 전에 성적증명서를 첨부해 이수 현황(이수 교과목 2과목·몰입형·비교과)을
   미리 점검받는 자기 신고
 - **중고급 이수 신청** — 위 참여학과 학생 대상 별도 장학금 트랙 신청
+- **장학금 수령 계좌 등록** — 마일리지 조회 화면의 "계좌 등록" 버튼으로 은행명·예금주·계좌번호
+  등록. 계좌번호는 Cloud Function에서만 암호화·복호화되고 본인에게도 마지막 4자리만 다시
+  보여준다
 - **학생 등록 신청** — 학생명단에 없는 학생이 이름·학번·학과를 제출하면 관리자 승인 후 계정 생성
 
 ### 관리자 (`/admin`)
@@ -30,7 +33,8 @@
   (이수요건 확인은 이수 교과목 1·2·몰입형·비교과 네 항목을 모두 판정해야 결과 확정)
 - **처리 내역** — 항목별 처리 완료 내역 조회·검색·상태 변경
 - **학생 관리 / 등록 신청 검토** — 학생 정보 수정, 탈퇴, 신규 등록 승인
-- **지급 관리** — 학기별 환산금액 확정, 장학금 지급 완료 처리
+- **지급 관리** — 학기별 환산금액 확정, 장학금 지급 완료 처리, 선택한 학생 엑셀 다운로드 시
+  등록된 계좌정보(은행·예금주·계좌번호)를 그 순간에만 복호화해 함께 내려받기
 - **학기 관리** — 마일리지/중고급 신청 학기, 중고급 이수 학기, 몰입형 학기 관리
 - **중고급 트랙 관리 / 공지사항 / 퀵메뉴 / 헤더 메뉴 관리**
 - **방문자 통계**
@@ -63,6 +67,8 @@
 | `immersiveSubjects` | 몰입형 교과목명 목록 |
 | `conversionSettings` | 마일리지→금액 환산설정(싱글턴) |
 | `scholarshipPayments` | 학생별 장학금 지급 완료 기록 |
+| `bankAccounts` | 장학금 수령 계좌(계좌번호는 암호화 저장, 클라이언트에는 마지막 4자리만 노출) |
+| `bankAccountExportLogs` | 관리자가 계좌정보를 복호화·내보낼 때마다 남는 감사 로그 |
 | `semesters` / `semesterState` | 학기 목록 및 "현재 학기" 상태 |
 | `studentRegistrationRequests` | 학생 등록 신청(승인 전 대기열) |
 | `passwordResets` | 비밀번호 변경 인증번호(Cloud Functions 전용) |
@@ -89,7 +95,16 @@
   공유하지 않도록 주의하세요.
 - 비밀번호 변경은 학교 이메일로 발송한 6자리 인증번호(10분 유효, 5회 시도 제한)로 본인 확인 후
   진행되며, 새 비밀번호는 8자 이상이어야 하고 초기 비밀번호(000000)는 재사용할 수 없습니다.
-- Resend API 키는 코드에 넣지 않고 Cloud Functions 시크릿(`RESEND_API_KEY`)으로 관리합니다.
+- **장학금 수령 계좌번호는 Firestore에 평문으로 저장되지 않습니다.** `saveBankAccount` Cloud
+  Function이 AES-256-GCM으로 암호화한 값(`accountNumberEnc`)만 저장하고, 클라이언트에는 표시용
+  마지막 4자리(`accountNumberLast4`)만 내려줍니다. 암호화 키(`BANK_ACCOUNT_ENC_KEY`)는 Secret
+  Manager에만 있고, `bankAccounts` 컬렉션은 클라이언트 직접 쓰기가 항상 막혀 있어(`allow write:
+  if false`) 계좌번호를 Cloud Function을 거치지 않고 저장할 방법이 없습니다. 복호화는 관리자가
+  지급 관리에서 엑셀을 내보낼 때 `exportBankAccountsForPayment` Cloud Function 안에서만
+  일어나고, 호출할 때마다 관리자 UID·대상 학번·건수를 `bankAccountExportLogs`에 감사 기록으로
+  남깁니다.
+- Resend API 키, 계좌번호 암호화 키는 코드에 넣지 않고 Cloud Functions 시크릿(`RESEND_API_KEY`,
+  `BANK_ACCOUNT_ENC_KEY`)으로 관리합니다.
 - `serviceAccountKey.json`, `.env*`는 `.gitignore`에 포함되어 있으며 커밋되어서는 안 됩니다.
 
 ## 시작하기
@@ -150,9 +165,14 @@ npx firebase deploy --only firestore:rules,firestore:indexes,storage
 ### 7. Cloud Functions 배포
 
 ```bash
-firebase functions:secrets:set RESEND_API_KEY   # 최초 1회
+firebase functions:secrets:set RESEND_API_KEY          # 최초 1회
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" \
+  | firebase functions:secrets:set BANK_ACCOUNT_ENC_KEY --data-file -  # 최초 1회 — 계좌번호 암호화 키
 firebase deploy --only functions
 ```
+
+> `BANK_ACCOUNT_ENC_KEY`를 다시 생성(회전)하면 그 전에 암호화되어 저장된 계좌번호는 새 키로
+> 복호화할 수 없게 됩니다 — 이미 등록된 계좌가 있다면 키를 함부로 바꾸지 마세요.
 
 Windows에서 `TypeError: fetch failed`로 배포가 중간에 실패하면, Node의 IPv6/IPv4 루프백 주소
 해석 문제로 알려진 firebase-tools 이슈입니다. IPv4 우선으로 강제하고 재시도하세요.

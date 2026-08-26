@@ -316,6 +316,24 @@ export interface ScholarshipPayment {
   paidAt: number; // epoch ms
 }
 
+/**
+ * 학생이 장학금(마일리지/중고급 이수) 수령용으로 등록한 계좌 정보 → bankAccounts/{studentId}.
+ * 계좌번호 원문은 Firestore에 저장하지 않는다 — Cloud Function이 서버에서만 들고 있는
+ * 키로 암호화한 값(accountNumberEnc)만 저장하고, 클라이언트에는 마지막 4자리(표시용)만
+ * 내려준다. 관리자가 지급 관리에서 엑셀로 내보낼 때만 Cloud Function이 복호화해서
+ * 반환한다. Firestore 규칙상 이 컬렉션은 클라이언트 직접 쓰기가 항상 막혀 있고
+ * (`allow write: if false`), 저장은 반드시 saveBankAccount Cloud Function을 통해서만
+ * 이뤄진다 — 그래야 암호화 키가 클라이언트에 노출되지 않는다.
+ */
+export interface StudentBankAccount {
+  studentId: string;
+  bankName: string;
+  accountHolder: string;
+  /** 표시용 — 마지막 4자리만. 전체 계좌번호는 클라이언트에 내려가지 않는다. */
+  accountNumberLast4: string;
+  updatedAt: number;
+}
+
 export const PARTICIPATING_DEPARTMENTS = [
   "인공지능공학전공",
   "전기공학전공",

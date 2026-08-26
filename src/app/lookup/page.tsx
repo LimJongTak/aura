@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Landmark } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
 import { Badge, EligibilityStatusBadge, StatusBadge } from "@/components/ui/Badge";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
 import {
@@ -12,6 +15,7 @@ import {
 } from "@/lib/firestore/mileageApplications";
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
 import { DEFAULT_ELIGIBILITY_CRITERIA, listEligibilityChecksForStudent } from "@/lib/firestore/eligibilityChecks";
+import { getMyBankAccount, saveBankAccount } from "@/lib/firestore/bankAccounts";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import type {
@@ -22,6 +26,7 @@ import type {
   MileageApplication,
   Semester,
   Student,
+  StudentBankAccount,
   StudentMileageSummary,
 } from "@/types/models";
 
@@ -45,13 +50,15 @@ export default function LookupPage() {
       <h1 className="text-2xl font-extrabold text-foreground">마일리지 조회</h1>
       <p className="mt-1.5 text-sm text-muted">로그인한 본인의 마일리지 현황을 확인할 수 있습니다.</p>
       <div className="mt-6">
-        <RequireStudentLogin>{(student) => <LookupResult student={student} />}</RequireStudentLogin>
+        <RequireStudentLogin>
+          {(student, { isPreview }) => <LookupResult student={student} isPreview={isPreview} />}
+        </RequireStudentLogin>
       </div>
     </div>
   );
 }
 
-function LookupResult({ student }: { student: Student }) {
+function LookupResult({ student, isPreview }: { student: Student; isPreview: boolean }) {
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<StudentMileageSummary | null>(null);
   const [applications, setApplications] = useState<MileageApplication[]>([]);
@@ -59,6 +66,8 @@ function LookupResult({ student }: { student: Student }) {
   const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [currentSemester, setCurrentSemester] = useState<Semester | null>(null);
+  const [bankAccount, setBankAccount] = useState<StudentBankAccount | null>(null);
+  const [bankModalOpen, setBankModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +78,8 @@ function LookupResult({ student }: { student: Student }) {
       listAdvancedApplicationsForStudent(student.studentId),
       listEligibilityChecksForStudent(student.studentId),
       getConversionSettings(),
-    ]).then(async ([semester, apps, advApps, eligChecks, convSettings]) => {
+      isPreview ? Promise.resolve(null) : getMyBankAccount(student.studentId),
+    ]).then(async ([semester, apps, advApps, eligChecks, convSettings, account]) => {
       const studentSummary = await computeStudentSummary(student, semester?.name);
       if (cancelled) return;
       setCurrentSemester(semester);
@@ -78,12 +88,13 @@ function LookupResult({ student }: { student: Student }) {
       setAdvanced(advApps);
       setEligibilityChecks(eligChecks);
       setSettings(convSettings);
+      setBankAccount(account);
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [student]);
+  }, [student, isPreview]);
 
   if (loading || !summary) {
     return <p className="py-10 text-center text-sm text-muted">불러오는 중...</p>;
@@ -94,17 +105,29 @@ function LookupResult({ student }: { student: Student }) {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h2 className="text-lg font-bold text-foreground">
-          {summary.student.name}
-          <span className="ml-2 text-sm font-medium text-muted">
-            {summary.student.studentId} · {summary.student.department}
-            {summary.student.isParticipating && (
-              <span className="ml-1.5 rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
-                참여학과
-              </span>
-            )}
-          </span>
-        </h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="text-lg font-bold text-foreground">
+            {summary.student.name}
+            <span className="ml-2 text-sm font-medium text-muted">
+              {summary.student.studentId} · {summary.student.department}
+              {summary.student.isParticipating && (
+                <span className="ml-1.5 rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
+                  참여학과
+                </span>
+              )}
+            </span>
+          </h2>
+          <div className="flex flex-col items-end gap-1">
+            <Button size="sm" variant="outline" onClick={() => setBankModalOpen(true)} disabled={isPreview}>
+              <Landmark size={15} /> {bankAccount ? "계좌 정보 수정" : "계좌 등록"}
+            </Button>
+            <p className="text-xs text-muted">
+              {bankAccount
+                ? `${bankAccount.bankName} ****${bankAccount.accountNumberLast4}`
+                : "장학금 수령 계좌가 등록되지 않았습니다."}
+            </p>
+          </div>
+        </div>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard
             label={currentSemester ? `${currentSemester.name} 승인 마일리지` : "승인 마일리지"}
@@ -354,6 +377,122 @@ function LookupResult({ student }: { student: Student }) {
           )}
         </Card>
       </div>
+
+      {bankModalOpen && (
+        <BankAccountModal
+          studentId={student.studentId}
+          defaultHolder={student.name}
+          current={bankAccount}
+          onClose={() => setBankModalOpen(false)}
+          onSaved={(next) => {
+            setBankAccount(next);
+            setBankModalOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BankAccountModal({
+  studentId,
+  defaultHolder,
+  current,
+  onClose,
+  onSaved,
+}: {
+  studentId: string;
+  defaultHolder: string;
+  current: StudentBankAccount | null;
+  onClose: () => void;
+  onSaved: (next: StudentBankAccount) => void;
+}) {
+  const [bankName, setBankName] = useState(current?.bankName ?? "");
+  const [accountHolder, setAccountHolder] = useState(current?.accountHolder ?? defaultHolder);
+  const [accountNumber, setAccountNumber] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const digits = accountNumber.replace(/[^0-9]/g, "");
+    if (!bankName.trim()) {
+      setError("은행명을 입력해주세요.");
+      return;
+    }
+    if (!accountHolder.trim()) {
+      setError("예금주명을 입력해주세요.");
+      return;
+    }
+    if (digits.length < 8 || digits.length > 20) {
+      setError("계좌번호는 숫자 8~20자리로 입력해주세요.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { last4 } = await saveBankAccount({
+        bankName: bankName.trim(),
+        accountHolder: accountHolder.trim(),
+        accountNumber: digits,
+      });
+      onSaved({
+        studentId,
+        bankName: bankName.trim(),
+        accountHolder: accountHolder.trim(),
+        accountNumberLast4: last4,
+        updatedAt: Date.now(),
+      });
+    } catch {
+      setError("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-foreground">장학금 수령 계좌 등록</h3>
+        <p className="mt-1 text-xs text-muted">
+          마일리지·중고급 이수 장학금 지급에 쓰일 계좌입니다. 계좌번호는 암호화되어 저장되며,
+          등록 후에는 마지막 4자리만 다시 확인할 수 있습니다.
+        </p>
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">은행명</label>
+            <Input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="예: KB국민은행" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">예금주</label>
+            <Input value={accountHolder} onChange={(e) => setAccountHolder(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">계좌번호 (숫자만)</label>
+            <Input
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+              inputMode="numeric"
+              placeholder={current ? `등록된 계좌: ****${current.accountNumberLast4} (수정하려면 새로 입력)` : "계좌번호를 입력해주세요"}
+            />
+            {current && (
+              <p className="mt-1 text-[11px] text-muted">
+                보안을 위해 이전 계좌번호는 다시 표시되지 않습니다 — 변경하지 않더라도 계좌번호를 처음부터 다시
+                입력해주세요.
+              </p>
+            )}
+          </div>
+          {error && <p className="text-sm font-medium text-danger">{error}</p>}
+          <div className="mt-1 flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              취소
+            </Button>
+            <Button type="submit" size="sm" loading={submitting}>
+              저장
+            </Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

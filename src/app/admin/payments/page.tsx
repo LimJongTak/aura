@@ -21,6 +21,7 @@ import {
   type RecordScholarshipPaymentInput,
 } from "@/lib/firestore/scholarshipPayments";
 import { exportAdvancedPaymentExcel, exportMileagePaymentExcel } from "@/lib/excel/scholarshipPaymentsExport";
+import { exportBankAccountsForPayment } from "@/lib/firestore/bankAccounts";
 import {
   ADVANCED_SCHOLARSHIP_AMOUNT,
   type AdvancedApplication,
@@ -183,6 +184,7 @@ function MileageTab({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [amountOverrides, setAmountOverrides] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [budgetInput, setBudgetInput] = useState(0);
   const [perPointAmount, setPerPointAmount] = useState(0);
@@ -341,19 +343,29 @@ function MileageTab({
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     const targets = selected.size > 0 ? rows.filter((r) => selected.has(r.student.studentId)) : rows;
-    exportMileagePaymentExcel(
-      semester,
-      targets.map((r) => ({
-        studentId: r.student.studentId,
-        studentName: r.student.name,
-        department: r.student.department,
-        approvedMileage: r.approvedMileage,
-        amount: effectiveAmount(r),
-        paid: !!r.payment,
-      }))
-    );
+    setExporting(true);
+    setError(null);
+    try {
+      const bankAccounts = await exportBankAccountsForPayment(targets.map((r) => r.student.studentId));
+      await exportMileagePaymentExcel(
+        semester,
+        targets.map((r) => ({
+          studentId: r.student.studentId,
+          studentName: r.student.name,
+          department: r.student.department,
+          approvedMileage: r.approvedMileage,
+          amount: effectiveAmount(r),
+          paid: !!r.payment,
+          bank: bankAccounts[r.student.studentId],
+        }))
+      );
+    } catch {
+      setError("엑셀 내보내기 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -435,7 +447,7 @@ function MileageTab({
             )}
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+            <Button variant="outline" size="sm" onClick={handleExport} loading={exporting} disabled={rows.length === 0}>
               <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
             </Button>
             {selected.size > 0 && (
@@ -548,6 +560,8 @@ function AdvancedTab({
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -656,18 +670,28 @@ function AdvancedTab({
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
     const targets = selected.size > 0 ? rows.filter((r) => selected.has(r.studentId)) : rows;
-    exportAdvancedPaymentExcel(
-      semester,
-      targets.map((r) => ({
-        studentId: r.studentId,
-        studentName: r.studentName,
-        levels: r.levels.join(" · "),
-        amount: ADVANCED_SCHOLARSHIP_AMOUNT,
-        paid: !!r.payment,
-      }))
-    );
+    setExporting(true);
+    setExportError(null);
+    try {
+      const bankAccounts = await exportBankAccountsForPayment(targets.map((r) => r.studentId));
+      await exportAdvancedPaymentExcel(
+        semester,
+        targets.map((r) => ({
+          studentId: r.studentId,
+          studentName: r.studentName,
+          levels: r.levels.join(" · "),
+          amount: ADVANCED_SCHOLARSHIP_AMOUNT,
+          paid: !!r.payment,
+          bank: bankAccounts[r.studentId],
+        }))
+      );
+    } catch {
+      setExportError("엑셀 내보내기 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   const totalPayout = rows.length * ADVANCED_SCHOLARSHIP_AMOUNT;
@@ -696,7 +720,7 @@ function AdvancedTab({
             {formatWon(ADVANCED_SCHOLARSHIP_AMOUNT)} 고정
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={rows.length === 0}>
+            <Button variant="outline" size="sm" onClick={handleExport} loading={exporting} disabled={rows.length === 0}>
               <Download size={15} /> {selected.size > 0 ? `선택한 ${selected.size}명 엑셀 다운로드` : "전체 엑셀 다운로드"}
             </Button>
             {selected.size > 0 && (
@@ -706,6 +730,7 @@ function AdvancedTab({
             )}
           </div>
         </div>
+        {exportError && <p className="border-b border-border px-4 py-2 text-sm font-medium text-danger">{exportError}</p>}
 
         {loading ? (
           <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>
