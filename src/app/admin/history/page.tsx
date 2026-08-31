@@ -8,6 +8,7 @@ import { Input, Select } from "@/components/ui/Input";
 import { Badge, EligibilityStatusBadge, StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { InfoField } from "@/components/admin/InfoField";
+import { Pagination } from "@/components/admin/Pagination";
 import { listProcessedMileageApplications, updateMileageApplicationStatus } from "@/lib/firestore/mileageApplications";
 import {
   listProcessedAdvancedApplications,
@@ -44,50 +45,6 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     >
       {children}
     </button>
-  );
-}
-
-function Pagination({
-  page,
-  totalPages,
-  onChange,
-}: {
-  page: number;
-  totalPages: number;
-  onChange: (p: number) => void;
-}) {
-  if (totalPages <= 1) return null;
-  return (
-    <div className="flex items-center justify-center gap-1 border-t border-border p-3">
-      <button
-        type="button"
-        onClick={() => onChange(Math.max(1, page - 1))}
-        disabled={page === 1}
-        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition hover:text-primary disabled:opacity-30"
-      >
-        이전
-      </button>
-      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-        <button
-          key={p}
-          type="button"
-          onClick={() => onChange(p)}
-          className={`h-7 w-7 shrink-0 rounded-full text-xs font-semibold transition ${
-            p === page ? "bg-primary text-white" : "text-muted hover:bg-surface"
-          }`}
-        >
-          {p}
-        </button>
-      ))}
-      <button
-        type="button"
-        onClick={() => onChange(Math.min(totalPages, page + 1))}
-        disabled={page === totalPages}
-        className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted transition hover:text-primary disabled:opacity-30"
-      >
-        다음
-      </button>
-    </div>
   );
 }
 

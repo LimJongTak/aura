@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { Button } from "@/components/ui/Button";
+import { PageSpinner } from "@/components/ui/PageSpinner";
 import type { Student } from "@/types/models";
 
 /** 관리자가 "학생 화면 미리보기"를 누르면 사용하는 가짜 학생 데이터. 실제 신청/제출은 막는다. */
@@ -40,7 +41,7 @@ export function RequireStudentLogin({
   }, [loading, user, student, router]);
 
   if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
+    return <PageSpinner />;
   }
 
   if (previewing) {
@@ -84,7 +85,7 @@ export function RequireStudentLogin({
   }
 
   if (student.mustChangePassword) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">비밀번호 변경 페이지로 이동 중...</div>;
+    return <PageSpinner label="비밀번호 변경 페이지로 이동 중..." />;
   }
 
   return <>{children(student, { isPreview: false })}</>;

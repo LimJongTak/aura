@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
 
 interface StudentRow extends Student {
   approvedMileage: number;
@@ -20,6 +21,7 @@ interface StudentRow extends Student {
 }
 
 const ALL_SEMESTERS = "전체 학기";
+const PAGE_SIZE = 30;
 
 export default function AdminStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -33,6 +35,7 @@ export default function AdminStudentsPage() {
   const [participatingOnly, setParticipatingOnly] = useState(false);
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
@@ -91,6 +94,11 @@ export default function AdminStudentsPage() {
     });
   }, [rows, search, department, participatingOnly]);
 
+  useEffect(() => setPage(1), [search, department, participatingOnly, semesterFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   async function handleWithdraw(row: StudentRow) {
     if (!confirm(`${row.name}(${row.studentId}) 학생을 탈퇴시킬까요?\n로그인 계정이 삭제되며 되돌릴 수 없습니다.`)) return;
     setWithdrawingId(row.studentId);
@@ -102,6 +110,16 @@ export default function AdminStudentsPage() {
     } finally {
       setWithdrawingId(null);
     }
+  }
+
+  /** CSV 셀 하나를 안전하게 이스케이프한다 — 콤마·줄바꿈·큰따옴표가 섞인 값이
+   *  (학과 등 관리자가 자유 입력하는 필드) 열 구조를 깨뜨리지 않도록 항상
+   *  큰따옴표로 감싸고, 스프레드시트가 수식으로 해석할 수 있는 선행 문자
+   *  (=+-@)는 작은따옴표를 붙여 무력화한다(수식 주입 방지). */
+  function csvCell(value: string | number): string {
+    let s = String(value);
+    if (/^[=+\-@]/.test(s)) s = `'${s}`;
+    return `"${s.replace(/"/g, '""')}"`;
   }
 
   function handleExportCsv() {
@@ -116,9 +134,11 @@ export default function AdminStudentsPage() {
         r.bankRegistered ? "Y" : "N",
         r.approvedMileage,
         computeSemesterCap(r),
-      ].join(",")
+      ]
+        .map(csvCell)
+        .join(",")
     );
-    const csv = [header.join(","), ...lines].join("\n");
+    const csv = [header.map(csvCell).join(","), ...lines].join("\n");
     const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -195,7 +215,7 @@ export default function AdminStudentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
+              {paged.map((r) => (
                 <tr key={r.studentId} className="border-b border-border last:border-0">
                   <td className="px-4 py-2.5 font-semibold text-foreground/70">{r.rank}</td>
                   <td className="px-4 py-2.5">{r.studentId}</td>
@@ -249,6 +269,7 @@ export default function AdminStudentsPage() {
             </tbody>
           </table>
         )}
+        <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </Card>
 
       {editing && (

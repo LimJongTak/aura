@@ -1,6 +1,8 @@
 /** 지급 관리 화면에서 선택한 학생들을 엑셀로 내보낼 때 쓰는 공용 헬퍼.
  *  xlsx 패키지는 번들 크기가 커서 호출 시점에만 동적 import한다. */
 
+import { sanitizeRow } from "./sanitizeCell";
+
 async function writeExcel(
   filename: string,
   sheetName: string,
@@ -9,7 +11,7 @@ async function writeExcel(
   colWidths: number[]
 ): Promise<void> {
   const XLSX = await import("xlsx");
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows.map(sanitizeRow)]);
   ws["!cols"] = colWidths.map((wch) => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);

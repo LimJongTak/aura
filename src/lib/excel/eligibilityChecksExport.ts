@@ -2,6 +2,7 @@
  *  때 쓰는 헬퍼. xlsx 패키지는 번들 크기가 커서 호출 시점에만 동적 import한다. */
 
 import type { EligibilityCheck } from "@/types/models";
+import { sanitizeRow } from "./sanitizeCell";
 
 const HEADERS = [
   "학번",
@@ -73,7 +74,7 @@ export async function exportEligibilityChecksExcel(
     ];
   });
 
-  const ws = XLSX.utils.aoa_to_sheet([[...HEADERS], ...rows]);
+  const ws = XLSX.utils.aoa_to_sheet([[...HEADERS], ...rows.map(sanitizeRow)]);
   ws["!cols"] = COL_WIDTHS.map((wch) => ({ wch }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "이수요건 확인 내역");

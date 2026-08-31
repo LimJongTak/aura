@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { PageSpinner } from "@/components/ui/PageSpinner";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 
@@ -18,7 +19,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   if (loading) {
-    return <div className="px-4 py-16 text-center text-sm text-muted">확인 중...</div>;
+    return <PageSpinner />;
   }
 
   if (!user) {

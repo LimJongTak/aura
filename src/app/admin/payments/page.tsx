@@ -301,6 +301,8 @@ function MileageTab({
         next.delete(row.student.studentId);
         return next;
       });
+    } catch {
+      setError(`${row.student.name} 학생 지급 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`);
     } finally {
       setBusy(false);
     }
@@ -327,6 +329,8 @@ function MileageTab({
       }));
       await recordScholarshipPayments(inputs);
       setSelected(new Set());
+    } catch {
+      setError("일괄 지급 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusy(false);
     }
@@ -335,9 +339,12 @@ function MileageTab({
   async function cancel(row: MileageRow) {
     if (!row.payment) return;
     if (!confirm(`${row.student.name} 학생의 지급완료 처리를 취소할까요?`)) return;
+    setError(null);
     setBusy(true);
     try {
       await cancelScholarshipPayment(row.payment.id);
+    } catch {
+      setError(`${row.student.name} 학생 지급 취소 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`);
     } finally {
       setBusy(false);
     }
@@ -562,6 +569,7 @@ function AdvancedTab({
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -613,6 +621,7 @@ function AdvancedTab({
   }
 
   async function payOne(row: AdvancedRow) {
+    setPaymentError(null);
     setBusy(true);
     try {
       await recordScholarshipPayments([
@@ -629,6 +638,8 @@ function AdvancedTab({
         next.delete(row.studentId);
         return next;
       });
+    } catch {
+      setPaymentError(`${row.studentName} 학생 지급 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`);
     } finally {
       setBusy(false);
     }
@@ -643,6 +654,7 @@ function AdvancedTab({
       )
     )
       return;
+    setPaymentError(null);
     setBusy(true);
     try {
       const inputs: RecordScholarshipPaymentInput[] = targets.map((r) => ({
@@ -654,6 +666,8 @@ function AdvancedTab({
       }));
       await recordScholarshipPayments(inputs);
       setSelected(new Set());
+    } catch {
+      setPaymentError("일괄 지급 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusy(false);
     }
@@ -662,9 +676,12 @@ function AdvancedTab({
   async function cancel(row: AdvancedRow) {
     if (!row.payment) return;
     if (!confirm(`${row.studentName} 학생의 지급완료 처리를 취소할까요?`)) return;
+    setPaymentError(null);
     setBusy(true);
     try {
       await cancelScholarshipPayment(row.payment.id);
+    } catch {
+      setPaymentError(`${row.studentName} 학생 지급 취소 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`);
     } finally {
       setBusy(false);
     }
@@ -731,6 +748,9 @@ function AdvancedTab({
           </div>
         </div>
         {exportError && <p className="border-b border-border px-4 py-2 text-sm font-medium text-danger">{exportError}</p>}
+        {paymentError && (
+          <p className="border-b border-border px-4 py-2 text-sm font-medium text-danger">{paymentError}</p>
+        )}
 
         {loading ? (
           <p className="p-8 text-center text-sm text-muted">불러오는 중...</p>

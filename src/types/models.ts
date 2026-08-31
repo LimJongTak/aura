@@ -295,6 +295,11 @@ export interface StudentMileageSummary {
 export const SEMESTER_CAP_PARTICIPATING = 1_500_000;
 export const SEMESTER_CAP_NON_PARTICIPATING = 1_000_000;
 
+/** 관리자가 직접(또는 일괄) 지급하는 마일리지 1건당 상한 — 자기신청 최댓값(50점)
+ *  보다 넉넉히 잡되, 자릿수 오타(예: 500)로 인한 과다 지급 사고를 막기 위한
+ *  화면단 안전장치다. */
+export const MAX_ADMIN_MILEAGE_GRANT = 300;
+
 /** 중고급 이수 장학금은 등급·트랙과 무관하게 학기당 정액이다. */
 export const ADVANCED_SCHOLARSHIP_AMOUNT = 1_500_000;
 

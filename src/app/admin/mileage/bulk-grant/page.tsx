@@ -15,7 +15,13 @@ import {
   parseMileageGrantExcel,
   type ParsedMileageGrantRow,
 } from "@/lib/excel/mileageBulkGrant";
-import { ACTIVITY_GROUPS, type ActivityGroup, type Semester, type Student } from "@/types/models";
+import {
+  ACTIVITY_GROUPS,
+  MAX_ADMIN_MILEAGE_GRANT,
+  type ActivityGroup,
+  type Semester,
+  type Student,
+} from "@/types/models";
 
 const ALL_DEPARTMENTS = "전체";
 
@@ -157,6 +163,10 @@ function CheckboxGrantSection({
       setError("지급 사유, 마일리지, 인정 학기를 모두 입력해주세요.");
       return;
     }
+    if (mileageValue > MAX_ADMIN_MILEAGE_GRANT) {
+      setError(`1인당 마일리지는 ${MAX_ADMIN_MILEAGE_GRANT}점을 넘을 수 없습니다. 오타는 아닌지 확인해주세요.`);
+      return;
+    }
     if (!confirm(`선택한 ${selected.size}명에게 ${mileageValue}점씩 지급할까요?`)) return;
     setSubmitting(true);
     try {
@@ -261,7 +271,13 @@ function CheckboxGrantSection({
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">마일리지 점수(1인당)</label>
-            <Input type="number" min="1" value={mileage} onChange={(e) => setMileage(e.target.value)} />
+            <Input
+              type="number"
+              min="1"
+              max={MAX_ADMIN_MILEAGE_GRANT}
+              value={mileage}
+              onChange={(e) => setMileage(e.target.value)}
+            />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">인정 학기</label>
@@ -327,6 +343,7 @@ function ExcelGrantSection({
     else if (!student) errors.push("등록되지 않은 학번");
     if (!row.reason) errors.push("사유 누락");
     if (!Number.isFinite(row.mileage) || row.mileage <= 0) errors.push("마일리지 값 오류");
+    else if (row.mileage > MAX_ADMIN_MILEAGE_GRANT) errors.push(`마일리지 ${MAX_ADMIN_MILEAGE_GRANT}점 초과`);
     return { row, student, errors };
   }
 

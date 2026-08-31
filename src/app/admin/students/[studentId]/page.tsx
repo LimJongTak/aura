@@ -24,6 +24,7 @@ import { listSemesters } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
   ACTIVITY_GROUPS,
+  MAX_ADMIN_MILEAGE_GRANT,
   type ActivityGroup,
   type AdvancedApplication,
   type ConversionSettings,
@@ -448,6 +449,10 @@ function GrantMileageModal({
       setError("활동명, 마일리지, 인정 학기를 모두 입력해주세요.");
       return;
     }
+    if (mileageValue > MAX_ADMIN_MILEAGE_GRANT) {
+      setError(`마일리지는 ${MAX_ADMIN_MILEAGE_GRANT}점을 넘을 수 없습니다. 오타는 아닌지 확인해주세요.`);
+      return;
+    }
     setSubmitting(true);
     try {
       let evidenceFileUrl: string | undefined;
@@ -494,7 +499,13 @@ function GrantMileageModal({
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">마일리지 점수</label>
-            <Input type="number" min="1" value={mileage} onChange={(e) => setMileage(e.target.value)} />
+            <Input
+              type="number"
+              min="1"
+              max={MAX_ADMIN_MILEAGE_GRANT}
+              value={mileage}
+              onChange={(e) => setMileage(e.target.value)}
+            />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">인정 학기</label>
