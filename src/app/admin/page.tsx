@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { InfoField } from "@/components/admin/InfoField";
 import { cn } from "@/lib/utils/cn";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
@@ -121,29 +122,6 @@ function CriterionField({
         {detail || <span className="text-muted">입력 없음</span>}
       </div>
       <CriterionToggle status={status} busy={busy} onSet={onSet} />
-    </div>
-  );
-}
-
-/** CriterionField의 읽기 전용 버전 — 토글 없이 정보만 보여줄 때(중고급 이수
- *  신청처럼 항목별이 아니라 신청 전체를 승인/반려하는 화면) 쓴다. */
-function InfoField({
-  icon: Icon,
-  label,
-  detail,
-}: {
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  label: string;
-  detail: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-surface p-3.5">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
-        <Icon size={13} /> {label}
-      </div>
-      <div className="mt-1.5 text-sm leading-snug text-foreground">
-        {detail || <span className="text-muted">입력 없음</span>}
-      </div>
     </div>
   );
 }

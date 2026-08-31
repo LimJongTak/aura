@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, Search } from "lucide-react";
+import { BookOpenCheck, Download, FileText, Search, Sparkles, Users2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { Badge, EligibilityStatusBadge, StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { InfoField } from "@/components/admin/InfoField";
 import { listProcessedMileageApplications, updateMileageApplicationStatus } from "@/lib/firestore/mileageApplications";
 import {
   listProcessedAdvancedApplications,
@@ -368,73 +369,72 @@ export default function AdminHistoryPage() {
           <p className="mt-2 text-xs text-muted">
             지급완료·회수 처리는 학생 상세보기(학생 관리 → 학생 선택)에서 할 수 있습니다.
           </p>
-          <Card className="mt-3 overflow-x-auto p-0">
-            {dataLoading ? (
-              <p className="p-6 text-sm text-muted">불러오는 중...</p>
-            ) : filteredMileage.length === 0 ? (
-              <p className="p-6 text-sm text-muted">처리 내역이 없습니다.</p>
-            ) : (
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface text-muted">
-                    <th className="px-4 py-3 font-semibold">처리일시</th>
-                    <th className="px-4 py-3 font-semibold">학번/이름</th>
-                    <th className="px-4 py-3 font-semibold">구분</th>
-                    <th className="px-4 py-3 font-semibold">활동명</th>
-                    <th className="px-4 py-3 text-right font-semibold">마일리지</th>
-                    <th className="px-4 py-3 font-semibold">증빙</th>
-                    <th className="px-4 py-3 font-semibold">인정 학기</th>
-                    <th className="px-4 py-3 font-semibold">상태</th>
-                    <th className="px-4 py-3 font-semibold">비고</th>
-                    <th className="px-4 py-3 font-semibold">상태 변경</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedMileage.map((a) => (
-                    <tr key={a.id} className="border-b border-border last:border-0">
-                      <td className="px-4 py-2.5 text-muted">
-                        {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {a.studentId} {a.studentName}
-                      </td>
-                      <td className="px-4 py-2.5">{a.category}</td>
-                      <td className="px-4 py-2.5">{a.activityName}</td>
-                      <td className="px-4 py-2.5 text-right font-semibold">{a.mileage}점</td>
-                      <td className="px-4 py-2.5">
+          {dataLoading ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">불러오는 중...</p>
+            </Card>
+          ) : filteredMileage.length === 0 ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">처리 내역이 없습니다.</p>
+            </Card>
+          ) : (
+            <div className="mt-3 flex flex-col gap-3">
+              {pagedMileage.map((a) => (
+                <Card key={a.id} className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-bold text-foreground">
+                          {a.studentName} <span className="font-normal text-muted">({a.studentId})</span>
+                        </p>
+                        <Badge tone="muted">{a.category}</Badge>
+                        <StatusBadge status={a.status} />
+                        <PaidRecalledTags app={a} />
+                      </div>
+                      <p className="mt-1.5 text-sm text-foreground">{a.activityName}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {a.evidenceFileUrl ? (
                           <a
                             href={a.evidenceFileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary hover:underline"
+                            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
                           >
-                            보기
+                            <FileText size={12} /> 증빙 보기
                           </a>
                         ) : (
-                          "-"
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">
+                            <FileText size={12} /> 증빙 없음
+                          </span>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5">{a.semester ?? "-"}</td>
-                      <td className="px-4 py-2.5">
-                        <StatusBadge status={a.status} />
-                        <PaidRecalledTags app={a} />
-                      </td>
-                      <td className="px-4 py-2.5 text-muted">{a.note || "-"}</td>
-                      <td className="px-4 py-2.5">
-                        <StatusChangeMenu
-                          status={a.status}
-                          busy={busyId === a.id}
-                          onChange={(next) => handleMileageChange(a.id, next)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Pagination page={mileagePage} totalPages={mileageTotalPages} onChange={setMileagePage} />
-          </Card>
+                        {a.semester && <Badge tone="muted">인정 학기 {a.semester}</Badge>}
+                      </div>
+                      {a.note && <p className="mt-2 text-xs text-muted">비고: {a.note}</p>}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="text-2xl font-extrabold text-primary">{a.mileage}</span>
+                      <span className="ml-0.5 text-sm font-semibold text-muted">점</span>
+                      <p className="mt-1 text-xs text-muted">
+                        {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end border-t border-border pt-3.5">
+                    <StatusChangeMenu
+                      status={a.status}
+                      busy={busyId === a.id}
+                      onChange={(next) => handleMileageChange(a.id, next)}
+                    />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+          {mileageTotalPages > 1 && (
+            <Card className="mt-3 p-0">
+              <Pagination page={mileagePage} totalPages={mileageTotalPages} onChange={setMileagePage} />
+            </Card>
+          )}
         </div>
       ) : category === "advanced" ? (
         <div className="mt-6">
@@ -448,88 +448,127 @@ export default function AdminHistoryPage() {
               ))}
             </div>
           </div>
-          <Card className="mt-3 overflow-x-auto p-0">
-            {dataLoading ? (
-              <p className="p-6 text-sm text-muted">불러오는 중...</p>
-            ) : filteredAdvanced.length === 0 ? (
-              <p className="p-6 text-sm text-muted">처리 내역이 없습니다.</p>
-            ) : (
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface text-muted">
-                    <th className="px-4 py-3 font-semibold">처리일시</th>
-                    <th className="px-4 py-3 font-semibold">학번/이름</th>
-                    <th className="px-4 py-3 font-semibold">지원학기</th>
-                    <th className="px-4 py-3 font-semibold">등급</th>
-                    <th className="px-4 py-3 font-semibold">교과목</th>
-                    <th className="px-4 py-3 font-semibold">몰입형</th>
-                    <th className="px-4 py-3 font-semibold">비교과</th>
-                    <th className="px-4 py-3 font-semibold">성적증명서</th>
-                    <th className="px-4 py-3 font-semibold">상태</th>
-                    <th className="px-4 py-3 font-semibold">비고</th>
-                    <th className="px-4 py-3 font-semibold">상태 변경</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedAdvanced.map((a) => (
-                    <tr key={a.id} className="border-b border-border last:border-0">
-                      <td className="px-4 py-2.5 text-muted">
-                        {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {a.studentId} {a.studentName}
-                      </td>
-                      <td className="px-4 py-2.5">{a.targetSemester}</td>
-                      <td className="px-4 py-2.5">{a.level}</td>
-                      <td className="px-4 py-2.5">
-                        {a.subjects?.map((s) => (
-                          <div key={s.subjectName}>
-                            [{s.program}] {s.subjectName} ({s.completed}, {s.completedYearMonth})
-                          </div>
-                        ))}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {a.immersive && (
-                          <div>
-                            {a.immersive.subjectName} ({a.immersive.completed}, {a.immersive.completedYearMonth})
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {a.nonCurricularProgram} ({a.nonCurricularYearMonth})
-                      </td>
-                      <td className="px-4 py-2.5">
+          {dataLoading ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">불러오는 중...</p>
+            </Card>
+          ) : filteredAdvanced.length === 0 ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">처리 내역이 없습니다.</p>
+            </Card>
+          ) : (
+            <div className="mt-3 flex flex-col gap-4">
+              {pagedAdvanced.map((a) => (
+                <Card key={a.id} className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+                    <div>
+                      <p className="text-base font-bold text-foreground">
+                        {a.studentName} <span className="font-normal text-muted">({a.studentId})</span>
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge tone="muted">{a.targetSemester}</Badge>
+                        <Badge tone="muted">{a.level}</Badge>
+                        <StatusBadge status={a.status} />
                         {a.transcriptFileUrl ? (
                           <a
                             href={a.transcriptFileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary hover:underline"
+                            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
                           >
-                            보기
+                            <FileText size={12} /> 성적증명서
                           </a>
                         ) : (
-                          "-"
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">
+                            <FileText size={12} /> 성적증명서 없음
+                          </span>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <StatusBadge status={a.status} />
-                      </td>
-                      <td className="px-4 py-2.5 text-muted">{a.note || "-"}</td>
-                      <td className="px-4 py-2.5">
-                        <StatusChangeMenu
-                          status={a.status}
-                          busy={busyId === a.id}
-                          onChange={(next) => handleAdvancedChange(a.id, next)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Pagination page={advancedPage} totalPages={advancedTotalPages} onChange={setAdvancedPage} />
-          </Card>
+                      </div>
+                      <p className="mt-1.5 text-xs text-muted">
+                        {a.processedAt ? new Date(a.processedAt).toLocaleString("ko-KR") : "-"}
+                      </p>
+                    </div>
+                    <StatusChangeMenu
+                      status={a.status}
+                      busy={busyId === a.id}
+                      onChange={(next) => handleAdvancedChange(a.id, next)}
+                    />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <InfoField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 1"
+                      detail={
+                        a.subjects?.[0] && (
+                          <>
+                            [{a.subjects[0].program}] {a.subjects[0].subjectName}
+                            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              {a.subjects[0].completedYearMonth}
+                              <Badge tone={a.subjects[0].completed === "Y" ? "success" : "warning"}>
+                                {a.subjects[0].completed === "Y" ? "이수완료" : "미이수"}
+                              </Badge>
+                            </span>
+                          </>
+                        )
+                      }
+                    />
+                    <InfoField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 2"
+                      detail={
+                        a.subjects?.[1] && (
+                          <>
+                            [{a.subjects[1].program}] {a.subjects[1].subjectName}
+                            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              {a.subjects[1].completedYearMonth}
+                              <Badge tone={a.subjects[1].completed === "Y" ? "success" : "warning"}>
+                                {a.subjects[1].completed === "Y" ? "이수완료" : "미이수"}
+                              </Badge>
+                            </span>
+                          </>
+                        )
+                      }
+                    />
+                    <InfoField
+                      icon={Sparkles}
+                      label="몰입형 교과목"
+                      detail={
+                        a.immersive && (
+                          <>
+                            [{a.immersive.program}] {a.immersive.subjectName}
+                            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              {a.immersive.completedYearMonth}
+                              <Badge tone={a.immersive.completed === "Y" ? "success" : "warning"}>
+                                {a.immersive.completed === "Y" ? "이수완료" : "미이수"}
+                              </Badge>
+                            </span>
+                          </>
+                        )
+                      }
+                    />
+                    <InfoField
+                      icon={Users2}
+                      label="비교과 프로그램"
+                      detail={
+                        <>
+                          {a.nonCurricularProgram}
+                          <span className="block text-xs text-muted">{a.nonCurricularYearMonth}</span>
+                        </>
+                      }
+                    />
+                  </div>
+
+                  {a.note && <p className="mt-3 text-xs text-muted">비고: {a.note}</p>}
+                </Card>
+              ))}
+            </div>
+          )}
+          {advancedTotalPages > 1 && (
+            <Card className="mt-3 p-0">
+              <Pagination page={advancedPage} totalPages={advancedTotalPages} onChange={setAdvancedPage} />
+            </Card>
+          )}
         </div>
       ) : (
         <div className="mt-6">
@@ -556,96 +595,121 @@ export default function AdminHistoryPage() {
             결과가 확정된(충족/미충족) 내역만 조회할 수 있습니다. 검색·학기·기간·결과 필터를 적용한 상태 그대로
             엑셀로 내려받을 수 있어요.
           </p>
-          <Card className="mt-3 overflow-x-auto p-0">
-            {dataLoading ? (
-              <p className="p-6 text-sm text-muted">불러오는 중...</p>
-            ) : filteredEligibility.length === 0 ? (
-              <p className="p-6 text-sm text-muted">처리 내역이 없습니다.</p>
-            ) : (
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface text-muted">
-                    <th className="px-4 py-3 font-semibold">처리일시</th>
-                    <th className="px-4 py-3 font-semibold">학번/이름</th>
-                    <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
-                    <th className="px-4 py-3 font-semibold">등급</th>
-                    <th className="px-4 py-3 font-semibold">이수 교과목 1</th>
-                    <th className="px-4 py-3 font-semibold">이수 교과목 2</th>
-                    <th className="px-4 py-3 font-semibold">몰입형 교과목</th>
-                    <th className="px-4 py-3 font-semibold">비교과 프로그램</th>
-                    <th className="px-4 py-3 font-semibold">메모</th>
-                    <th className="px-4 py-3 font-semibold">결과</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedEligibility.map((e) => (
-                    <tr key={e.id} className="border-b border-border last:border-0 align-top">
-                      <td className="px-4 py-2.5 text-muted">
-                        {e.processedAt ? new Date(e.processedAt).toLocaleString("ko-KR") : "-"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {e.studentId} {e.studentName}
-                      </td>
-                      <td className="px-4 py-2.5">{e.targetSemester}</td>
-                      <td className="px-4 py-2.5">{e.level}</td>
-                      <td className="px-4 py-2.5">
-                        {e.subjects?.[0] && (
-                          <div>
-                            [{e.subjects[0].program}] {e.subjects[0].subjectName} ({e.subjects[0].completedYearMonth})
-                          </div>
-                        )}
-                        {e.criteria && (
-                          <div className="mt-1">
-                            <EligibilityStatusBadge status={e.criteria.subject1} />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {e.subjects?.[1] && (
-                          <div>
-                            [{e.subjects[1].program}] {e.subjects[1].subjectName} ({e.subjects[1].completedYearMonth})
-                          </div>
-                        )}
-                        {e.criteria && (
-                          <div className="mt-1">
-                            <EligibilityStatusBadge status={e.criteria.subject2} />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {e.immersive && (
-                          <div>
-                            [{e.immersive.program}] {e.immersive.subjectName} ({e.immersive.completedYearMonth})
-                          </div>
-                        )}
-                        {e.criteria && (
-                          <div className="mt-1">
-                            <EligibilityStatusBadge status={e.criteria.immersive} />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div>
-                          {e.nonCurricularProgram}
-                          {e.nonCurricularPlanned ? " (참여 예정)" : ` (${e.nonCurricularYearMonth})`}
-                        </div>
-                        {e.criteria && (
-                          <div className="mt-1">
-                            <EligibilityStatusBadge status={e.criteria.nonCurricular} />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-muted">{e.note || "-"}</td>
-                      <td className="px-4 py-2.5">
+          {dataLoading ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">불러오는 중...</p>
+            </Card>
+          ) : filteredEligibility.length === 0 ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">처리 내역이 없습니다.</p>
+            </Card>
+          ) : (
+            <div className="mt-3 flex flex-col gap-4">
+              {pagedEligibility.map((e) => (
+                <Card key={e.id} className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+                    <div>
+                      <p className="text-base font-bold text-foreground">
+                        {e.studentName} <span className="font-normal text-muted">({e.studentId})</span>
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge tone="muted">{e.targetSemester}</Badge>
+                        <Badge tone="muted">{e.level}</Badge>
                         <EligibilityStatusBadge status={e.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Pagination page={eligibilityPage} totalPages={eligibilityTotalPages} onChange={setEligibilityPage} />
-          </Card>
+                      </div>
+                      <p className="mt-1.5 text-xs text-muted">
+                        {e.processedAt ? new Date(e.processedAt).toLocaleString("ko-KR") : "-"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <InfoField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 1"
+                      detail={
+                        <>
+                          {e.subjects?.[0] && (
+                            <>
+                              [{e.subjects[0].program}] {e.subjects[0].subjectName}
+                              <span className="block text-xs text-muted">{e.subjects[0].completedYearMonth}</span>
+                            </>
+                          )}
+                          {e.criteria && (
+                            <span className="mt-1.5 block">
+                              <EligibilityStatusBadge status={e.criteria.subject1} />
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
+                    <InfoField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 2"
+                      detail={
+                        <>
+                          {e.subjects?.[1] && (
+                            <>
+                              [{e.subjects[1].program}] {e.subjects[1].subjectName}
+                              <span className="block text-xs text-muted">{e.subjects[1].completedYearMonth}</span>
+                            </>
+                          )}
+                          {e.criteria && (
+                            <span className="mt-1.5 block">
+                              <EligibilityStatusBadge status={e.criteria.subject2} />
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
+                    <InfoField
+                      icon={Sparkles}
+                      label="몰입형 교과목"
+                      detail={
+                        <>
+                          {e.immersive && (
+                            <>
+                              [{e.immersive.program}] {e.immersive.subjectName}
+                              <span className="block text-xs text-muted">{e.immersive.completedYearMonth}</span>
+                            </>
+                          )}
+                          {e.criteria && (
+                            <span className="mt-1.5 block">
+                              <EligibilityStatusBadge status={e.criteria.immersive} />
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
+                    <InfoField
+                      icon={Users2}
+                      label="비교과 프로그램"
+                      detail={
+                        <>
+                          {e.nonCurricularProgram}
+                          <span className="block text-xs text-muted">
+                            {e.nonCurricularPlanned ? "참여 예정" : e.nonCurricularYearMonth}
+                          </span>
+                          {e.criteria && (
+                            <span className="mt-1.5 block">
+                              <EligibilityStatusBadge status={e.criteria.nonCurricular} />
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
+                  </div>
+
+                  {e.note && <p className="mt-3 text-xs text-muted">메모: {e.note}</p>}
+                </Card>
+              ))}
+            </div>
+          )}
+          {eligibilityTotalPages > 1 && (
+            <Card className="mt-3 p-0">
+              <Pagination page={eligibilityPage} totalPages={eligibilityTotalPages} onChange={setEligibilityPage} />
+            </Card>
+          )}
         </div>
       )}
     </div>
