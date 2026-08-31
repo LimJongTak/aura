@@ -3,22 +3,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
-import { Badge, StatusBadge } from "@/components/ui/Badge";
+import { Badge, EligibilityStatusBadge, StatusBadge } from "@/components/ui/Badge";
 import { RecallReasonModal } from "@/components/admin/RecallReasonModal";
 import { getStudent } from "@/lib/firestore/students";
 import {
   cancelMileageRecall,
   computeSemesterCap,
+  deleteMileageApplication,
   grantMileage,
   listApplicationsForStudent,
   recallMileageApplications,
   setMileagePaid,
 } from "@/lib/firestore/mileageApplications";
-import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
+import {
+  deleteAdvancedApplication,
+  listAdvancedApplicationsForStudent,
+} from "@/lib/firestore/advancedApplications";
+import {
+  deleteEligibilityCheck,
+  listEligibilityChecksForStudent,
+} from "@/lib/firestore/eligibilityChecks";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { listSemesters } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
@@ -28,6 +36,7 @@ import {
   type ActivityGroup,
   type AdvancedApplication,
   type ConversionSettings,
+  type EligibilityCheck,
   type MileageApplication,
   type Semester,
   type Student,
@@ -43,6 +52,7 @@ export default function AdminStudentDetailPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
+  const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
@@ -51,18 +61,21 @@ export default function AdminStudentDetailPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [recalling, setRecalling] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [cancelingId, setCancelingId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [s, apps, advApps, semesterList, convSettings] = await Promise.all([
+    const [s, apps, advApps, elChecks, semesterList, convSettings] = await Promise.all([
       getStudent(studentId),
       listApplicationsForStudent(studentId),
       listAdvancedApplicationsForStudent(studentId),
+      listEligibilityChecksForStudent(studentId),
       listSemesters(),
       getConversionSettings(),
     ]);
     setStudent(s);
     setApplications(apps);
     setAdvanced(advApps);
+    setEligibilityChecks(elChecks);
     setSemesters(semesterList);
     setSettings(convSettings);
     setSemesterFilter((prev) => {
@@ -104,6 +117,14 @@ export default function AdminStudentDetailPage() {
         ? advanced
         : advanced.filter((a) => a.targetSemester === semesterFilter),
     [advanced, semesterFilter]
+  );
+
+  const scopedEligibility = useMemo(
+    () =>
+      semesterFilter === ALL_SEMESTERS
+        ? eligibilityChecks
+        : eligibilityChecks.filter((e) => e.targetSemester === semesterFilter),
+    [eligibilityChecks, semesterFilter]
   );
 
   const selectableIds = useMemo(
@@ -178,6 +199,53 @@ export default function AdminStudentDetailPage() {
       alert("회수 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBulkBusy(false);
+    }
+  }
+
+  async function handleCancelMileage(a: MileageApplication) {
+    if (a.paid) {
+      alert("이미 지급완료 처리된 신청이에요. 지급 관리에서 먼저 지급을 취소해주세요.");
+      return;
+    }
+    if (!confirm(`"${a.activityName}" 신청을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    setCancelingId(a.id);
+    try {
+      await deleteMileageApplication(a.id);
+      await refresh();
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setCancelingId(null);
+    }
+  }
+
+  async function handleCancelAdvanced(a: AdvancedApplication) {
+    const warning =
+      a.status === "승인"
+        ? `이미 승인된 신청이에요. 장학금이 지급되지 않았는지 지급 관리에서 먼저 확인해주세요.\n\n"${a.targetSemester} · ${a.level}" 신청을 삭제할까요? 되돌릴 수 없습니다.`
+        : `"${a.targetSemester} · ${a.level}" 신청을 삭제할까요? 되돌릴 수 없습니다.`;
+    if (!confirm(warning)) return;
+    setCancelingId(a.id);
+    try {
+      await deleteAdvancedApplication(a.id);
+      await refresh();
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setCancelingId(null);
+    }
+  }
+
+  async function handleCancelEligibility(e: EligibilityCheck) {
+    if (!confirm(`"${e.targetSemester} · ${e.level}" 이수요건 확인을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    setCancelingId(e.id);
+    try {
+      await deleteEligibilityCheck(e.id);
+      await refresh();
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setCancelingId(null);
     }
   }
 
@@ -315,6 +383,7 @@ export default function AdminStudentDetailPage() {
                   <th className="px-4 py-3 text-right font-semibold">마일리지</th>
                   <th className="px-4 py-3 font-semibold">증빙</th>
                   <th className="px-4 py-3 font-semibold">상태</th>
+                  <th className="px-4 py-3 font-semibold">취소</th>
                 </tr>
               </thead>
               <tbody>
@@ -360,6 +429,16 @@ export default function AdminStudentDetailPage() {
                         {a.paid && <Badge tone="success">지급완료</Badge>}
                       </div>
                     </td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => handleCancelMileage(a)}
+                        disabled={cancelingId === a.id}
+                        className="text-muted hover:text-danger disabled:opacity-40"
+                        title="신청 취소(삭제)"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -394,6 +473,7 @@ export default function AdminStudentDetailPage() {
                   <th className="px-4 py-3 font-semibold">몰입형/비교과</th>
                   <th className="px-4 py-3 font-semibold">성적증명서</th>
                   <th className="px-4 py-3 font-semibold">상태</th>
+                  <th className="px-4 py-3 font-semibold">취소</th>
                 </tr>
               </thead>
               <tbody>
@@ -421,6 +501,83 @@ export default function AdminStudentDetailPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <StatusBadge status={a.status} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => handleCancelAdvanced(a)}
+                        disabled={cancelingId === a.id}
+                        className="text-muted hover:text-danger disabled:opacity-40"
+                        title="신청 취소(삭제)"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-bold text-foreground">
+          중고급 이수요건 확인 내역 ({semesterFilter}, {scopedEligibility.length}건)
+        </h2>
+        <p className="mt-1 text-xs text-muted">
+          항목별 판정 및 결과 확정은 관리자 홈의 &quot;이수요건 확인 · 검토중&quot;에서 처리합니다.
+        </p>
+        <Card className="mt-3 overflow-x-auto p-0">
+          {scopedEligibility.length === 0 ? (
+            <p className="p-6 text-sm text-muted">확인 내역이 없습니다.</p>
+          ) : (
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
+                  <th className="px-4 py-3 font-semibold">등급</th>
+                  <th className="px-4 py-3 font-semibold">교과목</th>
+                  <th className="px-4 py-3 font-semibold">몰입형/비교과</th>
+                  <th className="px-4 py-3 font-semibold">성적증명서</th>
+                  <th className="px-4 py-3 font-semibold">결과</th>
+                  <th className="px-4 py-3 font-semibold">취소</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scopedEligibility.map((e) => (
+                  <tr key={e.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5">{e.targetSemester}</td>
+                    <td className="px-4 py-2.5">{e.level}</td>
+                    <td className="px-4 py-2.5">{e.subjects?.map((s) => s.subjectName).join(" / ")}</td>
+                    <td className="px-4 py-2.5">
+                      {e.immersive?.subjectName} / {e.nonCurricularProgram}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {e.transcriptFileUrl ? (
+                        <a
+                          href={e.transcriptFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          보기
+                        </a>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <EligibilityStatusBadge status={e.status} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => handleCancelEligibility(e)}
+                        disabled={cancelingId === e.id}
+                        className="text-muted hover:text-danger disabled:opacity-40"
+                        title="확인 취소(삭제)"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </td>
                   </tr>
                 ))}

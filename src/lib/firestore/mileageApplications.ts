@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   orderBy,
@@ -200,6 +201,13 @@ export async function cancelMileageRecall(ids: string[]): Promise<void> {
       })
     )
   );
+}
+
+/** 신청 자체를 완전히 삭제한다 — 반려와 달리 기록이 전혀 남지 않는다. 이미
+ *  지급완료(paid) 처리된 건은 호출 전에 화면단에서 걸러야 한다: 지급 금액
+ *  집계와 어긋나는 걸 막기 위함. */
+export async function deleteMileageApplication(id: string): Promise<void> {
+  await deleteDoc(doc(db, "mileageApplications", id));
 }
 
 export interface BulkGrantResult {

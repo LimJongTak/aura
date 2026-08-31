@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   orderBy,
@@ -98,4 +99,10 @@ export async function updateAdvancedApplicationStatus(
     note: note ?? "",
     processedAt: serverTimestamp(),
   });
+}
+
+/** 신청 자체를 완전히 삭제한다 — 반려와 달리 기록이 전혀 남지 않는다. 승인된
+ *  건은 이미 장학금이 지급되지 않았는지(지급 관리) 먼저 확인하고 삭제해야 한다. */
+export async function deleteAdvancedApplication(id: string): Promise<void> {
+  await deleteDoc(doc(db, "advancedApplications", id));
 }

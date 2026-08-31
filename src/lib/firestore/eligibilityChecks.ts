@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -130,4 +131,9 @@ export async function updateEligibilityCriteria(
  *  내보내기)를 통해서만 이뤄지게 한다. */
 export async function updateEligibilityNote(id: string, note: string): Promise<void> {
   await updateDoc(doc(db, "eligibilityChecks", id), { note });
+}
+
+/** 신청 자체를 완전히 삭제한다 — 결과가 이미 나갔더라도 기록이 전혀 남지 않는다. */
+export async function deleteEligibilityCheck(id: string): Promise<void> {
+  await deleteDoc(doc(db, "eligibilityChecks", id));
 }
