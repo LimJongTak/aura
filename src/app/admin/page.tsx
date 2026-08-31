@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, BookOpenCheck, Check, FileText, Sparkles, StickyNote, Users2, X } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { StatusBadge } from "@/components/ui/Badge";
+import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { cn } from "@/lib/utils/cn";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import {
   listPendingMileageApplications,
@@ -49,7 +50,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
-/** 세부 항목 하나의 충족/미충족 토글 버튼 쌍. */
+/** 세부 항목 하나의 충족/미충족 토글 — 하나의 알약 안에 두 옵션을 나란히 넣어
+ *  선택된 쪽만 채워지는 세그먼트 컨트롤로 보이게 한다. */
 function CriterionToggle({
   status,
   busy,
@@ -60,31 +62,65 @@ function CriterionToggle({
   onSet: (next: CriterionStatus) => void;
 }) {
   return (
-    <div className="mt-1 flex gap-1">
+    <div className="mt-2.5 inline-flex rounded-full border border-border bg-white p-0.5">
       <button
         type="button"
         disabled={busy}
         onClick={() => onSet("충족")}
-        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-50 ${
-          status === "충족"
-            ? "bg-success text-white"
-            : "border border-border text-muted hover:border-success hover:text-success"
-        }`}
+        className={cn(
+          "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+          status === "충족" ? "bg-success text-white" : "text-muted hover:text-success"
+        )}
       >
-        충족
+        <Check size={12} strokeWidth={3} /> 충족
       </button>
       <button
         type="button"
         disabled={busy}
         onClick={() => onSet("미충족")}
-        className={`rounded-full px-2 py-0.5 text-[11px] font-semibold transition disabled:opacity-50 ${
-          status === "미충족"
-            ? "bg-danger text-white"
-            : "border border-border text-muted hover:border-danger hover:text-danger"
-        }`}
+        className={cn(
+          "flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+          status === "미충족" ? "bg-danger text-white" : "text-muted hover:text-danger"
+        )}
       >
-        미충족
+        <X size={12} strokeWidth={3} /> 미충족
       </button>
+    </div>
+  );
+}
+
+/** 이수요건 확인 카드 안, 항목 하나(이수 교과목1/2·몰입형·비교과)를 담는
+ *  블록. 판정 상태에 따라 배경색이 옅게 물들어 한눈에 훑을 수 있게 한다. */
+function CriterionField({
+  icon: Icon,
+  label,
+  detail,
+  status,
+  busy,
+  onSet,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  detail: React.ReactNode;
+  status: CriterionStatus;
+  busy: boolean;
+  onSet: (next: CriterionStatus) => void;
+}) {
+  const stateClasses =
+    status === "충족"
+      ? "border-success/25 bg-success-light/50"
+      : status === "미충족"
+        ? "border-danger/25 bg-danger-light/50"
+        : "border-border bg-surface";
+  return (
+    <div className={cn("rounded-xl border p-3.5 transition", stateClasses)}>
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+        <Icon size={13} /> {label}
+      </div>
+      <div className="mt-1.5 min-h-[2.25rem] text-sm leading-snug text-foreground">
+        {detail || <span className="text-muted">입력 없음</span>}
+      </div>
+      <CriterionToggle status={status} busy={busy} onSet={onSet} />
     </div>
   );
 }
@@ -477,128 +513,138 @@ export default function AdminPage() {
           비교과 네 항목 모두 충족/미충족을 고른 뒤 &quot;결과 내보내기&quot;를 눌러야 전체 결과가 확정되어
           학생에게 전달됩니다 — 항목 하나만 미충족으로 눌러도 나머지를 다 정하기 전에는 확정되지 않습니다.
         </p>
-        <Card className="mt-3 overflow-x-auto p-0">
-          {eligibilityChecks.length === 0 ? (
-            <p className="p-6 text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
-          ) : (
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface text-muted">
-                  <th className="px-4 py-3 font-semibold">학번/이름</th>
-                  <th className="px-4 py-3 font-semibold">확인 대상 학기</th>
-                  <th className="px-4 py-3 font-semibold">등급</th>
-                  <th className="px-4 py-3 font-semibold">이수 교과목 1</th>
-                  <th className="px-4 py-3 font-semibold">이수 교과목 2</th>
-                  <th className="px-4 py-3 font-semibold">몰입형 교과목</th>
-                  <th className="px-4 py-3 font-semibold">비교과 프로그램</th>
-                  <th className="px-4 py-3 font-semibold">성적증명서</th>
-                  <th className="px-4 py-3 font-semibold">메모</th>
-                  <th className="px-4 py-3 font-semibold">결과</th>
-                </tr>
-              </thead>
-              <tbody>
-                {eligibilityChecks.map((e) => {
-                  const criteria = criteriaDrafts[e.id] ?? e.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
-                  const busy = busyId === e.id;
-                  const allDecided = Object.values(criteria).every((v) => v !== "검토중");
-                  return (
-                    <tr key={e.id} className="border-b border-border last:border-0 align-top">
-                      <td className="px-4 py-2.5">
-                        {e.studentId} {e.studentName}
-                      </td>
-                      <td className="px-4 py-2.5">{e.targetSemester}</td>
-                      <td className="px-4 py-2.5">{e.level}</td>
-                      <td className="px-4 py-2.5">
-                        {e.subjects?.[0] && (
-                          <div>
-                            [{e.subjects[0].program}] {e.subjects[0].subjectName} ({e.subjects[0].completedYearMonth})
-                          </div>
-                        )}
-                        <CriterionToggle
-                          status={criteria.subject1}
-                          busy={busy}
-                          onSet={(next) => handleCriterionChange(e, "subject1", next)}
-                        />
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {e.subjects?.[1] && (
-                          <div>
-                            [{e.subjects[1].program}] {e.subjects[1].subjectName} ({e.subjects[1].completedYearMonth})
-                          </div>
-                        )}
-                        <CriterionToggle
-                          status={criteria.subject2}
-                          busy={busy}
-                          onSet={(next) => handleCriterionChange(e, "subject2", next)}
-                        />
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {e.immersive && (
-                          <div>
-                            [{e.immersive.program}] {e.immersive.subjectName} ({e.immersive.completedYearMonth})
-                          </div>
-                        )}
-                        <CriterionToggle
-                          status={criteria.immersive}
-                          busy={busy}
-                          onSet={(next) => handleCriterionChange(e, "immersive", next)}
-                        />
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div>
-                          {e.nonCurricularProgram}
-                          {e.nonCurricularPlanned ? " (참여 예정)" : ` (${e.nonCurricularYearMonth})`}
-                        </div>
-                        <CriterionToggle
-                          status={criteria.nonCurricular}
-                          busy={busy}
-                          onSet={(next) => handleCriterionChange(e, "nonCurricular", next)}
-                        />
-                      </td>
-                      <td className="px-4 py-2.5">
+        {eligibilityChecks.length === 0 ? (
+          <Card className="mt-3">
+            <p className="text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
+          </Card>
+        ) : (
+          <div className="mt-3 flex flex-col gap-4">
+            {eligibilityChecks.map((e) => {
+              const criteria = criteriaDrafts[e.id] ?? e.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
+              const busy = busyId === e.id;
+              const allDecided = Object.values(criteria).every((v) => v !== "검토중");
+              return (
+                <Card key={e.id} className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+                    <div>
+                      <p className="text-base font-bold text-foreground">
+                        {e.studentName} <span className="font-normal text-muted">({e.studentId})</span>
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge tone="muted">{e.targetSemester}</Badge>
+                        <Badge tone="muted">{e.level}</Badge>
                         {e.transcriptFileUrl ? (
                           <a
                             href={e.transcriptFileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-primary hover:underline"
+                            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
                           >
-                            보기
+                            <FileText size={12} /> 성적증명서
                           </a>
                         ) : (
-                          "-"
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">
+                            <FileText size={12} /> 성적증명서 없음
+                          </span>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <textarea
-                          rows={2}
-                          value={noteDrafts[e.id] ?? ""}
-                          onChange={(ev) => setNoteDrafts((prev) => ({ ...prev, [e.id]: ev.target.value }))}
-                          onBlur={() => {
-                            if ((noteDrafts[e.id] ?? "") !== (e.note ?? "")) handleSaveNote(e);
-                          }}
-                          placeholder="참고 메모 (선택)"
-                          className="w-40 rounded-lg border border-border bg-white px-2 py-1.5 text-xs outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
-                        />
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <Button
-                          size="sm"
-                          loading={busy}
-                          disabled={!allDecided}
-                          onClick={() => handleExportEligibilityResult(e)}
-                        >
-                          결과 내보내기
-                        </Button>
-                        {!allDecided && <p className="mt-1 text-[11px] text-muted">모든 항목 판정 후 가능</p>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </Card>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Button
+                        size="sm"
+                        loading={busy}
+                        disabled={!allDecided}
+                        onClick={() => handleExportEligibilityResult(e)}
+                      >
+                        결과 내보내기
+                      </Button>
+                      {!allDecided && <p className="mt-1.5 text-[11px] text-muted">모든 항목 판정 후 가능</p>}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <CriterionField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 1"
+                      detail={
+                        e.subjects?.[0] && (
+                          <>
+                            [{e.subjects[0].program}] {e.subjects[0].subjectName}
+                            <span className="block text-xs text-muted">{e.subjects[0].completedYearMonth}</span>
+                          </>
+                        )
+                      }
+                      status={criteria.subject1}
+                      busy={busy}
+                      onSet={(next) => handleCriterionChange(e, "subject1", next)}
+                    />
+                    <CriterionField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 2"
+                      detail={
+                        e.subjects?.[1] && (
+                          <>
+                            [{e.subjects[1].program}] {e.subjects[1].subjectName}
+                            <span className="block text-xs text-muted">{e.subjects[1].completedYearMonth}</span>
+                          </>
+                        )
+                      }
+                      status={criteria.subject2}
+                      busy={busy}
+                      onSet={(next) => handleCriterionChange(e, "subject2", next)}
+                    />
+                    <CriterionField
+                      icon={Sparkles}
+                      label="몰입형 교과목"
+                      detail={
+                        e.immersive && (
+                          <>
+                            [{e.immersive.program}] {e.immersive.subjectName}
+                            <span className="block text-xs text-muted">{e.immersive.completedYearMonth}</span>
+                          </>
+                        )
+                      }
+                      status={criteria.immersive}
+                      busy={busy}
+                      onSet={(next) => handleCriterionChange(e, "immersive", next)}
+                    />
+                    <CriterionField
+                      icon={Users2}
+                      label="비교과 프로그램"
+                      detail={
+                        <>
+                          {e.nonCurricularProgram}
+                          <span className="block text-xs text-muted">
+                            {e.nonCurricularPlanned ? "참여 예정" : e.nonCurricularYearMonth}
+                          </span>
+                        </>
+                      }
+                      status={criteria.nonCurricular}
+                      busy={busy}
+                      onSet={(next) => handleCriterionChange(e, "nonCurricular", next)}
+                    />
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-muted">
+                      <StickyNote size={13} /> 참고 메모
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={noteDrafts[e.id] ?? ""}
+                      onChange={(ev) => setNoteDrafts((prev) => ({ ...prev, [e.id]: ev.target.value }))}
+                      onBlur={() => {
+                        if ((noteDrafts[e.id] ?? "") !== (e.note ?? "")) handleSaveNote(e);
+                      }}
+                      placeholder="학생에게도 노출되는 참고 메모예요 (선택)"
+                      className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    />
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
       )}
 
