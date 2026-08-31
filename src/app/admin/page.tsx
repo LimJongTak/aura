@@ -125,6 +125,29 @@ function CriterionField({
   );
 }
 
+/** CriterionField의 읽기 전용 버전 — 토글 없이 정보만 보여줄 때(중고급 이수
+ *  신청처럼 항목별이 아니라 신청 전체를 승인/반려하는 화면) 쓴다. */
+function InfoField({
+  icon: Icon,
+  label,
+  detail,
+}: {
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  label: string;
+  detail: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface p-3.5">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+        <Icon size={13} /> {label}
+      </div>
+      <div className="mt-1.5 text-sm leading-snug text-foreground">
+        {detail || <span className="text-muted">입력 없음</span>}
+      </div>
+    </div>
+  );
+}
+
 /** 같은 학생·구분·활동명·학기로 신청된 다른 이력(상태 무관)이 있는지 확인하는
  * 배지. 관리자가 중복 신청을 놓치지 않도록 승인/반려 버튼 옆에 붙는다. */
 function DuplicateBadge({ matches }: { matches: MileageApplication[] }) {
@@ -331,51 +354,54 @@ export default function AdminPage() {
       {category === "mileage" && (
       <div className="mt-6">
         <h2 className="font-bold text-foreground">마일리지 신청 · 검토중 ({mileageApps.length}건)</h2>
-        <Card className="mt-3 overflow-x-auto p-0">
-          {mileageApps.length === 0 ? (
-            <p className="p-6 text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
-          ) : (
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface text-muted">
-                  <th className="px-4 py-3 font-semibold">학번/이름</th>
-                  <th className="px-4 py-3 font-semibold">구분</th>
-                  <th className="px-4 py-3 font-semibold">활동명</th>
-                  <th className="px-4 py-3 text-right font-semibold">마일리지</th>
-                  <th className="px-4 py-3 font-semibold">증빙</th>
-                  <th className="px-4 py-3 font-semibold">인정 학기</th>
-                  <th className="px-4 py-3 font-semibold">처리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mileageApps.map((a) => (
-                  <tr key={a.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5">
-                      {a.studentId} {a.studentName}
-                    </td>
-                    <td className="px-4 py-2.5">{a.category}</td>
-                    <td className="px-4 py-2.5">
-                      <div>{a.activityName}</div>
-                      <DuplicateBadge matches={findDuplicates(a)} />
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-semibold">{a.mileage}점</td>
-                    <td className="px-4 py-2.5">
-                      {a.evidenceFileUrl ? (
-                        <a
-                          href={a.evidenceFileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          보기
-                        </a>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
+        {mileageApps.length === 0 ? (
+          <Card className="mt-3">
+            <p className="text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
+          </Card>
+        ) : (
+          <div className="mt-3 flex flex-col gap-3">
+            {mileageApps.map((a) => {
+              const busy = busyId === a.id;
+              return (
+                <Card key={a.id} className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-base font-bold text-foreground">
+                          {a.studentName} <span className="font-normal text-muted">({a.studentId})</span>
+                        </p>
+                        <Badge tone="muted">{a.category}</Badge>
+                        <DuplicateBadge matches={findDuplicates(a)} />
+                      </div>
+                      <p className="mt-1.5 text-sm text-foreground">{a.activityName}</p>
+                      <div className="mt-2">
+                        {a.evidenceFileUrl ? (
+                          <a
+                            href={a.evidenceFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
+                          >
+                            <FileText size={12} /> 증빙 보기
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">
+                            <FileText size={12} /> 증빙 없음
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <span className="text-2xl font-extrabold text-primary">{a.mileage}</span>
+                      <span className="ml-0.5 text-sm font-semibold text-muted">점</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-semibold text-muted">인정 학기</label>
                       <Select
-                        className="w-32"
+                        className="w-36"
                         value={semesterChoice[a.id] ?? a.semester ?? ""}
                         onChange={(e) => setSemesterChoice((prev) => ({ ...prev, [a.id]: e.target.value }))}
                       >
@@ -388,120 +414,144 @@ export default function AdminPage() {
                           </option>
                         ))}
                       </Select>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex gap-1.5">
-                        <Button
-                          size="sm"
-                          loading={busyId === a.id}
-                          onClick={() => handleMileageApprove(a.id)}
-                        >
-                          승인
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          loading={busyId === a.id}
-                          onClick={() => openRejectModal(a)}
-                        >
-                          반려
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" loading={busy} onClick={() => handleMileageApprove(a.id)}>
+                        승인
+                      </Button>
+                      <Button size="sm" variant="danger" loading={busy} onClick={() => openRejectModal(a)}>
+                        반려
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
       )}
 
       {category === "advanced" && (
       <div className="mt-6">
         <h2 className="font-bold text-foreground">중고급 이수 신청 · 검토중 ({advancedApps.length}건)</h2>
-        <Card className="mt-3 overflow-x-auto p-0">
-          {advancedApps.length === 0 ? (
-            <p className="p-6 text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
-          ) : (
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface text-muted">
-                  <th className="px-4 py-3 font-semibold">학번/이름</th>
-                  <th className="px-4 py-3 font-semibold">지원학기</th>
-                  <th className="px-4 py-3 font-semibold">등급</th>
-                  <th className="px-4 py-3 font-semibold">교과목</th>
-                  <th className="px-4 py-3 font-semibold">몰입형</th>
-                  <th className="px-4 py-3 font-semibold">비교과</th>
-                  <th className="px-4 py-3 font-semibold">성적증명서</th>
-                  <th className="px-4 py-3 font-semibold">처리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {advancedApps.map((a) => (
-                  <tr key={a.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5">
-                      {a.studentId} {a.studentName}
-                    </td>
-                    <td className="px-4 py-2.5">{a.targetSemester}</td>
-                    <td className="px-4 py-2.5">{a.level}</td>
-                    <td className="px-4 py-2.5">
-                      {a.subjects?.map((s) => (
-                        <div key={s.subjectName}>
-                          [{s.program}] {s.subjectName} ({s.completed}, {s.completedYearMonth})
-                        </div>
-                      ))}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {a.immersive && (
-                        <div>
-                          [{a.immersive.program}] {a.immersive.subjectName} ({a.immersive.completed},{" "}
-                          {a.immersive.completedYearMonth})
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {a.nonCurricularProgram} ({a.nonCurricularYearMonth})
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {a.transcriptFileUrl ? (
-                        <a
-                          href={a.transcriptFileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          보기
-                        </a>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex gap-1.5">
-                        <Button
-                          size="sm"
-                          loading={busyId === a.id}
-                          onClick={() => handleAdvancedDecision(a.id, "승인")}
-                        >
-                          승인
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          loading={busyId === a.id}
-                          onClick={() => handleAdvancedDecision(a.id, "반려")}
-                        >
-                          반려
-                        </Button>
+        {advancedApps.length === 0 ? (
+          <Card className="mt-3">
+            <p className="text-sm text-muted">검토 대기 중인 신청이 없습니다.</p>
+          </Card>
+        ) : (
+          <div className="mt-3 flex flex-col gap-4">
+            {advancedApps.map((a) => {
+              const busy = busyId === a.id;
+              return (
+                <Card key={a.id} className="p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-4">
+                    <div>
+                      <p className="text-base font-bold text-foreground">
+                        {a.studentName} <span className="font-normal text-muted">({a.studentId})</span>
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge tone="muted">{a.targetSemester}</Badge>
+                        <Badge tone="muted">{a.level}</Badge>
+                        {a.transcriptFileUrl ? (
+                          <a
+                            href={a.transcriptFileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
+                          >
+                            <FileText size={12} /> 성적증명서
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">
+                            <FileText size={12} /> 성적증명서 없음
+                          </span>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" loading={busy} onClick={() => handleAdvancedDecision(a.id, "승인")}>
+                        승인
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        loading={busy}
+                        onClick={() => handleAdvancedDecision(a.id, "반려")}
+                      >
+                        반려
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <InfoField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 1"
+                      detail={
+                        a.subjects?.[0] && (
+                          <>
+                            [{a.subjects[0].program}] {a.subjects[0].subjectName}
+                            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              {a.subjects[0].completedYearMonth}
+                              <Badge tone={a.subjects[0].completed === "Y" ? "success" : "warning"}>
+                                {a.subjects[0].completed === "Y" ? "이수완료" : "미이수"}
+                              </Badge>
+                            </span>
+                          </>
+                        )
+                      }
+                    />
+                    <InfoField
+                      icon={BookOpenCheck}
+                      label="이수 교과목 2"
+                      detail={
+                        a.subjects?.[1] && (
+                          <>
+                            [{a.subjects[1].program}] {a.subjects[1].subjectName}
+                            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              {a.subjects[1].completedYearMonth}
+                              <Badge tone={a.subjects[1].completed === "Y" ? "success" : "warning"}>
+                                {a.subjects[1].completed === "Y" ? "이수완료" : "미이수"}
+                              </Badge>
+                            </span>
+                          </>
+                        )
+                      }
+                    />
+                    <InfoField
+                      icon={Sparkles}
+                      label="몰입형 교과목"
+                      detail={
+                        a.immersive && (
+                          <>
+                            [{a.immersive.program}] {a.immersive.subjectName}
+                            <span className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                              {a.immersive.completedYearMonth}
+                              <Badge tone={a.immersive.completed === "Y" ? "success" : "warning"}>
+                                {a.immersive.completed === "Y" ? "이수완료" : "미이수"}
+                              </Badge>
+                            </span>
+                          </>
+                        )
+                      }
+                    />
+                    <InfoField
+                      icon={Users2}
+                      label="비교과 프로그램"
+                      detail={
+                        <>
+                          {a.nonCurricularProgram}
+                          <span className="block text-xs text-muted">{a.nonCurricularYearMonth}</span>
+                        </>
+                      }
+                    />
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
       )}
 
