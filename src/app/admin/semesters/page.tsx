@@ -100,6 +100,8 @@ export default function AdminSemestersPage() {
     try {
       await setCurrentSemester(semester);
       await refresh();
+    } catch {
+      alert("현재 학기 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setSettingCurrentId(null);
     }
@@ -301,6 +303,8 @@ function SimpleSemesterList({
     setTogglingId(id);
     try {
       await eraFlag.onToggle(id, value);
+    } catch {
+      alert("변경에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setTogglingId(null);
     }
@@ -313,6 +317,8 @@ function SimpleSemesterList({
     try {
       await onCreate(name);
       setDraft("");
+    } catch {
+      alert("추가에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setSubmitting(false);
     }
@@ -320,7 +326,11 @@ function SimpleSemesterList({
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`"${name}" 학기를 삭제할까요?`)) return;
-    await onDelete(id);
+    try {
+      await onDelete(id);
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   return (

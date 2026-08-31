@@ -137,9 +137,11 @@ export default function AdminHistoryPage() {
   const [advancedPage, setAdvancedPage] = useState(1);
   const [eligibilityPage, setEligibilityPage] = useState(1);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
+    setLoadError(null);
     try {
       const [m, a, el, s] = await Promise.all([
         listProcessedMileageApplications(),
@@ -151,6 +153,8 @@ export default function AdminHistoryPage() {
       setAdvancedApps(a);
       setEligibilityChecks(el);
       setSemesters(s);
+    } catch {
+      setLoadError("처리 내역을 불러오지 못했습니다. 새로고침해서 다시 시도해주세요.");
     } finally {
       setDataLoading(false);
     }
@@ -230,6 +234,8 @@ export default function AdminHistoryPage() {
     try {
       await updateMileageApplicationStatus(id, next, reason);
       await refresh();
+    } catch {
+      alert("상태 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -241,6 +247,8 @@ export default function AdminHistoryPage() {
     try {
       await updateAdvancedApplicationStatus(id, next);
       await refresh();
+    } catch {
+      alert("상태 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -258,6 +266,10 @@ export default function AdminHistoryPage() {
         title="처리 내역"
         description="승인·반려 처리가 완료된 마일리지·중고급 이수 신청, 그리고 결과가 확정된 중고급 이수요건 확인 내역입니다."
       />
+
+      {loadError && (
+        <p className="mt-4 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">{loadError}</p>
+      )}
 
       <div className="mt-5 flex gap-2">
         <TabButton active={category === "mileage"} onClick={() => setCategory("mileage")}>

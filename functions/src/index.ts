@@ -200,10 +200,14 @@ export const saveBankAccount = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async
   const trimmedHolder = (accountHolder ?? "").trim();
   const digitsOnly = (accountNumber ?? "").replace(/[^0-9]/g, "");
 
-  if (!trimmedBank || trimmedBank.length > 30) {
+  // 은행명·예금주는 관리자가 지급 처리용으로 내려받는 엑셀 셀에 그대로 들어간다
+  // (src/lib/excel/sanitizeCell.ts가 내보내기 시점에도 한 번 더 방어한다) —
+  // 스프레드시트가 수식으로 해석하는 선행 문자(=+-@)는 애초에 저장을 막는다.
+  const FORMULA_LEADING_CHAR = /^[=+\-@]/;
+  if (!trimmedBank || trimmedBank.length > 30 || FORMULA_LEADING_CHAR.test(trimmedBank)) {
     throw new HttpsError("invalid-argument", "은행명을 올바르게 입력해주세요.");
   }
-  if (!trimmedHolder || trimmedHolder.length > 30) {
+  if (!trimmedHolder || trimmedHolder.length > 30 || FORMULA_LEADING_CHAR.test(trimmedHolder)) {
     throw new HttpsError("invalid-argument", "예금주명을 올바르게 입력해주세요.");
   }
   if (digitsOnly.length < 8 || digitsOnly.length > 20) {
@@ -276,4 +280,26 @@ export const listBankAccountStudentIds = onCall(async (request) => {
   await requireAdminAuth(request.auth?.uid);
   const snap = await admin.firestore().collection("bankAccounts").select().get();
   return { studentIds: snap.docs.map((d) => d.id) };
+});
+
+/** 학생 등록 신청 화면에서, 아직 관리자 승인 전인 같은 학번의 신청이 이미
+ * 접수돼있는지 미리 확인한다. studentRegistrationRequests는 개인정보라
+ * Firestore 규칙상 관리자만 읽을 수 있어(get/list: if isAdmin()), 로그인
+ * 전인 신청자가 직접 조회할 수 없다 — 이 함수가 Admin SDK로 대신 존재
+ * 여부만(불리언) 확인해준다. 로그인이 필요 없는 공개 함수지만, students의
+ * get: if true와 마찬가지로 studentId 하나당 참/거짓 하나만 노출되므로
+ * 노출 범위가 좁다. */
+export const hasPendingStudentRegistration = onCall(async (request) => {
+  const { studentId } = request.data as { studentId?: string };
+  if (!studentId || typeof studentId !== "string" || !studentId.trim()) {
+    throw new HttpsError("invalid-argument", "studentId가 필요합니다.");
+  }
+  const snap = await admin
+    .firestore()
+    .collection("studentRegistrationRequests")
+    .where("studentId", "==", studentId.trim())
+    .where("status", "==", "검토중")
+    .limit(1)
+    .get();
+  return { pending: !snap.empty };
 });

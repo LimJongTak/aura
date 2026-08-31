@@ -30,14 +30,22 @@ export default function AdminQuickLinksPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("이 버튼을 삭제할까요?")) return;
-    await deleteQuickLink(id);
+    try {
+      await deleteQuickLink(id);
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   async function handleMove(index: number, direction: -1 | 1) {
     const target = links[index + direction];
     const current = links[index];
     if (!target) return;
-    await Promise.all([setQuickLinkOrder(current.id, target.order), setQuickLinkOrder(target.id, current.order)]);
+    try {
+      await Promise.all([setQuickLinkOrder(current.id, target.order), setQuickLinkOrder(target.id, current.order)]);
+    } catch {
+      alert("순서 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   const { getDragHandleProps, getRowProps } = useDragReorder(links, async (next) => {

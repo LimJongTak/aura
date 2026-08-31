@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { studentExists } from "@/lib/firestore/students";
-import { submitStudentRegistration } from "@/lib/firestore/studentRegistrations";
+import { hasPendingRegistration, submitStudentRegistration } from "@/lib/firestore/studentRegistrations";
 import { PARTICIPATING_DEPARTMENTS } from "@/types/models";
 
 export default function RegisterPage() {
@@ -26,14 +26,23 @@ export default function RegisterPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!name.trim() || !studentId.trim() || !department.trim()) {
+    const trimmedId = studentId.trim();
+    if (!name.trim() || !trimmedId || !department.trim()) {
       setError("이름, 학번, 학과를 모두 입력해주세요.");
+      return;
+    }
+    if (!/^\d{6,10}$/.test(trimmedId)) {
+      setError("학번은 숫자 6~10자리로 입력해주세요.");
       return;
     }
     setSubmitting(true);
     try {
-      if (await studentExists(studentId)) {
+      if (await studentExists(trimmedId)) {
         setError("이미 등록된 학번입니다. \"마일리지 조회\"를 이용해주세요.");
+        return;
+      }
+      if (await hasPendingRegistration(trimmedId)) {
+        setError("이미 접수되어 검토 중인 등록 신청이 있습니다. 처리될 때까지 기다려주세요.");
         return;
       }
       await submitStudentRegistration({

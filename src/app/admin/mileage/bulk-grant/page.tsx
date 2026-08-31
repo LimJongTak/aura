@@ -183,6 +183,8 @@ function CheckboxGrantSection({
       const res = await bulkGrantMileage(inputs);
       setResults(res);
       setSelected(new Set());
+    } catch {
+      setError("지급 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
       setSubmitting(false);
     }
@@ -390,6 +392,8 @@ function ExcelGrantSection({
       setRows(null);
       setFileName(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch {
+      alert("지급 처리 중 오류가 발생했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setSubmitting(false);
     }

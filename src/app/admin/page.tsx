@@ -171,43 +171,52 @@ export default function AdminPage() {
   const [criteriaDrafts, setCriteriaDrafts] = useState<Record<string, EligibilityCriteria>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [category, setCategory] = useState<Category>("mileage");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [m, a, e, s, processed] = await Promise.all([
-      listPendingMileageApplications(),
-      listPendingAdvancedApplications(),
-      listPendingEligibilityChecks(),
-      listSemesters(),
-      listProcessedMileageApplications(),
-    ]);
-    setMileageApps(m);
-    setMileageHistory([...m, ...processed]);
-    setAdvancedApps(a);
-    setEligibilityChecks(e);
-    setSemesters(s);
-    setSemesterChoice((prev) => {
-      const next = { ...prev };
-      for (const app of m) {
-        if (!next[app.id]) next[app.id] = app.semester ?? s.find((sem) => sem.isCurrent)?.name ?? "";
-      }
-      return next;
-    });
-    // 아직 손대지 않은(=화면에 처음 나타난) 항목만 서버 값으로 채운다 —
-    // 관리자가 입력 중인 메모를 새로고침이 덮어쓰지 않도록 한다.
-    setNoteDrafts((prev) => {
-      const next = { ...prev };
-      for (const check of e) {
-        if (next[check.id] === undefined) next[check.id] = check.note ?? "";
-      }
-      return next;
-    });
-    setCriteriaDrafts((prev) => {
-      const next = { ...prev };
-      for (const check of e) {
-        if (next[check.id] === undefined) next[check.id] = check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
-      }
-      return next;
-    });
+    try {
+      const [m, a, e, s, processed] = await Promise.all([
+        listPendingMileageApplications(),
+        listPendingAdvancedApplications(),
+        listPendingEligibilityChecks(),
+        listSemesters(),
+        listProcessedMileageApplications(),
+      ]);
+      setLoadError(null);
+      setMileageApps(m);
+      setMileageHistory([...m, ...processed]);
+      setAdvancedApps(a);
+      setEligibilityChecks(e);
+      setSemesters(s);
+      setSemesterChoice((prev) => {
+        const next = { ...prev };
+        for (const app of m) {
+          if (!next[app.id]) next[app.id] = app.semester ?? s.find((sem) => sem.isCurrent)?.name ?? "";
+        }
+        return next;
+      });
+      // 아직 손대지 않은(=화면에 처음 나타난) 항목만 서버 값으로 채운다 —
+      // 관리자가 입력 중인 메모를 새로고침이 덮어쓰지 않도록 한다.
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        for (const check of e) {
+          if (next[check.id] === undefined) next[check.id] = check.note ?? "";
+        }
+        return next;
+      });
+      setCriteriaDrafts((prev) => {
+        const next = { ...prev };
+        for (const check of e) {
+          if (next[check.id] === undefined) next[check.id] = check.criteria ?? DEFAULT_ELIGIBILITY_CRITERIA;
+        }
+        return next;
+      });
+    } catch {
+      // 검토 대기 목록이 실제로 0건인지, 불러오기가 실패해서 비어 보이는
+      // 것뿐인지 관리자가 구분할 수 있어야 한다 — 조용히 빈 목록으로 두면
+      // 처리할 신청을 놓칠 수 있다.
+      setLoadError("검토 대기 목록을 불러오지 못했습니다. 새로고침해서 다시 시도해주세요.");
+    }
   }, []);
 
   useEffect(() => {
@@ -236,6 +245,8 @@ export default function AdminPage() {
     try {
       await updateMileageApplicationStatus(id, "승인", undefined, semesterChoice[id]);
       await refresh();
+    } catch {
+      alert("승인 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -264,6 +275,8 @@ export default function AdminPage() {
       await updateMileageApplicationStatus(id, "반려", reason, semesterChoice[id]);
       await refresh();
       closeRejectModal();
+    } catch {
+      alert("반려 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -274,6 +287,8 @@ export default function AdminPage() {
     try {
       await updateAdvancedApplicationStatus(id, status);
       await refresh();
+    } catch {
+      alert("처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -293,6 +308,8 @@ export default function AdminPage() {
     try {
       await updateEligibilityNote(check.id, noteDrafts[check.id] ?? "");
       await refresh();
+    } catch {
+      alert("메모 저장에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -308,6 +325,8 @@ export default function AdminPage() {
     try {
       await updateEligibilityCriteria(check.id, criteria, noteDrafts[check.id] ?? check.note ?? "");
       await refresh();
+    } catch {
+      alert("결과 내보내기에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -316,6 +335,10 @@ export default function AdminPage() {
   return (
     <div>
       <PageHeader title="관리자 대시보드" description={user?.email ? `${user.email.split("@")[0]}님으로 로그인됨` : undefined} />
+
+      {loadError && (
+        <p className="mt-4 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">{loadError}</p>
+      )}
 
       <div className="mt-5 flex gap-2">
         <TabButton active={category === "mileage"} onClick={() => setCategory("mileage")}>

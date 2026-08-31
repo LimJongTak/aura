@@ -28,14 +28,22 @@ export default function AdminMenusPage() {
 
   async function handleDelete(id: string, label: string) {
     if (!confirm(`"${label}" 메뉴를 삭제할까요? 사이트 상단 메뉴에서 바로 사라져요.`)) return;
-    await deleteNavMenuGroup(id);
+    try {
+      await deleteNavMenuGroup(id);
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   async function handleMove(index: number, direction: -1 | 1) {
     const target = groups[index + direction];
     const current = groups[index];
     if (!target) return;
-    await Promise.all([setNavMenuGroupOrder(current.id, target.order), setNavMenuGroupOrder(target.id, current.order)]);
+    try {
+      await Promise.all([setNavMenuGroupOrder(current.id, target.order), setNavMenuGroupOrder(target.id, current.order)]);
+    } catch {
+      alert("순서 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   const { getDragHandleProps, getRowProps } = useDragReorder(groups, async (next) => {

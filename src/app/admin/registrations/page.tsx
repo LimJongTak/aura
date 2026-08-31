@@ -28,6 +28,8 @@ export default function AdminRegistrationsPage() {
     try {
       await approveStudentRegistration(request);
       await refresh();
+    } catch {
+      alert("승인 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }
@@ -38,6 +40,8 @@ export default function AdminRegistrationsPage() {
     try {
       await rejectStudentRegistration(id);
       await refresh();
+    } catch {
+      alert("반려 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBusyId(null);
     }

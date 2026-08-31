@@ -26,7 +26,11 @@ export default function AdminAnnouncementsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("이 공지사항을 삭제할까요?")) return;
-    await deleteAnnouncement(id);
+    try {
+      await deleteAnnouncement(id);
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   return (

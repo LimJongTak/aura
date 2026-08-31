@@ -36,9 +36,11 @@ export default function AdminStudentsPage() {
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setDataLoading(true);
+    setLoadError(null);
     try {
       const [studentList, apps, semesterList, bankIds] = await Promise.all([
         listAllStudents(),
@@ -52,6 +54,8 @@ export default function AdminStudentsPage() {
       setBankRegisteredIds(bankIds);
       const current = semesterList.find((s) => s.isCurrent);
       if (current) setSemesterFilter(current.name);
+    } catch {
+      setLoadError("학생 목록을 불러오지 못했습니다. 새로고침해서 다시 시도해주세요.");
     } finally {
       setDataLoading(false);
     }
@@ -159,6 +163,10 @@ export default function AdminStudentsPage() {
           </Button>
         }
       />
+
+      {loadError && (
+        <p className="mt-4 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">{loadError}</p>
+      )}
 
       <Card className="mt-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

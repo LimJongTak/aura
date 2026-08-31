@@ -41,7 +41,12 @@ export function useDragReorder<T>(items: T[], onReorder: (next: T[]) => void) {
         const next = items.slice();
         const [moved] = next.splice(dragIndex, 1);
         next.splice(index, 0, moved);
-        onReorder(next);
+        // onReorder는 대부분 Firestore 쓰기가 섞인 async 콜백이다 — 여기서
+        // await하지 않으면 실패가 아무 데도 보고되지 않는 unhandled rejection이
+        // 되므로, 실패 시 최소한의 사용자 피드백을 여기서 한 번에 준다.
+        Promise.resolve(onReorder(next)).catch(() => {
+          alert("순서 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
+        });
         setDragIndex(null);
         setOverIndex(null);
       },

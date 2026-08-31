@@ -284,6 +284,10 @@ function MileageTab({
       setError(`${row.student.name} 학생의 지급 금액을 입력해주세요.`);
       return;
     }
+    if (amount > row.cap) {
+      setError(`${row.student.name} 학생의 지급 금액이 학기 한도(${formatWon(row.cap)})를 초과합니다.`);
+      return;
+    }
     setError(null);
     setBusy(true);
     try {
@@ -314,6 +318,11 @@ function MileageTab({
     const missing = targets.filter((r) => !(effectiveAmount(r) > 0));
     if (missing.length > 0) {
       setError(`${missing.map((r) => r.student.name).join(", ")} 학생의 지급 금액을 입력해주세요.`);
+      return;
+    }
+    const overCap = targets.filter((r) => effectiveAmount(r) > r.cap);
+    if (overCap.length > 0) {
+      setError(`${overCap.map((r) => r.student.name).join(", ")} 학생의 지급 금액이 학기 한도를 초과합니다.`);
       return;
     }
     if (!confirm(`선택한 ${targets.length}명에게 마일리지 장학금 지급완료 처리를 할까요?`)) return;
@@ -504,8 +513,11 @@ function MileageTab({
                     <NumberInput
                       value={effectiveAmount(row)}
                       onChange={(n) => setAmountOverrides((prev) => ({ ...prev, [row.student.studentId]: n }))}
-                      className="w-32"
+                      className={`w-32 ${effectiveAmount(row) > row.cap ? "text-danger" : ""}`}
                     />
+                    {effectiveAmount(row) > row.cap && (
+                      <p className="mt-1 text-[11px] font-semibold text-danger">한도 초과</p>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     {row.payment ? (

@@ -187,10 +187,13 @@ service cloud.firestore {
           ) ||
           (
             // 관리자가 심사 없이 직접 지급하는 마일리지 — 신청 기간 제약을 받지 않고
-            // 바로 승인 상태로 생성된다.
+            // 바로 승인 상태로 생성된다. 상한(300점)은 화면단 MAX_ADMIN_MILEAGE_GRANT
+            // (src/types/models.ts)와 같은 값으로 맞춰둔다 — 자릿수 오타로 인한 과다
+            // 지급을 클라이언트 우회로도 만들 수 없게 서버에서 한 번 더 막는다.
             isAdmin() &&
             request.resource.data.status == "승인" &&
-            request.resource.data.source == "bulk"
+            request.resource.data.source == "bulk" &&
+            request.resource.data.mileage <= 300
           )
         ) &&
         request.resource.data.studentId is string &&

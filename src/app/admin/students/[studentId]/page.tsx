@@ -50,6 +50,7 @@ export default function AdminStudentDetailPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [recalling, setRecalling] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const refresh = useCallback(async () => {
     const [s, apps, advApps, semesterList, convSettings] = await Promise.all([
@@ -73,7 +74,10 @@ export default function AdminStudentDetailPage() {
 
   useEffect(() => {
     setDataLoading(true);
-    refresh().finally(() => setDataLoading(false));
+    setLoadError(false);
+    refresh()
+      .catch(() => setLoadError(true))
+      .finally(() => setDataLoading(false));
   }, [refresh]);
 
   useEffect(() => setSelectedIds(new Set()), [semesterFilter]);
@@ -138,6 +142,8 @@ export default function AdminStudentDetailPage() {
       await setMileagePaid(ids, paid);
       setSelectedIds(new Set());
       await refresh();
+    } catch {
+      alert("처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBulkBusy(false);
     }
@@ -152,6 +158,8 @@ export default function AdminStudentDetailPage() {
       await cancelMileageRecall(ids);
       setSelectedIds(new Set());
       await refresh();
+    } catch {
+      alert("처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBulkBusy(false);
     }
@@ -166,6 +174,8 @@ export default function AdminStudentDetailPage() {
       setSelectedIds(new Set());
       setRecalling(false);
       await refresh();
+    } catch {
+      alert("회수 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setBulkBusy(false);
     }
@@ -178,7 +188,11 @@ export default function AdminStudentDetailPage() {
   if (!student) {
     return (
       <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
-        <p className="text-sm text-muted">학생 정보를 찾을 수 없습니다 ({studentId}).</p>
+        <p className="text-sm text-muted">
+          {loadError
+            ? "학생 정보를 불러오지 못했습니다. 새로고침해서 다시 시도해주세요."
+            : `학생 정보를 찾을 수 없습니다 (${studentId}).`}
+        </p>
         <Link href="/admin/students" className="mt-4 inline-block">
           <Button variant="outline">학생 관리로 돌아가기</Button>
         </Link>

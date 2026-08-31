@@ -49,6 +49,15 @@ export async function listPendingStudentRegistrations(): Promise<StudentRegistra
   });
 }
 
+const hasPendingStudentRegistrationFn = httpsCallable(functions, "hasPendingStudentRegistration");
+
+/** 등록 신청 화면에서, 같은 학번으로 이미 접수돼 검토 대기 중인 신청이
+ *  있는지 미리 확인한다 — 관리자가 처리하기 전에 중복 신청이 쌓이는 걸 막는다. */
+export async function hasPendingRegistration(studentId: string): Promise<boolean> {
+  const res = await hasPendingStudentRegistrationFn({ studentId });
+  return (res.data as { pending: boolean }).pending;
+}
+
 const approveStudentRegistrationFn = httpsCallable(functions, "approveStudentRegistration");
 
 /** 승인: Cloud Function이 학번@s.scnu.ac.kr 계정(초기 비밀번호 000000)과 students 문서를

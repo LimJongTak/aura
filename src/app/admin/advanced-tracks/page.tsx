@@ -45,14 +45,22 @@ export default function AdminAdvancedTracksPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("이 트랙을 삭제할까요? 학생 신청 화면에서 더 이상 선택할 수 없게 돼요.")) return;
-    await deleteAdvancedTrack(id);
+    try {
+      await deleteAdvancedTrack(id);
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   async function handleMove(index: number, direction: -1 | 1) {
     const target = tracks[index + direction];
     const current = tracks[index];
     if (!target) return;
-    await Promise.all([setAdvancedTrackOrder(current.id, target.order), setAdvancedTrackOrder(target.id, current.order)]);
+    try {
+      await Promise.all([setAdvancedTrackOrder(current.id, target.order), setAdvancedTrackOrder(target.id, current.order)]);
+    } catch {
+      alert("순서 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   const { getDragHandleProps, getRowProps } = useDragReorder(tracks, async (next) => {
@@ -169,6 +177,8 @@ function ImmersiveSubjectsSection() {
     try {
       await createImmersiveSubject(name, subjects.length);
       setDraft("");
+    } catch {
+      alert("추가에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setSubmitting(false);
     }
@@ -176,17 +186,25 @@ function ImmersiveSubjectsSection() {
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`"${name}" 교과목을 삭제할까요?`)) return;
-    await deleteImmersiveSubject(id);
+    try {
+      await deleteImmersiveSubject(id);
+    } catch {
+      alert("삭제에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   async function handleMove(index: number, direction: -1 | 1) {
     const target = subjects[index + direction];
     const current = subjects[index];
     if (!target) return;
-    await Promise.all([
-      setImmersiveSubjectOrder(current.id, target.order),
-      setImmersiveSubjectOrder(target.id, current.order),
-    ]);
+    try {
+      await Promise.all([
+        setImmersiveSubjectOrder(current.id, target.order),
+        setImmersiveSubjectOrder(target.id, current.order),
+      ]);
+    } catch {
+      alert("순서 변경에 실패했어요. 잠시 후 다시 시도해주세요.");
+    }
   }
 
   const { getDragHandleProps, getRowProps } = useDragReorder(subjects, async (next) => {
