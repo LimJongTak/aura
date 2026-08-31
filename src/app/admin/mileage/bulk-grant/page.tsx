@@ -221,8 +221,8 @@ function CheckboxGrantSection({
           <p className="p-6 text-sm text-muted">조건에 맞는 학생이 없습니다.</p>
         ) : (
           <table className="w-full text-left text-xs sm:text-sm">
-            <thead className="sticky top-0">
-              <tr className="border-b border-border bg-surface text-muted">
+            <thead>
+              <tr className="sticky top-0 z-10 border-b border-border bg-surface text-muted">
                 <th className="w-10 px-4 py-3">
                   <input type="checkbox" checked={allFilteredSelected} onChange={toggleAll} aria-label="전체 선택" />
                 </th>
@@ -457,8 +457,8 @@ function ExcelGrantSection({
         <>
           <Card className="mt-3 max-h-96 overflow-y-auto overflow-x-auto p-0">
             <table className="w-full text-left text-xs sm:text-sm">
-              <thead className="sticky top-0">
-                <tr className="border-b border-border bg-surface text-muted">
+              <thead>
+                <tr className="sticky top-0 z-10 border-b border-border bg-surface text-muted">
                   <th className="px-4 py-3 font-semibold">행</th>
                   <th className="px-4 py-3 font-semibold">학번</th>
                   <th className="px-4 py-3 font-semibold">엑셀 이름</th>
