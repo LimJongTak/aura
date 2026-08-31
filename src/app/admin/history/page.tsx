@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/firestore/advancedApplications";
 import { listProcessedEligibilityChecks } from "@/lib/firestore/eligibilityChecks";
 import { listSemesters } from "@/lib/firestore/semesters";
+import { exportEligibilityChecksExcel } from "@/lib/excel/eligibilityChecksExport";
 import type {
   AdvancedApplication,
   ApplicationStatus,
@@ -287,6 +288,12 @@ export default function AdminHistoryPage() {
     }
   }
 
+  function handleEligibilityExport() {
+    const semesterLabel = semesterFilter === ALL_SEMESTERS ? "전체학기" : semesterFilter;
+    const statusLabel = eligibilityStatus === "전체" ? "전체" : eligibilityStatus;
+    exportEligibilityChecksExcel(`${semesterLabel}_${statusLabel}`, filteredEligibility);
+  }
+
   return (
     <div>
       <PageHeader
@@ -528,17 +535,26 @@ export default function AdminHistoryPage() {
         <div className="mt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-bold text-foreground">이수요건 확인 처리 내역 ({filteredEligibility.length}건)</h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {ELIGIBILITY_STATUS_FILTERS.map((s) => (
                 <TabButton key={s} active={eligibilityStatus === s} onClick={() => setEligibilityStatus(s)}>
                   {s}
                 </TabButton>
               ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleEligibilityExport}
+                disabled={filteredEligibility.length === 0}
+              >
+                <Download size={15} /> 엑셀 다운로드
+              </Button>
             </div>
           </div>
           <p className="mt-2 text-xs text-muted">
             항목별 판정 및 결과 확정은 관리자 홈의 &quot;이수요건 확인 · 검토중&quot;에서 처리합니다. 여기서는
-            결과가 확정된(충족/미충족) 내역만 조회할 수 있습니다.
+            결과가 확정된(충족/미충족) 내역만 조회할 수 있습니다. 검색·학기·기간·결과 필터를 적용한 상태 그대로
+            엑셀로 내려받을 수 있어요.
           </p>
           <Card className="mt-3 overflow-x-auto p-0">
             {dataLoading ? (
