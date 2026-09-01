@@ -165,6 +165,13 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
     return !!s.subjectName.trim() && !!s.completedYearMonth;
   }
 
+  /** 이수 학기 이름으로 completionSemesters에서 2026학년도 1학기 이후 학기인지 찾는다. */
+  function isFrom2026H1Onward(completedYearMonth: string) {
+    return completionSemesters.some((s) => s.name === completedYearMonth && s.isFrom2026H1Onward);
+  }
+
+  const hasRecentSubject = isFrom2026H1Onward(subject1.completedYearMonth) || isFrom2026H1Onward(subject2.completedYearMonth);
+
   const selectedTrack = tracks?.find((t) => t.id === trackId) ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -183,6 +190,10 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
       !nonCurricularYearMonth
     ) {
       setSubmitError("모든 항목을 입력해주세요.");
+      return;
+    }
+    if (!hasRecentSubject) {
+      setSubmitError("이수 교과목 1·2 중 최소 1과목은 2026학년도 1학기 이후 이수 학기여야 합니다.");
       return;
     }
     if (!transcriptFile && !prefillTranscriptUrl) {
@@ -264,6 +275,12 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
               <Chip key={name} label={name} onClick={() => setNonCurricularProgram(name)} />
             ))}
           </div>
+        </InfoCard>
+        <InfoCard title="2026학년도 이수 학기 규칙이 궁금해요" defaultOpen>
+          <p>
+            AI인재양성부트캠프사업단은 2026년도부터 운영되어, 이수 교과목 1·2 중 <b className="text-foreground">1과목은 2026년 이전에 이수한 과목도 인정</b>되지만, 나머지{" "}
+            <b className="text-foreground">1과목은 반드시 2026학년도 1학기 이후에 이수한 과목</b>이어야 합니다.
+          </p>
         </InfoCard>
       </div>
 
@@ -365,6 +382,11 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   semesterOptions={completionSemesters}
                 />
               </div>
+              {(subject1.completedYearMonth || subject2.completedYearMonth) && !hasRecentSubject && (
+                <p className="mt-2 text-xs font-medium text-danger">
+                  이수 교과목 1·2 중 최소 1과목은 2026학년도 1학기 이후 이수 학기를 선택해주세요.
+                </p>
+              )}
             </div>
           )}
 
