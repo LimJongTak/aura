@@ -13,7 +13,7 @@ import {
 import {
   createCompletionSemester,
   deleteCompletionSemester,
-  setCompletionSemesterConcludedFlag,
+  setCompletionSemesterConcludeDate,
   setCompletionSemesterEraFlag,
   setCompletionSemesterOrder,
   subscribeCompletionSemesters,
@@ -46,6 +46,19 @@ function toDatetimeLocal(ms: number | null): string {
   const d = new Date(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toDateInput(ms: number | null | undefined): string {
+  if (!ms) return "";
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function fromDateInput(value: string): Date | null {
+  if (!value) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, m - 1, d);
 }
 
 type Tab = "mileage" | "advancedTarget" | "completion" | "immersive";
@@ -213,9 +226,9 @@ export default function AdminSemestersPage() {
           <>
             중고급 이수 신청에서 &quot;이수 교과목&quot;의 이수 학기를 고를 때 쓰는 목록이에요 (예: 2026학년도
             제1학기). &quot;2026-1 이후&quot;로 표시한 학기는 이수요건 확인·신청에서 &quot;이수 교과목 2과목 중
-            최소 1과목은 2026학년도 1학기 이후&quot; 규칙을 검증할 때 기준으로 쓰입니다. &quot;종강&quot;으로
-            표시한 학기만 중고급 이수 신청(실제 신청)의 이수 학기 선택지로 나타나요 — 아직 종강 전인 학기는
-            이수요건 확인(예정 포함 가능)에서만 고를 수 있습니다.
+            최소 1과목은 2026학년도 1학기 이후&quot; 규칙을 검증할 때 기준으로 쓰입니다. 종강일을 지정한
+            학기는 그 날짜가 지나야 중고급 이수 신청(실제 신청)의 이수 학기 선택지로 나타나요 — 종강일이
+            아직 안 지났거나 비어있는 학기는 이수요건 확인(예정 포함 가능)에서만 고를 수 있습니다.
           </>
         }
         placeholder="예: 2026학년도 제1학기"
@@ -240,12 +253,12 @@ export default function AdminSemestersPage() {
             getValue: (item) => !!item.isFrom2026H1Onward,
             onToggle: (id, value) => setCompletionSemesterEraFlag(id, value),
           },
-          {
-            label: "종강",
-            getValue: (item) => !!item.isConcluded,
-            onToggle: (id, value) => setCompletionSemesterConcludedFlag(id, value),
-          },
         ]}
+        dateField={{
+          label: "종강일",
+          getValue: (item) => item.concludeDate ?? null,
+          onChange: (id, date) => setCompletionSemesterConcludeDate(id, date),
+        }}
       />
       )}
 
@@ -282,13 +295,19 @@ type SemesterItem = {
   name: string;
   order: number;
   isFrom2026H1Onward?: boolean;
-  isConcluded?: boolean;
+  concludeDate?: number | null;
 };
 
 interface SemesterFlagConfig {
   label: string;
   getValue: (item: SemesterItem) => boolean;
   onToggle: (id: string, value: boolean) => Promise<void>;
+}
+
+interface SemesterDateFieldConfig {
+  label: string;
+  getValue: (item: SemesterItem) => number | null;
+  onChange: (id: string, date: Date | null) => Promise<void>;
 }
 
 function SimpleSemesterList({
@@ -301,6 +320,7 @@ function SimpleSemesterList({
   onMove,
   onDragReorder,
   flags,
+  dateField,
 }: {
   title: string;
   description: React.ReactNode;
@@ -310,13 +330,28 @@ function SimpleSemesterList({
   onDelete: (id: string) => Promise<void>;
   onMove: (index: number, direction: -1 | 1) => Promise<void>;
   onDragReorder: (items: { id: string; name: string; order: number }[]) => Promise<void>;
-  /** 이수 교과목 학기 목록에서만 쓰는 "2026-1 이후"·"종강" 토글들. 다른 학기 목록에는 없다. */
+  /** 이수 교과목 학기 목록에서만 쓰는 "2026-1 이후" 토글. 다른 학기 목록에는 없다. */
   flags?: SemesterFlagConfig[];
+  /** 이수 교과목 학기 목록에서만 쓰는 "종강일" 날짜 입력. 다른 학기 목록에는 없다. */
+  dateField?: SemesterDateFieldConfig;
 }) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [togglingKey, setTogglingKey] = useState<string | null>(null);
+  const [savingDateId, setSavingDateId] = useState<string | null>(null);
   const { getDragHandleProps, getRowProps } = useDragReorder(items, onDragReorder);
+
+  async function handleDateChange(id: string, value: string) {
+    if (!dateField) return;
+    setSavingDateId(id);
+    try {
+      await dateField.onChange(id, fromDateInput(value));
+    } catch {
+      alert("종강일 저장에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSavingDateId(null);
+    }
+  }
 
   async function handleToggleFlag(flag: SemesterFlagConfig, id: string, value: boolean) {
     const key = `${flag.label}:${id}`;
@@ -378,7 +413,19 @@ function SimpleSemesterList({
                 </span>
                 <span className="text-sm font-semibold text-foreground">{item.name}</span>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                {dateField && (
+                  <label className="flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-muted">
+                    {dateField.label}
+                    <Input
+                      type="date"
+                      value={toDateInput(dateField.getValue(item))}
+                      disabled={savingDateId === item.id}
+                      onChange={(e) => handleDateChange(item.id, e.target.value)}
+                      className="w-36 py-1 text-xs"
+                    />
+                  </label>
+                )}
                 {flags?.map((flag) => {
                   const key = `${flag.label}:${item.id}`;
                   return (

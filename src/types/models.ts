@@ -124,12 +124,12 @@ export interface CompletionSemesterOption {
    *  이후(2026학년도 1학기~)여야 한다는 규칙을 검증하는 데 쓰는 플래그. 관리자가
    *  /admin/semesters의 "중고급 이수 학기" 탭에서 학기별로 켜고 끈다. */
   isFrom2026H1Onward?: boolean;
-  /** 이 학기가 종강했는지 — 중고급 이수 신청(apply-advanced)은 이수를 완료한
-   *  내역으로만 신청해야 하므로 이 플래그가 켜진 학기만 이수 교과목의 이수
-   *  학기로 고를 수 있다. 반면 이수요건 확인(eligibility-check)은 "이번 학기에
-   *  들을 예정" 같은 계획도 허용하므로 종강 여부와 상관없이 전체 학기를 다
-   *  보여준다. 관리자가 /admin/semesters의 "중고급 이수 학기" 탭에서 켜고 끈다. */
-  isConcluded?: boolean;
+  /** 이 학기의 종강일(epoch ms) — 중고급 이수 신청(apply-advanced)은 이수를 완료한
+   *  내역으로만 신청해야 하므로, 이 날짜가 지난(현재 시각 ≥ concludeDate) 학기만
+   *  이수 교과목의 이수 학기로 고를 수 있다. 반면 이수요건 확인(eligibility-check)은
+   *  "이번 학기에 들을 예정" 같은 계획도 허용하므로 종강일과 상관없이 전체 학기를
+   *  다 보여준다. 관리자가 /admin/semesters의 "중고급 이수 학기" 탭에서 설정한다. */
+  concludeDate?: number | null;
 }
 
 /**

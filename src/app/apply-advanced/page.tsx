@@ -172,11 +172,13 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
 
   const hasRecentSubject = isFrom2026H1Onward(subject1.completedYearMonth) || isFrom2026H1Onward(subject2.completedYearMonth);
 
-  // 중고급 이수 신청은 이수를 완료한 내역으로만 신청해야 하므로, 아직 종강하지 않은
-  // 학기(예: 진행 중인 학기)는 이수 교과목의 이수 학기 선택지에서 제외한다. 반면
-  // 이수요건 확인(eligibility-check)은 "이번 학기에 들을 예정" 같은 계획도 허용하므로
-  // 전체 학기를 그대로 보여준다.
-  const concludedCompletionSemesters = completionSemesters.filter((s) => s.isConcluded);
+  // 중고급 이수 신청은 이수를 완료한 내역으로만 신청해야 하므로, 종강일이 지나지
+  // 않았거나 아직 설정되지 않은 학기(예: 진행 중인 학기)는 이수 교과목의 이수 학기
+  // 선택지에서 제외한다. 반면 이수요건 확인(eligibility-check)은 "이번 학기에 들을
+  // 예정" 같은 계획도 허용하므로 종강일과 상관없이 전체 학기를 그대로 보여준다.
+  const concludedCompletionSemesters = completionSemesters.filter(
+    (s) => s.concludeDate != null && s.concludeDate <= Date.now()
+  );
 
   const selectedTrack = tracks?.find((t) => t.id === trackId) ?? null;
 
