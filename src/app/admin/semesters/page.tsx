@@ -13,6 +13,7 @@ import {
 import {
   createCompletionSemester,
   deleteCompletionSemester,
+  setCompletionSemesterConcludedFlag,
   setCompletionSemesterEraFlag,
   setCompletionSemesterOrder,
   subscribeCompletionSemesters,
@@ -212,7 +213,9 @@ export default function AdminSemestersPage() {
           <>
             중고급 이수 신청에서 &quot;이수 교과목&quot;의 이수 학기를 고를 때 쓰는 목록이에요 (예: 2026학년도
             제1학기). &quot;2026-1 이후&quot;로 표시한 학기는 이수요건 확인·신청에서 &quot;이수 교과목 2과목 중
-            최소 1과목은 2026학년도 1학기 이후&quot; 규칙을 검증할 때 기준으로 쓰입니다.
+            최소 1과목은 2026학년도 1학기 이후&quot; 규칙을 검증할 때 기준으로 쓰입니다. &quot;종강&quot;으로
+            표시한 학기만 중고급 이수 신청(실제 신청)의 이수 학기 선택지로 나타나요 — 아직 종강 전인 학기는
+            이수요건 확인(예정 포함 가능)에서만 고를 수 있습니다.
           </>
         }
         placeholder="예: 2026학년도 제1학기"
@@ -231,11 +234,18 @@ export default function AdminSemestersPage() {
         onDragReorder={(items) =>
           Promise.all(items.map((item, i) => setCompletionSemesterOrder(item.id, i))).then(() => undefined)
         }
-        eraFlag={{
-          label: "2026-1 이후",
-          getValue: (item) => !!item.isFrom2026H1Onward,
-          onToggle: (id, value) => setCompletionSemesterEraFlag(id, value),
-        }}
+        flags={[
+          {
+            label: "2026-1 이후",
+            getValue: (item) => !!item.isFrom2026H1Onward,
+            onToggle: (id, value) => setCompletionSemesterEraFlag(id, value),
+          },
+          {
+            label: "종강",
+            getValue: (item) => !!item.isConcluded,
+            onToggle: (id, value) => setCompletionSemesterConcludedFlag(id, value),
+          },
+        ]}
       />
       )}
 
@@ -267,6 +277,20 @@ export default function AdminSemestersPage() {
   );
 }
 
+type SemesterItem = {
+  id: string;
+  name: string;
+  order: number;
+  isFrom2026H1Onward?: boolean;
+  isConcluded?: boolean;
+};
+
+interface SemesterFlagConfig {
+  label: string;
+  getValue: (item: SemesterItem) => boolean;
+  onToggle: (id: string, value: boolean) => Promise<void>;
+}
+
 function SimpleSemesterList({
   title,
   description,
@@ -276,37 +300,33 @@ function SimpleSemesterList({
   onDelete,
   onMove,
   onDragReorder,
-  eraFlag,
+  flags,
 }: {
   title: string;
   description: React.ReactNode;
   placeholder: string;
-  items: { id: string; name: string; order: number; isFrom2026H1Onward?: boolean }[];
+  items: SemesterItem[];
   onCreate: (name: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onMove: (index: number, direction: -1 | 1) => Promise<void>;
   onDragReorder: (items: { id: string; name: string; order: number }[]) => Promise<void>;
-  /** 이수 교과목 학기 목록에서만 쓰는 "2026-1 이후" 토글. 다른 학기 목록에는 없다. */
-  eraFlag?: {
-    label: string;
-    getValue: (item: { id: string; name: string; order: number; isFrom2026H1Onward?: boolean }) => boolean;
-    onToggle: (id: string, value: boolean) => Promise<void>;
-  };
+  /** 이수 교과목 학기 목록에서만 쓰는 "2026-1 이후"·"종강" 토글들. 다른 학기 목록에는 없다. */
+  flags?: SemesterFlagConfig[];
 }) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingKey, setTogglingKey] = useState<string | null>(null);
   const { getDragHandleProps, getRowProps } = useDragReorder(items, onDragReorder);
 
-  async function handleToggleFlag(id: string, value: boolean) {
-    if (!eraFlag) return;
-    setTogglingId(id);
+  async function handleToggleFlag(flag: SemesterFlagConfig, id: string, value: boolean) {
+    const key = `${flag.label}:${id}`;
+    setTogglingKey(key);
     try {
-      await eraFlag.onToggle(id, value);
+      await flag.onToggle(id, value);
     } catch {
       alert("변경에 실패했어요. 잠시 후 다시 시도해주세요.");
     } finally {
-      setTogglingId(null);
+      setTogglingKey(null);
     }
   }
 
@@ -359,23 +379,27 @@ function SimpleSemesterList({
                 <span className="text-sm font-semibold text-foreground">{item.name}</span>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {eraFlag && (
-                  <label
-                    className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
-                      eraFlag.getValue(item)
-                        ? "border-primary bg-primary-light text-primary-dark"
-                        : "border-border text-muted"
-                    } ${togglingId === item.id ? "opacity-50" : ""}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={eraFlag.getValue(item)}
-                      disabled={togglingId === item.id}
-                      onChange={(e) => handleToggleFlag(item.id, e.target.checked)}
-                    />
-                    {eraFlag.label}
-                  </label>
-                )}
+                {flags?.map((flag) => {
+                  const key = `${flag.label}:${item.id}`;
+                  return (
+                    <label
+                      key={flag.label}
+                      className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                        flag.getValue(item)
+                          ? "border-primary bg-primary-light text-primary-dark"
+                          : "border-border text-muted"
+                      } ${togglingKey === key ? "opacity-50" : ""}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={flag.getValue(item)}
+                        disabled={togglingKey === key}
+                        onChange={(e) => handleToggleFlag(flag, item.id, e.target.checked)}
+                      />
+                      {flag.label}
+                    </label>
+                  );
+                })}
                 <button
                   onClick={() => onMove(i, -1)}
                   disabled={i === 0}

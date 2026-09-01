@@ -26,3 +26,7 @@ export async function setCompletionSemesterOrder(id: string, order: number): Pro
 export async function setCompletionSemesterEraFlag(id: string, isFrom2026H1Onward: boolean): Promise<void> {
   await updateDoc(doc(db, "completionSemesters", id), { isFrom2026H1Onward });
 }
+
+export async function setCompletionSemesterConcludedFlag(id: string, isConcluded: boolean): Promise<void> {
+  await updateDoc(doc(db, "completionSemesters", id), { isConcluded });
+}

@@ -172,6 +172,12 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
 
   const hasRecentSubject = isFrom2026H1Onward(subject1.completedYearMonth) || isFrom2026H1Onward(subject2.completedYearMonth);
 
+  // 중고급 이수 신청은 이수를 완료한 내역으로만 신청해야 하므로, 아직 종강하지 않은
+  // 학기(예: 진행 중인 학기)는 이수 교과목의 이수 학기 선택지에서 제외한다. 반면
+  // 이수요건 확인(eligibility-check)은 "이번 학기에 들을 예정" 같은 계획도 허용하므로
+  // 전체 학기를 그대로 보여준다.
+  const concludedCompletionSemesters = completionSemesters.filter((s) => s.isConcluded);
+
   const selectedTrack = tracks?.find((t) => t.id === trackId) ?? null;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -371,7 +377,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   onChange={setSubject1}
                   programOptions={[LEVEL_PROGRAM[level]]}
                   subjectOptions={selectedTrack.subjectsByLevel[level].filter((name) => name !== subject2.subjectName)}
-                  semesterOptions={completionSemesters}
+                  semesterOptions={concludedCompletionSemesters}
                 />
                 <SubjectRow
                   label="이수 교과목 2"
@@ -379,7 +385,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
                   onChange={setSubject2}
                   programOptions={[LEVEL_PROGRAM[level]]}
                   subjectOptions={selectedTrack.subjectsByLevel[level].filter((name) => name !== subject1.subjectName)}
-                  semesterOptions={completionSemesters}
+                  semesterOptions={concludedCompletionSemesters}
                 />
               </div>
               {(subject1.completedYearMonth || subject2.completedYearMonth) && !hasRecentSubject && (
