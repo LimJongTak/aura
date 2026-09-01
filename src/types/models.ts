@@ -101,6 +101,10 @@ export interface AdvancedTrack {
   summary: string;
   order: number;
   subjectsByLevel: Record<CompletionLevel, string[]>;
+  /** 이 트랙을 신청할 수 있는 참여학과 — PARTICIPATING_DEPARTMENTS 중 하나로,
+   *  이수요건 확인·중고급 이수 신청 화면에서 로그인한 학생의 학과와 일치하는
+   *  트랙만 선택지로 보여주는 데 쓰인다. */
+  eligibleDepartment: string;
 }
 
 export type YesNo = "Y" | "N";

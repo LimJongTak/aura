@@ -16,6 +16,7 @@ export interface AdvancedTrackInput {
   summary: string;
   order: number;
   subjectsByLevel: Record<CompletionLevel, string[]>;
+  eligibleDepartment: string;
 }
 
 export async function createAdvancedTrack(input: AdvancedTrackInput): Promise<void> {

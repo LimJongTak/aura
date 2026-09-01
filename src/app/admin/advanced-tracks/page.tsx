@@ -27,6 +27,7 @@ import type {
   CompletionLevel,
   ImmersiveSubjectOption,
 } from "@/types/models";
+import { PARTICIPATING_DEPARTMENTS } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -98,7 +99,12 @@ export default function AdminAdvancedTracksPage() {
                       <GripVertical size={16} />
                     </span>
                     <div className="min-w-0">
-                      <p className="font-bold text-foreground">{track.label}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="font-bold text-foreground">{track.label}</p>
+                        <span className="rounded-full bg-warning-light px-2 py-0.5 text-[11px] font-semibold text-warning">
+                          {track.eligibleDepartment || "신청 가능 학과 미지정"}
+                        </span>
+                      </div>
                       <p className="mt-1 text-xs text-muted">{track.summary}</p>
                     </div>
                   </div>
@@ -465,6 +471,9 @@ function TrackForm({
 }) {
   const [label, setLabel] = useState(initial?.label ?? "");
   const [summary, setSummary] = useState(initial?.summary ?? "");
+  const [eligibleDepartment, setEligibleDepartment] = useState(
+    initial?.eligibleDepartment ?? PARTICIPATING_DEPARTMENTS[0]
+  );
   const [subjectsByLevel, setSubjectsByLevel] = useState<Record<CompletionLevel, string[]>>(
     initial?.subjectsByLevel ?? { 중급: [], 고급: [] }
   );
@@ -477,6 +486,10 @@ function TrackForm({
       setError("트랙 이름을 입력해주세요");
       return;
     }
+    if (!eligibleDepartment) {
+      setError("신청 가능 학과를 선택해주세요");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -485,6 +498,7 @@ function TrackForm({
       summary: summary.trim(),
       order: initial?.order ?? nextOrder,
       subjectsByLevel,
+      eligibleDepartment,
     };
     try {
       if (initial) {
@@ -516,6 +530,19 @@ function TrackForm({
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
         />
+      </div>
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-muted">신청 가능 학과</label>
+        <Select value={eligibleDepartment} onChange={(e) => setEligibleDepartment(e.target.value)}>
+          {PARTICIPATING_DEPARTMENTS.map((dept) => (
+            <option key={dept} value={dept}>
+              {dept}
+            </option>
+          ))}
+        </Select>
+        <p className="mt-1.5 text-xs text-muted">
+          이수요건 확인·중고급 이수 신청 화면에서 이 학과 학생에게만 이 트랙이 보여요.
+        </p>
       </div>
       {LEVELS.map((level) => (
         <div key={level}>

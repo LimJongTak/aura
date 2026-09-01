@@ -91,11 +91,12 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
 
   useEffect(() => {
     const unsub = subscribeAdvancedTracks((list) => {
-      setTracks(list);
-      setTrackId((prev) => (prev && list.some((t) => t.id === prev) ? prev : (list[0]?.id ?? "")));
+      const eligible = list.filter((t) => t.eligibleDepartment === student.department);
+      setTracks(eligible);
+      setTrackId((prev) => (prev && eligible.some((t) => t.id === prev) ? prev : (eligible[0]?.id ?? "")));
     });
     return () => unsub();
-  }, []);
+  }, [student.department]);
 
   useEffect(() => {
     const unsub = subscribeCompletionSemesters(setCompletionSemesters);
