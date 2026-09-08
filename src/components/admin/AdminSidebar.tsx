@@ -16,6 +16,7 @@ import {
   type LucideIcon,
   Megaphone,
   Send,
+  ShieldCheck,
   UserPlus,
   Users,
   Wallet,
@@ -54,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/students", label: "학생 관리", icon: Users },
       { href: "/admin/mileage/bulk-grant", label: "일괄지급", icon: Send },
       { href: "/admin/payments", label: "지급 관리", icon: Wallet },
+      { href: "/admin/privacy-consents", label: "개인정보 동의자 관리", icon: ShieldCheck },
     ],
   },
   {

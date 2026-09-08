@@ -423,6 +423,23 @@ export interface StudentRegistrationRequest {
   note?: string;
 }
 
+/**
+ * 사업단 개인정보 처리 동의를 완료한 학생 명단 → privacyConsents/{studentId}.
+ * 문서가 존재한다는 사실 자체가 "동의 완료"를 뜻한다(별도 boolean 필드 없음).
+ * 로그인 없이도 본인이 학번+이름으로 동의 여부를 바로 확인할 수 있어야 해서
+ * students 컬렉션과 동일하게 단건 조회(get)는 공개, 목록 조회(list)·쓰기는
+ * 관리자만 허용한다 — firestore.rules 참고. 관리자가 /admin/privacy-consents에서
+ * 엑셀 일괄 등록 또는 개별 추가로 관리한다.
+ */
+export interface PrivacyConsent {
+  studentId: string;
+  name: string;
+  /** 명단에 등록(동의 처리)된 시각 */
+  consentedAt: number;
+  /** "manual"(관리자가 직접 추가) | "excel"(엑셀 일괄 등록) — 출처 참고용 */
+  source: "manual" | "excel";
+}
+
 /** 트랙별 이수 과목 체크리스트 1건 — 관리자가 신청서 제출과 무관하게 학생이
  *  실제로 해당 교과목을 이수했는지 수기로 확인해 표시한다. semester는 완료로
  *  체크할 때 고른 이수 학기(completionSemesters 이름)이며, 미완료 상태거나

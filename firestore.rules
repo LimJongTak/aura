@@ -281,6 +281,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // 개인정보 동의자 명단: 학번 단건 조회(get)는 로그인 없이도 가능해야 본인이
+    // 동의 여부를 바로 확인할 수 있다. 전체 목록을 그대로 노출하면 동의자 명단
+    // (개인정보) 자체가 유출되므로 list·쓰기는 관리자만 허용한다 — students
+    // 컬렉션과 동일한 모델.
+    match /privacyConsents/{studentId} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     // 참여학과 학생의 트랙별 이수 과목 체크 현황 — 신청서 제출과 무관하게
     // 관리자가 수기로 이수 여부·이수 학기를 기록한다. 본인은 읽기만 가능.
     match /trackCompletions/{studentId} {

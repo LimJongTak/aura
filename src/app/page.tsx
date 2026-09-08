@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardList, GraduationCap, Search, Sparkles } from "lucide-react";
+import { ClipboardList, GraduationCap, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 
@@ -71,6 +71,11 @@ export default function HomePage() {
             <Link href="/apply-advanced">
               <Button size="lg" variant="outline">
                 <GraduationCap size={18} /> 중고급 이수 신청
+              </Button>
+            </Link>
+            <Link href="/privacy-consent">
+              <Button size="lg" variant="outline">
+                <ShieldCheck size={18} /> 개인정보 동의 확인
               </Button>
             </Link>
           </div>
