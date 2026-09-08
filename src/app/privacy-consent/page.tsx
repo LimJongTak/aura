@@ -86,6 +86,10 @@ export default function PrivacyConsentCheckPage() {
             입력하신 이름·학번과 일치하는 개인정보 동의 내역이 없습니다. 이름이나 학번을 다시 확인해주시고,
             그래도 동의한 적이 있는데 결과가 다르다면 사업단으로 문의해주세요.
           </p>
+          <p className="mt-2 text-sm font-semibold text-foreground">
+            아직 개인정보 동의서를 작성하지 않으셨다면, 국립순천대학교 산학협력단 7층 708호로 방문하여
+            개인정보 동의 서명을 해주세요.
+          </p>
         </Card>
       )}
     </div>
