@@ -15,9 +15,14 @@ export async function getStudent(studentId: string): Promise<Student | null> {
   return snap.exists() ? (snap.data() as Student) : null;
 }
 
-export async function listAllStudents(): Promise<Student[]> {
+/** 전체 학생 목록. 기본적으로는 테스트 계정(isTestAccount)을 제외한다 — 학생
+ *  관리·마일리지 순위·일괄지급·지급 관리 화면 어디서도 실제 학생이 아닌
+ *  테스트 계정이 섞여 보이지 않게 하기 위함. 학생 관리 화면에서만 명시적으로
+ *  includeTestAccounts: true를 넘겨 테스트 계정을 확인·관리할 수 있다. */
+export async function listAllStudents(opts?: { includeTestAccounts?: boolean }): Promise<Student[]> {
   const snap = await getDocs(studentsRef());
-  return snap.docs.map((d) => d.data() as Student);
+  const all = snap.docs.map((d) => d.data() as Student);
+  return opts?.includeTestAccounts ? all : all.filter((s) => !s.isTestAccount);
 }
 
 export interface UpdateStudentInput {
@@ -25,6 +30,7 @@ export interface UpdateStudentInput {
   department: string;
   isParticipating: boolean;
   phone?: string;
+  isTestAccount?: boolean;
 }
 
 /** 관리자용 학생 정보 수정(학과·참여학과 여부 등). 없는 학번이면 새로 만든다.
@@ -38,6 +44,7 @@ export async function upsertStudent(studentId: string, input: UpdateStudentInput
       department: input.department.trim(),
       isParticipating: input.isParticipating,
       phone: input.phone ?? "",
+      isTestAccount: input.isTestAccount ?? false,
     },
     { merge: true }
   );

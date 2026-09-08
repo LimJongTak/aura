@@ -33,6 +33,7 @@ export default function AdminStudentsPage() {
   const [search, setSearch] = useState("");
   const [department, setDepartment] = useState("전체");
   const [participatingOnly, setParticipatingOnly] = useState(false);
+  const [includeTestAccounts, setIncludeTestAccounts] = useState(false);
   const [editing, setEditing] = useState<StudentRow | null>(null);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -43,7 +44,7 @@ export default function AdminStudentsPage() {
     setLoadError(null);
     try {
       const [studentList, apps, semesterList, bankIds] = await Promise.all([
-        listAllStudents(),
+        listAllStudents({ includeTestAccounts }),
         listApprovedMileageApplications(),
         listSemesters(),
         listBankAccountStudentIds(),
@@ -59,7 +60,7 @@ export default function AdminStudentsPage() {
     } finally {
       setDataLoading(false);
     }
-  }, []);
+  }, [includeTestAccounts]);
 
   useEffect(() => {
     refresh();
@@ -198,6 +199,14 @@ export default function AdminStudentsPage() {
             <input type="checkbox" checked={participatingOnly} onChange={(e) => setParticipatingOnly(e.target.checked)} />
             참여학과만
           </label>
+          <label className="flex shrink-0 items-center gap-2 text-sm font-medium text-foreground">
+            <input
+              type="checkbox"
+              checked={includeTestAccounts}
+              onChange={(e) => setIncludeTestAccounts(e.target.checked)}
+            />
+            테스트 계정 포함
+          </label>
         </div>
       </Card>
 
@@ -230,11 +239,18 @@ export default function AdminStudentsPage() {
                   <td className="px-4 py-2.5 font-semibold">{r.name}</td>
                   <td className="px-4 py-2.5">{r.department}</td>
                   <td className="px-4 py-2.5">
-                    {r.isParticipating && (
-                      <span className="rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
-                        참여
-                      </span>
-                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {r.isParticipating && (
+                        <span className="rounded-full bg-primary-light px-2 py-0.5 text-xs font-semibold text-primary-dark">
+                          참여
+                        </span>
+                      )}
+                      {r.isTestAccount && (
+                        <span className="rounded-full bg-warning-light px-2 py-0.5 text-xs font-semibold text-warning">
+                          테스트
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5">
                     {r.bankRegistered ? (
@@ -305,6 +321,7 @@ function EditStudentModal({
 }) {
   const [department, setDepartment] = useState(student.department);
   const [isParticipating, setIsParticipating] = useState(student.isParticipating);
+  const [isTestAccount, setIsTestAccount] = useState(!!student.isTestAccount);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -317,6 +334,7 @@ function EditStudentModal({
         department: department.trim(),
         isParticipating,
         phone: student.phone,
+        isTestAccount,
       });
       onSaved();
     } catch {
@@ -340,6 +358,10 @@ function EditStudentModal({
           <label className="flex items-center gap-2 text-sm font-medium">
             <input type="checkbox" checked={isParticipating} onChange={(e) => setIsParticipating(e.target.checked)} />
             참여학과 (인공지능공학전공·전기공학전공·전자공학전공)
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={isTestAccount} onChange={(e) => setIsTestAccount(e.target.checked)} />
+            테스트 계정 (학생 목록·마일리지 순위·일괄지급·지급 관리에서 기본적으로 제외)
           </label>
           {error && <p className="text-sm font-medium text-danger">{error}</p>}
           <div className="flex justify-end gap-2">

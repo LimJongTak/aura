@@ -33,6 +33,10 @@ export interface Student {
   phone?: string;
   /** 최초 비밀번호(000000) 그대로 쓰고 있어 강제 변경이 필요한 상태인지 */
   mustChangePassword?: boolean;
+  /** 실제 학생이 아니라 화면 확인용으로 만든 테스트 계정 — true면 학생 관리
+   *  목록·마일리지 순위, 일괄지급 대상, 지급 관리 목록에서 기본적으로
+   *  제외된다({@link listAllStudents}의 includeTestAccounts 옵션 참고). */
+  isTestAccount?: boolean;
 }
 
 /**
