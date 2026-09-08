@@ -22,7 +22,6 @@ const DEFAULT_NAV_GROUPS: NavMenuGroup[] = [
     order: 0,
     items: [
       { label: "안내", href: "/" },
-      { label: "마이페이지", href: "/mypage" },
       { label: "신청", href: "/apply" },
     ],
   },
@@ -144,7 +143,7 @@ export function Header() {
                   key={group.id}
                   href={soleItem.href}
                   className={cn(
-                    "border-b-2 py-2 text-sm font-medium transition",
+                    "block border-b-2 py-2 text-sm font-medium transition",
                     highlighted
                       ? "border-primary text-primary-dark"
                       : "border-transparent text-muted hover:text-foreground"
@@ -165,7 +164,7 @@ export function Header() {
                   href={group.items[0].href}
                   onClick={() => setOpenGroupId(null)}
                   className={cn(
-                    "border-b-2 py-2 text-sm font-medium transition",
+                    "block border-b-2 py-2 text-sm font-medium transition",
                     highlighted
                       ? "border-primary text-primary-dark"
                       : "border-transparent text-muted hover:text-foreground"
@@ -183,6 +182,12 @@ export function Header() {
             {user && student ? (
               <>
                 <span className="text-xs font-semibold text-muted">{student.name}님</span>
+                <Link
+                  href="/mypage"
+                  className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
+                >
+                  마이페이지
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
@@ -318,14 +323,22 @@ export function Header() {
           <div className="mt-2 border-t border-border pt-3">
             {!sessionLoading &&
               (user && student ? (
-                <div className="flex items-center justify-between px-3">
+                <div className="flex items-center justify-between gap-2 px-3">
                   <span className="text-sm font-semibold text-muted">{student.name}님</span>
-                  <button
-                    onClick={handleLogout}
-                    className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-                  >
-                    로그아웃
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href="/mypage"
+                      className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
+                    >
+                      마이페이지
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
+                    >
+                      로그아웃
+                    </button>
+                  </div>
                 </div>
               ) : user && isAdmin ? (
                 <div className="flex items-center justify-between px-3">
