@@ -208,7 +208,7 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
         <CheckCircle2 className="mx-auto text-success" size={48} />
         <h2 className="mt-4 text-xl font-extrabold text-foreground">이수요건 확인 신청이 접수되었습니다</h2>
         <p className="mt-2 text-sm text-muted">
-          사업단 검토 후 충족·미충족 여부가 확정됩니다. &quot;마일리지 조회&quot;에서 결과를 확인할 수 있습니다.
+          사업단 검토 후 충족·미충족 여부가 확정됩니다. &quot;마이페이지&quot;에서 결과를 확인할 수 있습니다.
         </p>
       </div>
     );

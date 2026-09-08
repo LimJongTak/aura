@@ -33,7 +33,7 @@ export default function LoginPage() {
       if (student?.mustChangePassword) {
         router.push("/change-password");
       } else {
-        router.push("/lookup");
+        router.push("/mypage");
       }
       void cred;
     } catch {

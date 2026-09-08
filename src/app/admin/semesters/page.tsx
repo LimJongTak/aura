@@ -30,11 +30,13 @@ import {
   setAdvancedTargetSemesterOrder,
   subscribeAdvancedTargetSemesters,
 } from "@/lib/firestore/advancedTargetSemesters";
+import { bumpTrackCompletionVersion, getTrackCompletionVersion } from "@/lib/firestore/trackCompletionNotifications";
 import type {
   AdvancedTargetSemesterOption,
   CompletionSemesterOption,
   ImmersiveSemesterOption,
   Semester,
+  TrackCompletionNotification,
 } from "@/types/models";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -85,10 +87,38 @@ export default function AdminSemestersPage() {
   const [immersiveSemesters, setImmersiveSemesters] = useState<ImmersiveSemesterOption[]>([]);
   const [advancedTargetSemesters, setAdvancedTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [tab, setTab] = useState<Tab>("mileage");
+  const [completionNotification, setCompletionNotification] = useState<TrackCompletionNotification | null>(null);
+  const [notifying, setNotifying] = useState(false);
 
   const refresh = useCallback(async () => {
     setSemesters(await listSemesters());
   }, []);
+
+  const refreshCompletionNotification = useCallback(async () => {
+    setCompletionNotification(await getTrackCompletionVersion());
+  }, []);
+
+  useEffect(() => {
+    refreshCompletionNotification();
+  }, [refreshCompletionNotification]);
+
+  async function handleNotifyTrackCompletion() {
+    if (
+      !confirm(
+        "참여학과 학생 전원의 마이페이지에 \"이수 과목 체크\" 빨간 점을 다시 표시할까요?\n학기가 지나 이수 현황을 갱신했을 때 사용하세요."
+      )
+    )
+      return;
+    setNotifying(true);
+    try {
+      await bumpTrackCompletionVersion();
+      await refreshCompletionNotification();
+    } catch {
+      alert("알림 갱신에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setNotifying(false);
+    }
+  }
 
   useEffect(() => {
     refresh();
@@ -217,6 +247,24 @@ export default function AdminSemestersPage() {
           Promise.all(items.map((item, i) => setAdvancedTargetSemesterOrder(item.id, i))).then(() => undefined)
         }
       />
+      )}
+
+      {tab === "completion" && (
+      <Card className="mt-6">
+        <p className="font-bold text-foreground">이수 과목 체크 갱신 알림</p>
+        <p className="mt-1 text-xs text-muted">
+          학기가 지나 참여학과 학생들의 이수 과목 체크 현황(/admin/students에서 트랙별로 체크한 내용)을
+          갱신했다면, 아래 버튼으로 참여학과 학생 전원의 마이페이지 &quot;이수 과목 체크&quot;에 빨간 점을 다시
+          표시할 수 있어요. 학생이 마이페이지에서 그 화면을 열어보면 빨간 점은 사라집니다.
+        </p>
+        <p className="mt-2 text-xs text-muted">
+          현재 버전: {completionNotification?.version ?? "-"}
+          {completionNotification?.updatedAt ? ` · 마지막 갱신 ${new Date(completionNotification.updatedAt).toLocaleString("ko-KR")}` : ""}
+        </p>
+        <Button size="sm" className="mt-3" loading={notifying} onClick={handleNotifyTrackCompletion}>
+          참여학과 학생에게 갱신 알림(빨간 점) 보내기
+        </Button>
+      </Card>
       )}
 
       {tab === "completion" && (

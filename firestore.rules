@@ -281,6 +281,32 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // 참여학과 학생의 트랙별 이수 과목 체크 현황 — 신청서 제출과 무관하게
+    // 관리자가 수기로 이수 여부·이수 학기를 기록한다. 본인은 읽기만 가능.
+    match /trackCompletions/{studentId} {
+      allow read: if isSelf(studentId) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 이수 과목 체크 화면의 전역 갱신 버전(싱글턴 문서). 모든 로그인 학생이
+    // 자신의 확인 버전과 비교해야 하므로 공개 읽기, 갱신(버전 올리기)은 관리자만.
+    match /notificationSettings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // 학생이 이수 과목 체크 화면을 확인한 마지막 버전 — 민감정보가 없어 본인이
+    // 직접 쓸 수 있다(버전 숫자만, 다른 학생 문서는 못 건드림).
+    match /trackCompletionAcks/{studentId} {
+      allow read: if isSelf(studentId) || isAdmin();
+      allow create, update: if isSelf(studentId) &&
+        request.resource.data.studentId == studentId &&
+        request.resource.data.seenVersion is number &&
+        request.resource.data.updatedAt is number &&
+        request.resource.data.keys().hasOnly(["studentId", "seenVersion", "updatedAt"]);
+      allow delete: if isAdmin();
+    }
+
     // 학생 등록 신청: 학생명단에 없는 학생이 이름·학번·학과를 제출하면
     // 관리자 승인 후 students 문서가 생성된다. 이미 등록된 학번은 신청 불가.
     // 승인 전 목록은 개인정보라 관리자만 조회 가능.

@@ -38,7 +38,7 @@ export default function RegisterPage() {
     setSubmitting(true);
     try {
       if (await studentExists(trimmedId)) {
-        setError("이미 등록된 학번입니다. \"마일리지 조회\"를 이용해주세요.");
+        setError("이미 등록된 학번입니다. \"마이페이지\"를 이용해주세요.");
         return;
       }
       if (await hasPendingRegistration(trimmedId)) {
@@ -65,7 +65,7 @@ export default function RegisterPage() {
         <CheckCircle2 className="mx-auto text-success" size={48} />
         <h1 className="mt-4 text-xl font-extrabold text-foreground">등록 신청이 접수되었습니다</h1>
         <p className="mt-2 text-sm text-muted">
-          사업단 확인 후 승인되면 &quot;마일리지 조회&quot;에서 이름과 학번으로 조회할 수 있습니다.
+          사업단 확인 후 승인되면 &quot;마이페이지&quot;에서 이름과 학번으로 조회할 수 있습니다.
         </p>
         <Link href="/">
           <Button className="mt-6" variant="outline">
@@ -80,7 +80,7 @@ export default function RegisterPage() {
     <div className="mx-auto max-w-xl px-4 py-10 sm:px-6">
       <h1 className="text-2xl font-extrabold text-foreground">학생 등록 신청</h1>
       <p className="mt-1.5 text-sm text-muted">
-        &quot;마일리지 조회&quot;에서 본인 정보를 찾을 수 없는 경우, 아래 정보를 제출해 등록을 신청해주세요.
+        &quot;마이페이지&quot;에서 본인 정보를 찾을 수 없는 경우, 아래 정보를 제출해 등록을 신청해주세요.
         사업단 확인 후 승인됩니다.
       </p>
 

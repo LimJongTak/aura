@@ -34,7 +34,7 @@ const GROUPS = [
     order: 0,
     items: [
       { label: "안내", href: "/" },
-      { label: "조회", href: "/lookup" },
+      { label: "마이페이지", href: "/mypage" },
       { label: "신청", href: "/apply" },
     ],
   },

@@ -225,7 +225,7 @@ export interface EligibilityCriteria {
  * 이수요건이 성립하는지 미리 확인받는 신청. 성적증명서 첨부·비교과 참여
  * 입력까지 실제 신청과 동일하게 받는다 (비교과는 이미 참여한 이력 또는 참여
  * 예정 중 하나를 고른다). 관리자가 항목별로 충족/미충족을 매겨 전체 판정이
- * 정해지며, 학생은 /lookup에서 전체 결과와 항목별 결과를 모두 확인할 수 있다.
+ * 정해지며, 학생은 /mypage에서 전체 결과와 항목별 결과를 모두 확인할 수 있다.
  * "충족" 신청은 /apply-advanced에서 "신청하러가기"로 넘어가면 비교과를 뺀
  * 나머지 입력값(성적증명서 포함)이 그대로 채워진다. → eligibilityChecks/{id}
  */
@@ -417,4 +417,51 @@ export interface StudentRegistrationRequest {
   status: ApplicationStatus;
   processedAt?: number;
   note?: string;
+}
+
+/** 트랙별 이수 과목 체크리스트 1건 — 관리자가 신청서 제출과 무관하게 학생이
+ *  실제로 해당 교과목을 이수했는지 수기로 확인해 표시한다. semester는 완료로
+ *  체크할 때 고른 이수 학기(completionSemesters 이름)이며, 미완료 상태거나
+ *  완료지만 학기를 아직 안 골랐으면 null이다. */
+export interface SubjectCompletionRecord {
+  trackId: string;
+  trackLabel: string;
+  level: CompletionLevel;
+  subjectName: string;
+  completed: boolean;
+  semester: string | null;
+  updatedAt: number;
+}
+
+/**
+ * 참여학과 학생의 트랙별 이수 과목 체크 현황 → trackCompletions/{studentId}.
+ * 관리자가 /admin/students/{studentId}에서 학생의 학과에 맞는 트랙(advancedTracks)의
+ * 중급/고급 교과목별로 이수 여부·이수 학기를 직접 체크하면 이 문서의 records 맵에
+ * 저장된다. 키는 `${trackId}__${level}__${subjectName}`. 학생은 /mypage에서 읽기
+ * 전용으로 본인 현황만 확인할 수 있다.
+ */
+export interface StudentTrackCompletion {
+  studentId: string;
+  records: Record<string, SubjectCompletionRecord>;
+  updatedAt: number;
+}
+
+/**
+ * 이수 과목 체크 화면에 새로 확인할 내용이 있음을 알리는 전역 버전(싱글턴) →
+ * notificationSettings/trackCompletion. 관리자가 최초 기능 출시, 또는 학기가
+ * 지나 이수 현황을 갱신했을 때 이 버전을 올리면, 자신이 마지막으로 확인한 버전
+ * ({@link TrackCompletionAck}) 보다 큰 참여학과 학생 전원의 마이페이지에 빨간
+ * 점이 다시 표시된다.
+ */
+export interface TrackCompletionNotification {
+  version: number;
+  updatedAt: number;
+}
+
+/** 학생이 이수 과목 체크 화면을 마지막으로 확인한 버전 → trackCompletionAcks/{studentId}.
+ *  민감정보가 없어 본인이 직접 쓴다(로그인한 본인 문서에만 쓰기 허용). */
+export interface TrackCompletionAck {
+  studentId: string;
+  seenVersion: number;
+  updatedAt: number;
 }

@@ -253,7 +253,7 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
         <CheckCircle2 className="mx-auto text-success" size={48} />
         <h2 className="mt-4 text-xl font-extrabold text-foreground">신청이 접수되었습니다</h2>
         <p className="mt-2 text-sm text-muted">
-          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마일리지 조회&quot;에서 처리 상태를 확인할 수
+          사업단 검토 후 승인·반려 상태가 확정됩니다. &quot;마이페이지&quot;에서 처리 상태를 확인할 수
           있습니다.
         </p>
       </div>

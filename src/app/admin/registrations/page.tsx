@@ -52,7 +52,7 @@ export default function AdminRegistrationsPage() {
       <PageHeader
         title={`학생 등록 신청 · 검토중 (${requests.length}건)`}
         description={
-          <>승인하면 즉시 학생명단에 추가되어 &quot;마일리지 조회&quot;에서 이름·학번으로 조회할 수 있습니다.</>
+          <>승인하면 즉시 학생명단에 추가되어 &quot;마이페이지&quot;에서 이름·학번으로 조회할 수 있습니다.</>
         }
       />
 

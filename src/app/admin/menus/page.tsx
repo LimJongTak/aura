@@ -186,7 +186,7 @@ function MenuItemsEditor({ items, onChange }: { items: NavMenuItem[]; onChange: 
       </ul>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
         <Input value={labelDraft} onChange={(e) => setLabelDraft(e.target.value)} placeholder="링크 이름 (예: 조회)" />
-        <Input value={hrefDraft} onChange={(e) => setHrefDraft(e.target.value)} placeholder="경로 (예: /lookup)" />
+        <Input value={hrefDraft} onChange={(e) => setHrefDraft(e.target.value)} placeholder="경로 (예: /mypage)" />
         <Button type="button" variant="outline" size="sm" onClick={handleAdd} className="whitespace-nowrap">
           추가
         </Button>

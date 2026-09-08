@@ -29,18 +29,27 @@ import {
 } from "@/lib/firestore/eligibilityChecks";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { listSemesters } from "@/lib/firestore/semesters";
+import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
+import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
+import { getTrackCompletion, setSubjectCompletion, subjectCompletionKey } from "@/lib/firestore/trackCompletions";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import {
   ACTIVITY_GROUPS,
   MAX_ADMIN_MILEAGE_GRANT,
   type ActivityGroup,
   type AdvancedApplication,
+  type AdvancedTrack,
+  type CompletionLevel,
+  type CompletionSemesterOption,
   type ConversionSettings,
   type EligibilityCheck,
   type MileageApplication,
   type Semester,
   type Student,
+  type StudentTrackCompletion,
 } from "@/types/models";
+
+const LEVELS: CompletionLevel[] = ["중급", "고급"];
 
 const ALL_SEMESTERS = "전체 학기";
 
@@ -62,15 +71,20 @@ export default function AdminStudentDetailPage() {
   const [recalling, setRecalling] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [cancelingId, setCancelingId] = useState<string | null>(null);
+  const [tracks, setTracks] = useState<AdvancedTrack[]>([]);
+  const [completionSemesters, setCompletionSemesters] = useState<CompletionSemesterOption[]>([]);
+  const [trackCompletion, setTrackCompletion] = useState<StudentTrackCompletion | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [s, apps, advApps, elChecks, semesterList, convSettings] = await Promise.all([
+    const [s, apps, advApps, elChecks, semesterList, convSettings, completion] = await Promise.all([
       getStudent(studentId),
       listApplicationsForStudent(studentId),
       listAdvancedApplicationsForStudent(studentId),
       listEligibilityChecksForStudent(studentId),
       listSemesters(),
       getConversionSettings(),
+      getTrackCompletion(studentId),
     ]);
     setStudent(s);
     setApplications(apps);
@@ -78,6 +92,7 @@ export default function AdminStudentDetailPage() {
     setEligibilityChecks(elChecks);
     setSemesters(semesterList);
     setSettings(convSettings);
+    setTrackCompletion(completion);
     setSemesterFilter((prev) => {
       if (prev !== ALL_SEMESTERS) return prev;
       const current = semesterList.find((sem) => sem.isCurrent);
@@ -92,6 +107,62 @@ export default function AdminStudentDetailPage() {
       .catch(() => setLoadError(true))
       .finally(() => setDataLoading(false));
   }, [refresh]);
+
+  useEffect(() => {
+    const unsub = subscribeAdvancedTracks(setTracks);
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = subscribeCompletionSemesters(setCompletionSemesters);
+    return () => unsub();
+  }, []);
+
+  const eligibleTracks = useMemo(
+    () => (student ? tracks.filter((t) => t.eligibleDepartment === student.department) : []),
+    [tracks, student]
+  );
+
+  async function handleToggleSubjectCompletion(track: AdvancedTrack, level: CompletionLevel, subjectName: string, completed: boolean) {
+    const key = subjectCompletionKey(track.id, level, subjectName);
+    const existing = trackCompletion?.records[key];
+    setSavingKey(key);
+    try {
+      await setSubjectCompletion(studentId, {
+        trackId: track.id,
+        trackLabel: track.label,
+        level,
+        subjectName,
+        completed,
+        semester: existing?.semester ?? null,
+      });
+      setTrackCompletion(await getTrackCompletion(studentId));
+    } catch {
+      alert("저장에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  async function handleSetSubjectCompletionSemester(track: AdvancedTrack, level: CompletionLevel, subjectName: string, semester: string) {
+    const key = subjectCompletionKey(track.id, level, subjectName);
+    setSavingKey(key);
+    try {
+      await setSubjectCompletion(studentId, {
+        trackId: track.id,
+        trackLabel: track.label,
+        level,
+        subjectName,
+        completed: true,
+        semester: semester || null,
+      });
+      setTrackCompletion(await getTrackCompletion(studentId));
+    } catch {
+      alert("저장에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSavingKey(null);
+    }
+  }
 
   useEffect(() => setSelectedIds(new Set()), [semesterFilter]);
 
@@ -586,6 +657,88 @@ export default function AdminStudentDetailPage() {
           )}
         </Card>
       </div>
+
+      {student.isParticipating && (
+        <div className="mt-10">
+          <h2 className="font-bold text-foreground">중고급 이수 과목 체크 (트랙별)</h2>
+          <p className="mt-1 text-xs text-muted">
+            신청서 제출 여부와 무관하게, 학생의 학과({student.department})에 맞는 트랙의 중급/고급 교과목별로
+            실제 이수 여부와 이수 학기를 직접 체크합니다. 여기서 체크한 내용은 학생의 마이페이지에 그대로
+            보입니다.
+          </p>
+          {eligibleTracks.length === 0 ? (
+            <Card className="mt-3">
+              <p className="text-sm text-muted">
+                {student.department} 학과에 맞는 트랙이 아직 등록되어 있지 않습니다. 중고급 이수 신청 트랙
+                관리에서 트랙을 먼저 등록해주세요.
+              </p>
+            </Card>
+          ) : (
+            <div className="mt-3 flex flex-col gap-3">
+              {eligibleTracks.map((track) => (
+                <Card key={track.id}>
+                  <p className="font-bold text-foreground">{track.label}</p>
+                  <p className="mt-1 text-xs text-muted">{track.summary}</p>
+                  <div className="mt-3 flex flex-col gap-3">
+                    {LEVELS.map((level) => (
+                      <div key={level}>
+                        <p className="mb-1.5 text-xs font-semibold text-muted">{level}</p>
+                        {track.subjectsByLevel[level].length === 0 ? (
+                          <p className="text-xs text-muted">등록된 교과목이 없습니다.</p>
+                        ) : (
+                          <ul className="flex flex-col gap-1.5">
+                            {track.subjectsByLevel[level].map((subjectName) => {
+                              const key = subjectCompletionKey(track.id, level, subjectName);
+                              const record = trackCompletion?.records[key];
+                              const completed = record?.completed ?? false;
+                              const saving = savingKey === key;
+                              return (
+                                <li
+                                  key={subjectName}
+                                  className="flex flex-wrap items-center gap-2 rounded-xl border border-border px-3 py-2"
+                                >
+                                  <label className="flex flex-1 items-center gap-2 text-sm font-medium">
+                                    <input
+                                      type="checkbox"
+                                      checked={completed}
+                                      disabled={saving}
+                                      onChange={(e) =>
+                                        handleToggleSubjectCompletion(track, level, subjectName, e.target.checked)
+                                      }
+                                    />
+                                    {subjectName}
+                                  </label>
+                                  {completed && (
+                                    <Select
+                                      value={record?.semester ?? ""}
+                                      disabled={saving}
+                                      onChange={(e) =>
+                                        handleSetSubjectCompletionSemester(track, level, subjectName, e.target.value)
+                                      }
+                                      className="w-44 py-1 text-xs"
+                                    >
+                                      <option value="">이수 학기 선택</option>
+                                      {completionSemesters.map((s) => (
+                                        <option key={s.id} value={s.name}>
+                                          {s.name}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

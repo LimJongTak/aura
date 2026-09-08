@@ -58,9 +58,9 @@ export default function HomePage() {
             100만원)으로 환산·활용됩니다. 아래에서 내 마일리지를 조회하거나 신청해보세요.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/lookup">
+            <Link href="/mypage">
               <Button size="lg">
-                <Search size={18} /> 마일리지 조회
+                <Search size={18} /> 마이페이지
               </Button>
             </Link>
             <Link href="/apply">
@@ -99,10 +99,10 @@ export default function HomePage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <Card>
                 <Search className="text-primary" size={22} />
-                <p className="mt-3 font-bold">① 마일리지 조회</p>
+                <p className="mt-3 font-bold">① 마이페이지</p>
                 <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                  이름과 학번을 입력하면 누적 승인 마일리지, 신청 내역, 중고급 이수 신청 현황을 바로
-                  확인할 수 있습니다.
+                  로그인하면 누적 승인 마일리지, 신청 내역, 중고급 이수 신청·이수 과목 체크 현황을 한
+                  곳에서 확인할 수 있습니다.
                 </p>
               </Card>
               <Card>
