@@ -1,17 +1,27 @@
-import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, setDoc, writeBatch } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { collection, deleteDoc, doc, getDocs, orderBy, query, setDoc, writeBatch } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase/client";
 import type { PrivacyConsent } from "@/types/models";
 
 const privacyConsentsRef = () => collection(db, "privacyConsents");
 
-/** 로그인 없이도 호출 가능. 학번 문서를 단건 조회한 뒤 이름까지 일치해야
- *  "본인 확인"으로 보고 동의 정보를 돌려준다 — 학번만 맞고 이름이 다르면(오탈자
- *  포함) 동의 내역 없음과 동일하게 취급한다. */
-export async function checkPrivacyConsent(studentId: string, name: string): Promise<PrivacyConsent | null> {
-  const snap = await getDoc(doc(db, "privacyConsents", studentId.trim()));
-  if (!snap.exists()) return null;
-  const data = snap.data() as PrivacyConsent;
-  return data.name.trim() === name.trim() ? data : null;
+/** privacyConsents는 동의자 명단(개인정보) 자체라 Firestore 규칙상 클라이언트
+ *  직접 조회가 항상 막혀있다(get/list 모두 관리자만) — 학번 하나만 알아도 get이
+ *  열려있으면 전체 명단을 무작위 대입으로 긁어갈 수 있기 때문이다. 대신 이 Cloud
+ *  Function(Admin SDK)이 이름까지 일치할 때만 "동의함" 결과만 돌려주고, 저장된
+ *  이름 등 원본 데이터는 절대 클라이언트로 내려주지 않는다. 로그인 없이 호출
+ *  가능하다. */
+const checkPrivacyConsentFn = httpsCallable<
+  { studentId: string; name: string },
+  { consented: boolean; consentedAt: number | null }
+>(functions, "checkPrivacyConsent");
+
+export async function checkPrivacyConsent(
+  studentId: string,
+  name: string
+): Promise<{ consented: boolean; consentedAt: number | null }> {
+  const result = await checkPrivacyConsentFn({ studentId: studentId.trim(), name: name.trim() });
+  return result.data;
 }
 
 /** 관리자 전용 — 전체 동의자 명단. */

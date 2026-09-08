@@ -303,3 +303,29 @@ export const hasPendingStudentRegistration = onCall(async (request) => {
     .get();
   return { pending: !snap.empty };
 });
+
+/** 개인정보 동의 확인 화면(로그인 불필요)에서 호출한다. privacyConsents는
+ * 동의자 명단 자체가 개인정보라 Firestore 규칙상 get/list 모두 관리자만
+ * 허용되어 있다 — hasPendingStudentRegistration과 같은 이유로, 이 함수가
+ * Admin SDK로 대신 조회해 "동의했는지" 여부(및 동의 시각)만 돌려주고 저장된
+ * 이름 등 원본 데이터는 절대 그대로 내려주지 않는다. 이름까지 정확히
+ * 일치해야 동의로 판단해서, 학번만 아는 사람이 남의 동의 여부를 알아낼 수
+ * 없게 한다. */
+export const checkPrivacyConsent = onCall(async (request) => {
+  const { studentId, name } = request.data as { studentId?: string; name?: string };
+  if (!studentId || typeof studentId !== "string" || !studentId.trim()) {
+    throw new HttpsError("invalid-argument", "학번이 필요합니다.");
+  }
+  if (!name || typeof name !== "string" || !name.trim()) {
+    throw new HttpsError("invalid-argument", "이름이 필요합니다.");
+  }
+
+  const snap = await admin.firestore().collection("privacyConsents").doc(studentId.trim()).get();
+  if (!snap.exists) return { consented: false };
+
+  const data = snap.data()!;
+  if (String(data.name ?? "").trim() !== name.trim()) return { consented: false };
+
+  const consentedAt = typeof data.consentedAt === "number" ? data.consentedAt : null;
+  return { consented: true, consentedAt };
+});

@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { checkPrivacyConsent } from "@/lib/firestore/privacyConsents";
-import type { PrivacyConsent } from "@/types/models";
 
-type Result = { kind: "found"; consent: PrivacyConsent } | { kind: "not-found" } | null;
+type Result = { kind: "found"; consentedAt: number | null } | { kind: "not-found" } | null;
 
 export default function PrivacyConsentCheckPage() {
   const [name, setName] = useState("");
@@ -27,8 +26,8 @@ export default function PrivacyConsentCheckPage() {
     setChecking(true);
     setResult(null);
     try {
-      const consent = await checkPrivacyConsent(studentId, name);
-      setResult(consent ? { kind: "found", consent } : { kind: "not-found" });
+      const { consented, consentedAt } = await checkPrivacyConsent(studentId, name);
+      setResult(consented ? { kind: "found", consentedAt } : { kind: "not-found" });
     } catch {
       setError("확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
@@ -71,8 +70,8 @@ export default function PrivacyConsentCheckPage() {
             <p className="font-bold text-success">개인정보 동의가 확인되었습니다</p>
           </div>
           <p className="mt-1.5 text-sm text-foreground/80">
-            {result.consent.name}님 ({result.consent.studentId})은 사업단 개인정보 처리에 동의한 명단에
-            등록되어 있습니다.
+            입력하신 정보는 사업단 개인정보 처리에 동의한 명단에 등록되어 있습니다.
+            {result.consentedAt && ` (등록일: ${new Date(result.consentedAt).toLocaleDateString("ko-KR")})`}
           </p>
         </Card>
       )}

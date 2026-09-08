@@ -281,13 +281,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 개인정보 동의자 명단: 학번 단건 조회(get)는 로그인 없이도 가능해야 본인이
-    // 동의 여부를 바로 확인할 수 있다. 전체 목록을 그대로 노출하면 동의자 명단
-    // (개인정보) 자체가 유출되므로 list·쓰기는 관리자만 허용한다 — students
-    // 컬렉션과 동일한 모델.
+    // 개인정보 동의자 명단: get 하나만 열어도 학번을 무작위로 대입해가며 전체
+    // 명단(이름 포함)을 그대로 긁어갈 수 있다 — students의 get:true와 달리
+    // 이 컬렉션은 "동의자 명단" 자체가 곧 개인정보라 그 방식을 쓰지 않는다.
+    // get/list/write 모두 관리자만 허용하고, 로그인 없는 본인 확인은
+    // studentRegistrationRequests와 같은 방식으로 checkPrivacyConsent Cloud
+    // Function(Admin SDK)이 대신 처리한다 — 함수는 이름까지 일치할 때만
+    // {consented:true}만 돌려주고 저장된 이름 등 원본 데이터는 절대
+    // 내려주지 않는다.
     match /privacyConsents/{studentId} {
-      allow get: if true;
-      allow list: if isAdmin();
+      allow get, list: if isAdmin();
       allow write: if isAdmin();
     }
 
