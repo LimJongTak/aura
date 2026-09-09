@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Search, Upload } from "lucide-react";
+import { ChevronDown, ChevronUp, Download, Search, Upload } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { listAllStudents } from "@/lib/firestore/students";
 import { listSemesters } from "@/lib/firestore/semesters";
+import { listActivityStandards } from "@/lib/firestore/activityStandards";
 import { bulkGrantMileage, type BulkGrantResult, type GrantMileageInput } from "@/lib/firestore/mileageApplications";
 import {
   downloadMileageGrantTemplate,
@@ -19,6 +20,7 @@ import {
   ACTIVITY_GROUPS,
   MAX_ADMIN_MILEAGE_GRANT,
   type ActivityGroup,
+  type ActivityStandard,
   type Semester,
   type Student,
 } from "@/types/models";
@@ -54,12 +56,18 @@ function ResultBanner({ results, onDismiss }: { results: BulkGrantResult[]; onDi
 export default function AdminMileageBulkGrantPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [standards, setStandards] = useState<ActivityStandard[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [studentList, semesterList] = await Promise.all([listAllStudents(), listSemesters()]);
+    const [studentList, semesterList, standardList] = await Promise.all([
+      listAllStudents(),
+      listSemesters(),
+      listActivityStandards(),
+    ]);
     setStudents(studentList);
     setSemesters(semesterList);
+    setStandards(standardList);
   }, []);
 
   useEffect(() => {
@@ -83,10 +91,57 @@ export default function AdminMileageBulkGrantPage() {
         <p className="mt-10 text-center text-sm text-muted">불러오는 중...</p>
       ) : (
         <div className="mt-6 flex flex-col gap-8">
-          <CheckboxGrantSection students={students} semesters={semesters} defaultSemester={defaultSemester} />
-          <ExcelGrantSection students={students} semesters={semesters} defaultSemester={defaultSemester} />
+          <CheckboxGrantSection
+            students={students}
+            semesters={semesters}
+            standards={standards}
+            defaultSemester={defaultSemester}
+          />
+          <ExcelGrantSection
+            students={students}
+            semesters={semesters}
+            standards={standards}
+            defaultSemester={defaultSemester}
+          />
         </div>
       )}
+    </div>
+  );
+}
+
+/** 선택된 구분에 해당하는 마일리지 점수표를 카드로 보여준다. onPick을 주면
+ *  카드를 클릭했을 때 그 활동으로 활동명·마일리지를 채워 넣을 수 있다. */
+function ActivityStandardCards({
+  standards,
+  category,
+  onPick,
+}: {
+  standards: ActivityStandard[];
+  category: ActivityGroup;
+  onPick?: (standard: ActivityStandard) => void;
+}) {
+  const filtered = standards.filter((s) => s.category === category);
+  if (filtered.length === 0) {
+    return <p className="mt-3 text-xs text-muted">이 구분에 등록된 마일리지 점수표 항목이 없습니다.</p>;
+  }
+  return (
+    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {filtered.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => onPick?.(s)}
+          className={`rounded-xl border border-border bg-surface p-3 text-left text-xs transition ${
+            onPick ? "cursor-pointer hover:border-primary hover:bg-primary-light" : "cursor-default"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold text-foreground">{s.activityName}</p>
+            <Badge tone="success">{s.mileage}점</Badge>
+          </div>
+          <p className="mt-1 text-muted">필요 증빙서류: {s.requiredDocs || "없음"}</p>
+        </button>
+      ))}
     </div>
   );
 }
@@ -94,10 +149,12 @@ export default function AdminMileageBulkGrantPage() {
 function CheckboxGrantSection({
   students,
   semesters,
+  standards,
   defaultSemester,
 }: {
   students: Student[];
   semesters: Semester[];
+  standards: ActivityStandard[];
   defaultSemester: string;
 }) {
   const [search, setSearch] = useState("");
@@ -108,6 +165,7 @@ function CheckboxGrantSection({
   const [mileage, setMileage] = useState("");
   const [semester, setSemester] = useState(defaultSemester);
   const [note, setNote] = useState("");
+  const [showScoreTable, setShowScoreTable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<BulkGrantResult[] | null>(null);
@@ -293,6 +351,29 @@ function CheckboxGrantSection({
             </Select>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowScoreTable((v) => !v)}
+          className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary"
+        >
+          {showScoreTable ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {category} 마일리지 점수표 {showScoreTable ? "숨기기" : "보기"}
+        </button>
+        {showScoreTable && (
+          <>
+            <p className="mt-2 text-xs text-muted">카드를 클릭하면 지급 사유·마일리지 점수가 자동으로 채워져요.</p>
+            <ActivityStandardCards
+              standards={standards}
+              category={category}
+              onPick={(s) => {
+                setActivityName(s.activityName);
+                setMileage(String(s.mileage));
+              }}
+            />
+          </>
+        )}
+
         <div className="mt-3">
           <label className="mb-1.5 block text-xs font-semibold text-muted">비고(선택)</label>
           <Input value={note} onChange={(e) => setNote(e.target.value)} />
@@ -318,10 +399,12 @@ interface ExcelRowStatus {
 function ExcelGrantSection({
   students,
   semesters,
+  standards,
   defaultSemester,
 }: {
   students: Student[];
   semesters: Semester[];
+  standards: ActivityStandard[];
   defaultSemester: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -329,6 +412,7 @@ function ExcelGrantSection({
   const [semester, setSemester] = useState(defaultSemester);
   const [rows, setRows] = useState<ExcelRowStatus[] | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [showScoreTable, setShowScoreTable] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -450,6 +534,21 @@ function ExcelGrantSection({
         {parseError && <p className="mt-2 text-xs font-medium text-danger">{parseError}</p>}
         {!semester && rows && rows.length > 0 && (
           <p className="mt-2 text-xs font-medium text-danger">인정 학기를 선택해주세요.</p>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowScoreTable((v) => !v)}
+          className="mt-3 flex items-center gap-1 text-xs font-semibold text-primary"
+        >
+          {showScoreTable ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {category} 마일리지 점수표 {showScoreTable ? "숨기기" : "보기"}
+        </button>
+        {showScoreTable && (
+          <>
+            <p className="mt-2 text-xs text-muted">엑셀에 적을 마일리지 값을 이 점수표와 맞춰서 준비해주세요.</p>
+            <ActivityStandardCards standards={standards} category={category} />
+          </>
         )}
       </Card>
 
