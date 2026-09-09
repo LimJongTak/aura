@@ -24,6 +24,19 @@ import type { PrivacyConsent } from "@/types/models";
 
 const PAGE_SIZE = 30;
 
+function toDateInputValue(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** "YYYY-MM-DD" 입력값을 해당 날짜 자정(로컬 시각) 타임스탬프로 바꾼다. */
+function dateInputValueToTimestamp(value: string): number {
+  const [y, m, d] = value.split("-").map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
 function ResultBanner({ results, onDismiss }: { results: BulkConsentResult[]; onDismiss: () => void }) {
   const ok = results.filter((r) => r.ok).length;
   const failed = results.filter((r) => !r.ok);
@@ -140,7 +153,7 @@ export default function AdminPrivacyConsentsPage() {
                     <tr className="border-b border-border bg-surface text-muted">
                       <th className="px-4 py-3 font-semibold">학번</th>
                       <th className="px-4 py-3 font-semibold">이름</th>
-                      <th className="px-4 py-3 font-semibold">등록 시각</th>
+                      <th className="px-4 py-3 font-semibold">동의일자</th>
                       <th className="px-4 py-3 font-semibold">출처</th>
                       <th className="px-4 py-3 font-semibold">삭제</th>
                     </tr>
@@ -150,7 +163,7 @@ export default function AdminPrivacyConsentsPage() {
                       <tr key={c.studentId} className="border-b border-border last:border-0">
                         <td className="px-4 py-2.5">{c.studentId}</td>
                         <td className="px-4 py-2.5 font-semibold">{c.name}</td>
-                        <td className="px-4 py-2.5 text-muted">{new Date(c.consentedAt).toLocaleString("ko-KR")}</td>
+                        <td className="px-4 py-2.5 text-muted">{new Date(c.consentedAt).toLocaleDateString("ko-KR")}</td>
                         <td className="px-4 py-2.5">
                           <Badge tone="muted">{c.source === "excel" ? "엑셀 등록" : "개별 등록"}</Badge>
                         </td>
@@ -181,6 +194,7 @@ export default function AdminPrivacyConsentsPage() {
 function AddOneSection({ onAdded }: { onAdded: () => void }) {
   const [studentId, setStudentId] = useState("");
   const [name, setName] = useState("");
+  const [consentDate, setConsentDate] = useState(() => toDateInputValue(new Date()));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,9 +204,13 @@ function AddOneSection({ onAdded }: { onAdded: () => void }) {
       setError("학번과 이름을 모두 입력해주세요.");
       return;
     }
+    if (!consentDate) {
+      setError("동의(서명)일자를 입력해주세요.");
+      return;
+    }
     setSubmitting(true);
     try {
-      await addPrivacyConsent(studentId, name);
+      await addPrivacyConsent(studentId, name, dateInputValueToTimestamp(consentDate));
       setStudentId("");
       setName("");
       onAdded();
@@ -206,10 +224,14 @@ function AddOneSection({ onAdded }: { onAdded: () => void }) {
   return (
     <Card>
       <p className="font-bold text-foreground">개별 추가</p>
-      <p className="mt-1 text-xs text-muted">학번·이름 1명을 바로 동의자 명단에 추가해요.</p>
+      <p className="mt-1 text-xs text-muted">학번·이름 1명을 동의서에 서명한 날짜와 함께 명단에 추가해요.</p>
       <div className="mt-3 flex flex-col gap-2">
         <Input value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="학번" />
         <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="이름" />
+        <div>
+          <label className="mb-1 block text-[11px] font-semibold text-muted">동의(서명)일자</label>
+          <Input type="date" value={consentDate} onChange={(e) => setConsentDate(e.target.value)} />
+        </div>
         {error && <p className="text-xs font-medium text-danger">{error}</p>}
         <Button size="sm" onClick={handleAdd} loading={submitting}>
           <Plus size={15} /> 추가
@@ -223,6 +245,7 @@ function ExcelImportSection({ onImported }: { onImported: () => void }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedPrivacyConsentRow[] | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [consentDate, setConsentDate] = useState(() => toDateInputValue(new Date()));
   const [parsing, setParsing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -254,10 +277,19 @@ function ExcelImportSection({ onImported }: { onImported: () => void }) {
 
   async function handleSubmit() {
     if (validRows.length === 0) return;
-    if (!confirm(`엑셀에서 확인된 유효한 ${validRows.length}건을 동의자 명단에 등록할까요?`)) return;
+    if (!consentDate) {
+      setParseError("동의(서명)일자를 입력해주세요.");
+      return;
+    }
+    const dateLabel = new Date(dateInputValueToTimestamp(consentDate)).toLocaleDateString("ko-KR");
+    if (!confirm(`엑셀에서 확인된 유효한 ${validRows.length}건을 "${dateLabel} 서명"으로 동의자 명단에 등록할까요?`))
+      return;
     setSubmitting(true);
     try {
-      const res = await addPrivacyConsentsBulk(validRows.map((r) => ({ studentId: r.studentId, name: r.name })));
+      const res = await addPrivacyConsentsBulk(
+        validRows.map((r) => ({ studentId: r.studentId, name: r.name })),
+        dateInputValueToTimestamp(consentDate)
+      );
       setResults(res);
       setRows(null);
       setFileName(null);
@@ -275,8 +307,13 @@ function ExcelImportSection({ onImported }: { onImported: () => void }) {
       <p className="font-bold text-foreground">엑셀로 일괄 등록</p>
       <p className="mt-1 text-xs text-muted">
         &quot;학번&quot;·&quot;이름&quot;(또는 &quot;* 학번&quot;·&quot;* 성명&quot;) 열이 있는 엑셀을
-        올리면 한 번에 등록돼요.
+        올리면 한 번에 등록돼요. 이 명단 전체가 아래 날짜에 동의서에 서명한 것으로 기록돼요.
       </p>
+
+      <div className="mt-3">
+        <label className="mb-1 block text-[11px] font-semibold text-muted">이 명단의 동의(서명)일자</label>
+        <Input type="date" value={consentDate} onChange={(e) => setConsentDate(e.target.value)} />
+      </div>
 
       <Button variant="outline" size="sm" className="mt-3 w-full" onClick={() => downloadPrivacyConsentTemplate()}>
         <Download size={14} /> 양식 다운로드

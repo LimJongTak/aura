@@ -30,12 +30,17 @@ export async function listPrivacyConsents(): Promise<PrivacyConsent[]> {
   return snap.docs.map((d) => d.data() as PrivacyConsent);
 }
 
-/** 관리자가 개별 학생 1명을 동의자 명단에 추가한다. */
-export async function addPrivacyConsent(studentId: string, name: string): Promise<void> {
+/** 관리자가 개별 학생 1명을 동의자 명단에 추가한다. consentedAt은 실제
+ *  서명일(밀리초 타임스탬프)이며, 생략하면 오늘 날짜를 쓴다. */
+export async function addPrivacyConsent(
+  studentId: string,
+  name: string,
+  consentedAt: number = Date.now()
+): Promise<void> {
   await setDoc(doc(db, "privacyConsents", studentId.trim()), {
     studentId: studentId.trim(),
     name: name.trim(),
-    consentedAt: Date.now(),
+    consentedAt,
     source: "manual",
   });
 }
@@ -50,9 +55,14 @@ export interface BulkConsentResult extends BulkConsentEntry {
   error?: string;
 }
 
-/** 엑셀 일괄 등록. Firestore 쓰기 배치 한도(500)를 감안해 400개씩 묶어
+/** 엑셀 일괄 등록. 한 엑셀 파일은 보통 같은 날 서명받은 동의서 묶음이라
+ *  consentedAt(실제 서명일) 하나를 명단 전체에 공통으로 적용한다 — 생략하면
+ *  오늘 날짜를 쓴다. Firestore 쓰기 배치 한도(500)를 감안해 400개씩 묶어
  *  커밋한다. */
-export async function addPrivacyConsentsBulk(entries: BulkConsentEntry[]): Promise<BulkConsentResult[]> {
+export async function addPrivacyConsentsBulk(
+  entries: BulkConsentEntry[],
+  consentedAt: number = Date.now()
+): Promise<BulkConsentResult[]> {
   const results: BulkConsentResult[] = [];
   const valid = entries.filter((e) => {
     const ok = !!e.studentId.trim() && !!e.name.trim();
@@ -68,7 +78,7 @@ export async function addPrivacyConsentsBulk(entries: BulkConsentEntry[]): Promi
       batch.set(doc(db, "privacyConsents", entry.studentId.trim()), {
         studentId: entry.studentId.trim(),
         name: entry.name.trim(),
-        consentedAt: Date.now(),
+        consentedAt,
         source: "excel",
       });
     }

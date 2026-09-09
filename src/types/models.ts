@@ -434,7 +434,8 @@ export interface StudentRegistrationRequest {
 export interface PrivacyConsent {
   studentId: string;
   name: string;
-  /** 명단에 등록(동의 처리)된 시각 */
+  /** 학생이 실제로 개인정보 이용 동의서에 서명한 날짜 — 시스템에 등록한 시각이
+   *  아니라 관리자가 등록할 때 직접 지정하는 값이다(기본값: 오늘). */
   consentedAt: number;
   /** "manual"(관리자가 직접 추가) | "excel"(엑셀 일괄 등록) — 출처 참고용 */
   source: "manual" | "excel";

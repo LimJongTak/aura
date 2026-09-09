@@ -1,6 +1,8 @@
 // 개인정보 동의자 명단 엑셀 → Firestore(privacyConsents) 일괄 등록 스크립트.
 //
-// 사용법: node scripts/import-privacy-consents.mjs "<엑셀 경로>"
+// 사용법: node scripts/import-privacy-consents.mjs "<엑셀 경로>" [동의일자 YYYY-MM-DD]
+// 동의일자를 생략하면 오늘 날짜를 쓴다. 이 명단 전체가 같은 날 서명받은
+// 것으로 기록된다 — 날짜별로 다르면 명단을 나눠서 여러 번 실행한다.
 // (serviceAccountKey.json 필요 — scripts/seed-from-excel.mjs 상단 안내 참고)
 //
 // "No."/"학번"(또는 "* 학번")/"이름"(또는 "* 성명") 헤더를 가진 시트 1개를
@@ -18,9 +20,20 @@ const SERVICE_ACCOUNT_PATH =
   process.env.GOOGLE_APPLICATION_CREDENTIALS || path.join(__dirname, "..", "serviceAccountKey.json");
 
 const excelPath = process.argv[2];
+const consentDateArg = process.argv[3];
 if (!excelPath) {
-  console.error("사용법: node scripts/import-privacy-consents.mjs <엑셀 경로>");
+  console.error("사용법: node scripts/import-privacy-consents.mjs <엑셀 경로> [동의일자 YYYY-MM-DD]");
   process.exit(1);
+}
+
+let consentedAt = Date.now();
+if (consentDateArg) {
+  const [y, m, d] = consentDateArg.split("-").map(Number);
+  if (!y || !m || !d) {
+    console.error(`동의일자 형식이 올바르지 않습니다(YYYY-MM-DD): ${consentDateArg}`);
+    process.exit(1);
+  }
+  consentedAt = new Date(y, m - 1, d).getTime();
 }
 
 let serviceAccount;
@@ -65,9 +78,10 @@ for (const row of rawRows) {
   entries.push({ studentId, name });
 }
 
-console.log(`파싱된 유효 행: ${entries.length}건 (원본 ${rawRows.length}행)`);
+console.log(
+  `파싱된 유효 행: ${entries.length}건 (원본 ${rawRows.length}행) / 동의일자: ${new Date(consentedAt).toLocaleDateString("ko-KR")}`
+);
 
-const now = Date.now();
 const CHUNK_SIZE = 400;
 let written = 0;
 for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
@@ -77,7 +91,7 @@ for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
     batch.set(db.collection("privacyConsents").doc(studentId), {
       studentId,
       name,
-      consentedAt: now,
+      consentedAt,
       source: "excel",
     });
   }

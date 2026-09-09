@@ -70,8 +70,9 @@ export default function PrivacyConsentCheckPage() {
             <p className="font-bold text-success">개인정보 동의가 확인되었습니다</p>
           </div>
           <p className="mt-1.5 text-sm text-foreground/80">
-            입력하신 정보는 사업단 개인정보 처리에 동의한 명단에 등록되어 있습니다.
-            {result.consentedAt && ` (등록일: ${new Date(result.consentedAt).toLocaleDateString("ko-KR")})`}
+            {result.consentedAt
+              ? `${new Date(result.consentedAt).toLocaleDateString("ko-KR")}자로 사업단 개인정보 이용 동의에 서명한 학생으로 확인되었습니다.`
+              : "입력하신 정보는 사업단 개인정보 처리에 동의한 명단에 등록되어 있습니다."}
           </p>
         </Card>
       )}
