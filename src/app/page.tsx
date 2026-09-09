@@ -58,13 +58,8 @@ export default function HomePage() {
             100만원)으로 환산·활용됩니다. 아래에서 내 마일리지를 조회하거나 신청해보세요.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/mypage">
-              <Button size="lg">
-                <Search size={18} /> 마이페이지
-              </Button>
-            </Link>
             <Link href="/apply">
-              <Button size="lg" variant="outline">
+              <Button size="lg">
                 <ClipboardList size={18} /> 마일리지 신청
               </Button>
             </Link>
