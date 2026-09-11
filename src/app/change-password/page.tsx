@@ -167,6 +167,10 @@ export default function ChangePasswordPage() {
           </form>
         )}
       </Card>
+
+      <p className="mt-4 text-center text-xs text-muted">
+        인증 메일이 오지 않는다면 061-750-5396으로 문의해주세요. (평일 9시~18시, 점심시간 12시~13시 제외)
+      </p>
     </div>
   );
 }
