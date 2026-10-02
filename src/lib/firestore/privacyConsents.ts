@@ -13,15 +13,16 @@ const privacyConsentsRef = () => collection(db, "privacyConsents");
  *  가능하다. */
 const checkPrivacyConsentFn = httpsCallable<
   { studentId: string; name: string },
-  { consented: boolean; consentedAt: number | null }
+  { consented: boolean; consentedAt: number | null; required?: boolean }
 >(functions, "checkPrivacyConsent");
 
 export async function checkPrivacyConsent(
   studentId: string,
   name: string
-): Promise<{ consented: boolean; consentedAt: number | null }> {
+): Promise<{ consented: boolean; consentedAt: number | null; required: boolean }> {
   const result = await checkPrivacyConsentFn({ studentId: studentId.trim(), name: name.trim() });
-  return result.data;
+  // required는 비참여학과(동의 불필요) 판별용 — 이전 버전 함수 응답엔 없으므로 기본은 "필요".
+  return { ...result.data, required: result.data.required ?? true };
 }
 
 /** 관리자 전용 — 전체 동의자 명단. */

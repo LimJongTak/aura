@@ -7,7 +7,11 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { checkPrivacyConsent } from "@/lib/firestore/privacyConsents";
 
-type Result = { kind: "found"; consentedAt: number | null } | { kind: "not-found" } | null;
+type Result =
+  | { kind: "found"; consentedAt: number | null }
+  | { kind: "not-required" }
+  | { kind: "not-found" }
+  | null;
 
 export default function PrivacyConsentCheckPage() {
   const [name, setName] = useState("");
@@ -26,8 +30,10 @@ export default function PrivacyConsentCheckPage() {
     setChecking(true);
     setResult(null);
     try {
-      const { consented, consentedAt } = await checkPrivacyConsent(studentId, name);
-      setResult(consented ? { kind: "found", consentedAt } : { kind: "not-found" });
+      const { consented, consentedAt, required } = await checkPrivacyConsent(studentId, name);
+      setResult(
+        consented ? { kind: "found", consentedAt } : required ? { kind: "not-found" } : { kind: "not-required" }
+      );
     } catch {
       setError("확인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
@@ -73,6 +79,18 @@ export default function PrivacyConsentCheckPage() {
             {result.consentedAt
               ? `${new Date(result.consentedAt).toLocaleDateString("ko-KR")}자로 사업단 개인정보 이용 동의에 서명한 학생으로 확인되었습니다.`
               : "입력하신 정보는 사업단 개인정보 처리에 동의한 명단에 등록되어 있습니다."}
+          </p>
+        </Card>
+      )}
+
+      {result?.kind === "not-required" && (
+        <Card className="mt-4 border-success/30 bg-success-light">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="text-success" size={22} />
+            <p className="font-bold text-success">개인정보 동의가 필요하지 않습니다</p>
+          </div>
+          <p className="mt-1.5 text-sm text-foreground/80">
+            비참여학과 학생은 사업단 개인정보 동의서를 별도로 작성하지 않아도 됩니다.
           </p>
         </Card>
       )}

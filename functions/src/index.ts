@@ -321,11 +321,20 @@ export const checkPrivacyConsent = onCall(async (request) => {
   }
 
   const snap = await admin.firestore().collection("privacyConsents").doc(studentId.trim()).get();
-  if (!snap.exists) return { consented: false };
+  const data = snap.data();
+  if (data && String(data.name ?? "").trim() === name.trim()) {
+    const consentedAt = typeof data.consentedAt === "number" ? data.consentedAt : null;
+    return { consented: true, consentedAt, required: true };
+  }
 
-  const data = snap.data()!;
-  if (String(data.name ?? "").trim() !== name.trim()) return { consented: false };
-
-  const consentedAt = typeof data.consentedAt === "number" ? data.consentedAt : null;
-  return { consented: true, consentedAt };
+  // 사업단 개인정보 동의는 참여학과 학생에게만 필요하다 — 학생 명단상 비참여학과로
+  // 확인되면(이름까지 일치할 때만) "동의 필요 없음"으로 알려준다.
+  const studentSnap = await admin.firestore().collection("students").doc(studentId.trim()).get();
+  const student = studentSnap.data();
+  const required = !(
+    student &&
+    String(student.name ?? "").trim() === name.trim() &&
+    student.isParticipating === false
+  );
+  return { consented: false, consentedAt: null, required };
 });
