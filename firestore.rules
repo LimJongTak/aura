@@ -139,6 +139,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 비밀번호 찾기(로그인 전) 인증번호·재설정 토큰 해시: Cloud Functions만 접근한다.
+    match /passwordResetRequests/{id} {
+      allow read, write: if false;
+    }
+
     // 학기 목록(학기별 관리·필터용)과 "현재 학기" 상태 — 둘 다 공개 읽기,
     // 관리자만 쓰기.
     match /semesters/{id} {

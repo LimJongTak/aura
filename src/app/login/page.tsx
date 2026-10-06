@@ -56,7 +56,12 @@ export default function LoginPage() {
             <Input value={studentId} onChange={(e) => setStudentId(e.target.value)} placeholder="예: 20261234" inputMode="numeric" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-muted">비밀번호</label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="block text-xs font-semibold text-muted">비밀번호</label>
+              <a href="/forgot-password" className="text-xs font-semibold text-primary hover:underline">
+                비밀번호를 잊으셨나요?
+              </a>
+            </div>
             <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           {error && <p className="text-sm font-medium text-danger">{error}</p>}

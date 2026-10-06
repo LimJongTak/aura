@@ -132,6 +132,189 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
   return { success: true };
 });
 
+// ---------------------------------------------------------------------------
+// 비밀번호 찾기 (로그인 전) — 학번 입력 → 학교 메일 인증번호 확인 → 재설정 토큰
+// 발급 → 새 비밀번호 설정의 3단계. 로그인 없이 호출되는 공개 함수라서, 남의
+// 학번으로 메일 폭탄을 보내지 못하게 학번별로 재발송 간격/시간당 횟수를
+// 제한한다. 인증번호·토큰은 해시로만 저장한다.
+// ---------------------------------------------------------------------------
+const RESET_RESEND_COOLDOWN_SECONDS = 60;
+const RESET_MAX_SENDS_PER_HOUR = 5;
+const RESET_TOKEN_TTL_MINUTES = 15;
+const STUDENT_ID_PATTERN = /^\d{6,12}$/;
+
+function sha256(value: string): string {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function hashesMatch(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "hex");
+  const bufB = Buffer.from(b, "hex");
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+}
+
+function parseStudentId(raw: unknown): string {
+  const studentId = typeof raw === "string" ? raw.trim() : "";
+  if (!STUDENT_ID_PATTERN.test(studentId)) {
+    throw new HttpsError("invalid-argument", "학번을 정확히 입력해주세요.");
+  }
+  return studentId;
+}
+
+/** 비밀번호 찾기 1단계: 학번으로 계정을 확인하고 학교 메일로 인증번호를 보낸다. */
+export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  const studentId = parseStudentId((request.data as { studentId?: unknown })?.studentId);
+  const email = toStudentEmail(studentId);
+
+  try {
+    await admin.auth().getUserByEmail(email);
+  } catch (err) {
+    if ((err as { code?: string }).code === "auth/user-not-found") {
+      throw new HttpsError("not-found", "등록된 계정이 없습니다. 학번을 확인하거나 학생 등록 신청을 해주세요.");
+    }
+    throw err;
+  }
+
+  const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
+  const now = Date.now();
+  const code = String(crypto.randomInt(100000, 1000000));
+
+  await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.data();
+    const lastSentAt = (prev?.lastSentAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
+    const windowStart = (prev?.windowStart as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
+    const inWindow = now - windowStart < 60 * 60 * 1000;
+    const sendCount = inWindow ? ((prev?.sendCount as number | undefined) ?? 0) : 0;
+
+    const waitSeconds = Math.ceil((lastSentAt + RESET_RESEND_COOLDOWN_SECONDS * 1000 - now) / 1000);
+    if (waitSeconds > 0) {
+      throw new HttpsError("resource-exhausted", `${waitSeconds}초 후에 다시 요청해주세요.`);
+    }
+    if (sendCount >= RESET_MAX_SENDS_PER_HOUR) {
+      throw new HttpsError("resource-exhausted", "인증번호 요청 횟수를 초과했습니다. 1시간 후에 다시 시도해주세요.");
+    }
+
+    tx.set(ref, {
+      codeHash: sha256(code),
+      expiresAt: admin.firestore.Timestamp.fromMillis(now + CODE_TTL_MINUTES * 60 * 1000),
+      attempts: 0,
+      tokenHash: null,
+      tokenExpiresAt: null,
+      lastSentAt: admin.firestore.Timestamp.fromMillis(now),
+      windowStart: admin.firestore.Timestamp.fromMillis(inWindow ? windowStart : now),
+      sendCount: sendCount + 1,
+    });
+  });
+
+  const resend = new Resend(RESEND_API_KEY.value());
+  await resend.emails.send({
+    from: "A.U.R.A 마일리지 <aura@axlab.scnuai.com>",
+    to: email,
+    subject: `[A.U.R.A 마일리지] 비밀번호 찾기 인증번호: ${code}`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+        <p style="color:#1a56a8; font-weight:700; font-size:14px;">국립순천대학교 AI인재양성부트캠프사업단</p>
+        <h1 style="font-size:20px;">A.U.R.A 마일리지 비밀번호 찾기 인증번호</h1>
+        <p style="color:#555;">아래 인증번호를 비밀번호 찾기 화면에 입력해주세요. (${CODE_TTL_MINUTES}분간 유효)</p>
+        <p style="font-size:32px; font-weight:800; letter-spacing:6px; color:#1a56a8; margin:24px 0;">${code}</p>
+        <p style="color:#999; font-size:12px;">본인이 요청하지 않았다면 이 메일을 무시해주세요. 비밀번호는 변경되지 않습니다.</p>
+      </div>
+    `,
+  });
+
+  return { sentTo: email, expiresInMinutes: CODE_TTL_MINUTES, resendCooldownSeconds: RESET_RESEND_COOLDOWN_SECONDS };
+});
+
+/** 비밀번호 찾기 2단계: 인증번호를 확인하고, 맞으면 비밀번호 재설정용 1회성 토큰을 발급한다. */
+export const verifyPasswordResetCode = onCall(async (request) => {
+  const { studentId: rawId, code } = request.data as { studentId?: unknown; code?: unknown };
+  const studentId = parseStudentId(rawId);
+  if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
+    throw new HttpsError("invalid-argument", "6자리 인증번호를 입력해주세요.");
+  }
+
+  const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
+  const resetToken = crypto.randomBytes(32).toString("hex");
+
+  // 실패 시 시도 횟수 증가는 트랜잭션 밖에서 처리해야 롤백되지 않는다.
+  const outcome = await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data();
+    if (!data?.codeHash) return "missing" as const;
+    if ((data.attempts as number) >= MAX_ATTEMPTS) return "exhausted" as const;
+    if ((data.expiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) return "expired" as const;
+    if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) return "mismatch" as const;
+
+    tx.update(ref, {
+      codeHash: null,
+      tokenHash: sha256(resetToken),
+      tokenExpiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000),
+    });
+    return "ok" as const;
+  });
+
+  switch (outcome) {
+    case "missing":
+      throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
+    case "exhausted":
+      throw new HttpsError("resource-exhausted", "시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.");
+    case "expired":
+      throw new HttpsError("deadline-exceeded", "인증번호가 만료되었습니다. 다시 요청해주세요.");
+    case "mismatch": {
+      await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
+      throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
+    }
+  }
+
+  return { resetToken, expiresInMinutes: RESET_TOKEN_TTL_MINUTES };
+});
+
+/** 비밀번호 찾기 3단계: 인증 완료 토큰으로 새 비밀번호를 설정한다. 기존 로그인
+ * 세션은 모두 만료시킨다. */
+export const resetPasswordWithToken = onCall(async (request) => {
+  const { studentId: rawId, resetToken, newPassword } = request.data as {
+    studentId?: unknown;
+    resetToken?: unknown;
+    newPassword?: unknown;
+  };
+  const studentId = parseStudentId(rawId);
+  if (typeof resetToken !== "string" || !/^[0-9a-f]{64}$/.test(resetToken)) {
+    throw new HttpsError("invalid-argument", "인증 정보가 올바르지 않습니다. 처음부터 다시 진행해주세요.");
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    throw new HttpsError("invalid-argument", "비밀번호는 8자 이상이어야 합니다.");
+  }
+  if (newPassword.length > 64) {
+    throw new HttpsError("invalid-argument", "비밀번호는 64자 이하여야 합니다.");
+  }
+  if (newPassword === "000000") {
+    throw new HttpsError("invalid-argument", "초기 비밀번호(000000)는 새 비밀번호로 쓸 수 없습니다.");
+  }
+
+  const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
+  const valid = await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data();
+    if (!data?.tokenHash || !data.tokenExpiresAt) return false;
+    if ((data.tokenExpiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) return false;
+    if (!hashesMatch(data.tokenHash as string, sha256(resetToken))) return false;
+    // 토큰은 1회용 — 비밀번호 변경 전에 먼저 소모시킨다. 재발송 제한 기록은 남긴다.
+    tx.update(ref, { tokenHash: null, tokenExpiresAt: null });
+    return true;
+  });
+  if (!valid) {
+    throw new HttpsError("failed-precondition", "인증 시간이 만료되었습니다. 처음부터 다시 진행해주세요.");
+  }
+
+  const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
+  await admin.auth().updateUser(userRecord.uid, { password: newPassword });
+  await admin.auth().revokeRefreshTokens(userRecord.uid);
+  await admin.firestore().collection("students").doc(studentId).set({ mustChangePassword: false }, { merge: true });
+
+  return { success: true };
+});
+
 /** 관리자가 학생 등록 신청을 승인하면 Firebase Auth 계정(초기 비밀번호 0000)과
  * Firestore 학생 문서를 함께 생성한다. */
 export const approveStudentRegistration = onCall(async (request) => {
