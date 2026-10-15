@@ -325,19 +325,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 학생 등록 신청: 학생명단에 없는 학생이 이름·학번·학과를 제출하면
-    // 관리자 승인 후 students 문서가 생성된다. 이미 등록된 학번은 신청 불가.
-    // 승인 전 목록은 개인정보라 관리자만 조회 가능.
+    // 학생 등록 신청: 이제 registerStudent Cloud Function(Admin SDK)이 관리자 승인 없이
+    // 바로 계정·students 문서를 만들고 이 컬렉션에는 감사 기록만 남긴다 — 클라이언트
+    // 직접 생성은 막는다. 예전에 접수된 검토중 건은 관리자가 계속 처리할 수 있다.
+    // 목록은 개인정보라 관리자만 조회 가능.
     match /studentRegistrationRequests/{id} {
       allow get, list: if isAdmin();
 
-      allow create: if
-        request.resource.data.status == "검토중" &&
-        request.resource.data.studentId is string &&
-        request.resource.data.name is string &&
-        request.resource.data.department is string &&
-        request.resource.data.isParticipating is bool &&
-        !exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
+      allow create: if false;
 
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys()

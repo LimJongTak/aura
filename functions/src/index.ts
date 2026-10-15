@@ -348,6 +348,71 @@ export const approveStudentRegistration = onCall(async (request) => {
   return { success: true };
 });
 
+// src/types/models.ts의 PARTICIPATING_DEPARTMENTS와 동일하게 유지한다.
+const PARTICIPATING_DEPARTMENTS = ["인공지능공학전공", "전기공학전공", "전자공학전공"];
+
+/** 학생 등록 신청 — 관리자 승인 없이 바로 학번@s.scnu.ac.kr 계정(초기 비밀번호
+ * 000000)과 students 문서를 만든다. 이미 있는 학번이면 아무것도 바꾸지 않고
+ * 이름 일치 여부만 알려준다(기존 회원 안내용). 기존 이름 등 원본 데이터는 돌려주지 않는다.
+ * 감사 기록으로 studentRegistrationRequests에 "승인" 상태로 남긴다. */
+export const registerStudent = onCall(async (request) => {
+  const { studentId, name, department } = request.data as {
+    studentId?: string;
+    name?: string;
+    department?: string;
+  };
+  const id = typeof studentId === "string" ? studentId.trim() : "";
+  const trimmedName = typeof name === "string" ? name.trim() : "";
+  const trimmedDept = typeof department === "string" ? department.trim() : "";
+  if (!/^\d{6,10}$/.test(id)) throw new HttpsError("invalid-argument", "학번은 숫자 6~10자리로 입력해주세요.");
+  if (!trimmedName || trimmedName.length > 30) throw new HttpsError("invalid-argument", "이름을 올바르게 입력해주세요.");
+  if (!trimmedDept || trimmedDept.length > 50) throw new HttpsError("invalid-argument", "학과를 올바르게 입력해주세요.");
+
+  const db = admin.firestore();
+  const studentRef = db.collection("students").doc(id);
+  const isParticipating = PARTICIPATING_DEPARTMENTS.includes(trimmedDept);
+
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(studentRef);
+    if (snap.exists) {
+      const sameName = String(snap.data()?.name ?? "").trim() === trimmedName;
+      return { status: sameName ? "existing" : "id-taken" } as const;
+    }
+    tx.set(studentRef, {
+      studentId: id,
+      name: trimmedName,
+      department: trimmedDept,
+      isParticipating,
+      mustChangePassword: true,
+    });
+    return { status: "created" } as const;
+  });
+  if (result.status !== "created") return result;
+
+  try {
+    await admin.auth().createUser({ email: toStudentEmail(id), password: "000000", displayName: trimmedName });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code !== "auth/email-already-exists") {
+      await studentRef.delete();
+      throw err;
+    }
+  }
+
+  await db.collection("studentRegistrationRequests").add({
+    studentId: id,
+    name: trimmedName,
+    department: trimmedDept,
+    isParticipating,
+    status: "승인",
+    autoApproved: true,
+    requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { status: "created" as const };
+});
+
 /** 관리자가 학생을 탈퇴시키면 Firebase Auth 계정과 Firestore 학생 문서를 삭제한다.
  * 신청 이력(mileageApplications 등)은 감사 기록으로 남기기 위해 그대로 둔다. */
 export const deleteStudent = onCall(async (request) => {
