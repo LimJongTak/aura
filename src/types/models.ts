@@ -423,6 +423,24 @@ export interface StudentRegistrationRequest {
   note?: string;
 }
 
+/** 학생 등록 시도 결과 — created: 신규 등록 / existing: 같은 학번·이름의 기존 회원 /
+ *  id-taken: 학번은 있는데 이름이 다름(등록 막음) / failed: 시스템 오류 */
+export type StudentRegistrationResult = "created" | "existing" | "id-taken" | "failed";
+
+/** 학생 등록 화면에서의 모든 시도 기록 → studentRegistrationLogs/{id} (registerStudent Cloud Function이 기록) */
+export interface StudentRegistrationLog {
+  id: string;
+  createdAt: number;
+  studentId: string;
+  /** 학생이 입력한 이름 */
+  name: string;
+  department: string;
+  isParticipating: boolean;
+  result: StudentRegistrationResult;
+  /** id-taken일 때, 그 학번으로 이미 등록돼 있던 이름 */
+  registeredName?: string;
+}
+
 /**
  * 사업단 개인정보 처리 동의를 완료한 학생 명단 → privacyConsents/{studentId}.
  * 문서가 존재한다는 사실 자체가 "동의 완료"를 뜻한다(별도 boolean 필드 없음).

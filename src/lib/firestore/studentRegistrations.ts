@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   getDocs,
+  limit,
   orderBy,
   query,
   serverTimestamp,
@@ -11,7 +12,12 @@ import {
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase/client";
-import type { ApplicationStatus, StudentRegistrationRequest } from "@/types/models";
+import type {
+  ApplicationStatus,
+  StudentRegistrationLog,
+  StudentRegistrationRequest,
+  StudentRegistrationResult,
+} from "@/types/models";
 
 const registrationsRef = () => collection(db, "studentRegistrationRequests");
 
@@ -21,8 +27,7 @@ export interface RegisterStudentInput {
   department: string;
 }
 
-/** created: 새로 등록됨 / existing: 같은 학번·이름의 기존 회원 / id-taken: 학번은 있는데 이름이 다름 */
-export type RegisterStudentResult = "created" | "existing" | "id-taken";
+export type RegisterStudentResult = Exclude<StudentRegistrationResult, "failed">;
 
 const registerStudentFn = httpsCallable(functions, "registerStudent");
 
@@ -41,6 +46,34 @@ function toMillis(v: unknown): number {
   if (v instanceof Timestamp) return v.toMillis();
   if (typeof v === "number") return v;
   return 0;
+}
+
+const LOG_LIMIT = 500;
+
+/** 관리자 화면용 등록 시도 기록(최신순). 기록 기능이 생기기 전 잠깐 동안 자동 등록된 건은
+ *  studentRegistrationRequests에 autoApproved로만 남아 있어 "신규 등록"으로 합쳐 보여준다. */
+export async function listStudentRegistrationLogs(): Promise<StudentRegistrationLog[]> {
+  const [logSnap, legacySnap] = await Promise.all([
+    getDocs(query(collection(db, "studentRegistrationLogs"), orderBy("createdAt", "desc"), limit(LOG_LIMIT))),
+    getDocs(query(registrationsRef(), where("autoApproved", "==", true))),
+  ]);
+  const logs = logSnap.docs.map((d) => {
+    const data = d.data();
+    return { id: d.id, ...data, createdAt: toMillis(data.createdAt) } as StudentRegistrationLog;
+  });
+  const legacy = legacySnap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      studentId: data.studentId,
+      name: data.name,
+      department: data.department,
+      isParticipating: data.isParticipating,
+      result: "created",
+      createdAt: toMillis(data.requestedAt),
+    } as StudentRegistrationLog;
+  });
+  return [...logs, ...legacy].sort((a, b) => b.createdAt - a.createdAt);
 }
 
 export async function listPendingStudentRegistrations(): Promise<StudentRegistrationRequest[]> {

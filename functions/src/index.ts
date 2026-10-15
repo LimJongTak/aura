@@ -354,7 +354,7 @@ const PARTICIPATING_DEPARTMENTS = ["인공지능공학전공", "전기공학전�
 /** 학생 등록 신청 — 관리자 승인 없이 바로 학번@s.scnu.ac.kr 계정(초기 비밀번호
  * 000000)과 students 문서를 만든다. 이미 있는 학번이면 아무것도 바꾸지 않고
  * 이름 일치 여부만 알려준다(기존 회원 안내용). 기존 이름 등 원본 데이터는 돌려주지 않는다.
- * 감사 기록으로 studentRegistrationRequests에 "승인" 상태로 남긴다. */
+ * 모든 시도는 studentRegistrationLogs에 결과와 함께 남겨 관리자 화면에서 볼 수 있다. */
 export const registerStudent = onCall(async (request) => {
   const { studentId, name, department } = request.data as {
     studentId?: string;
@@ -372,44 +372,62 @@ export const registerStudent = onCall(async (request) => {
   const studentRef = db.collection("students").doc(id);
   const isParticipating = PARTICIPATING_DEPARTMENTS.includes(trimmedDept);
 
-  const result = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(studentRef);
-    if (snap.exists) {
-      const sameName = String(snap.data()?.name ?? "").trim() === trimmedName;
-      return { status: sameName ? "existing" : "id-taken" } as const;
-    }
-    tx.set(studentRef, {
+  // 관리자 "학생 등록 신청" 화면의 등록 시도 기록 — 결과와 상관없이 매번 남긴다.
+  // registeredName은 이름 불일치일 때만, 관리자가 누구 이름으로 등록돼 있는지 비교할 수 있게 저장한다.
+  async function writeLog(result: "created" | "existing" | "id-taken" | "failed", registeredName?: string) {
+    await db.collection("studentRegistrationLogs").add({
       studentId: id,
       name: trimmedName,
       department: trimmedDept,
       isParticipating,
-      mustChangePassword: true,
+      result,
+      ...(registeredName !== undefined ? { registeredName } : {}),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    return { status: "created" } as const;
-  });
-  if (result.status !== "created") return result;
-
-  try {
-    await admin.auth().createUser({ email: toStudentEmail(id), password: "000000", displayName: trimmedName });
-  } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code !== "auth/email-already-exists") {
-      await studentRef.delete();
-      throw err;
-    }
   }
 
-  await db.collection("studentRegistrationRequests").add({
-    studentId: id,
-    name: trimmedName,
-    department: trimmedDept,
-    isParticipating,
-    status: "승인",
-    autoApproved: true,
-    requestedAt: admin.firestore.FieldValue.serverTimestamp(),
-    processedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(studentRef);
+      if (snap.exists) {
+        const registeredName = String(snap.data()?.name ?? "").trim();
+        return registeredName === trimmedName
+          ? ({ status: "existing" } as const)
+          : ({ status: "id-taken", registeredName } as const);
+      }
+      tx.set(studentRef, {
+        studentId: id,
+        name: trimmedName,
+        department: trimmedDept,
+        isParticipating,
+        mustChangePassword: true,
+      });
+      return { status: "created" } as const;
+    });
+    if (result.status === "existing") {
+      await writeLog("existing");
+      return { status: "existing" as const };
+    }
+    if (result.status === "id-taken") {
+      await writeLog("id-taken", result.registeredName);
+      return { status: "id-taken" as const };
+    }
 
+    try {
+      await admin.auth().createUser({ email: toStudentEmail(id), password: "000000", displayName: trimmedName });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code !== "auth/email-already-exists") {
+        await studentRef.delete();
+        throw err;
+      }
+    }
+  } catch (err) {
+    await writeLog("failed").catch(() => undefined);
+    throw err;
+  }
+
+  await writeLog("created");
   return { status: "created" as const };
 });
 
