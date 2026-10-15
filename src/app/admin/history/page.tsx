@@ -32,6 +32,13 @@ const ELIGIBILITY_STATUS_FILTERS: ("전체" | EligibilityCheckStatus)[] = ["전�
 const ALL_SEMESTERS = "전체";
 const PAGE_SIZE = 10;
 
+// 학기 필터 옵션은 마일리지용 연 단위 이름("2026년도")이라 중고급 신청·이수요건 확인의
+// targetSemester("2026학년도 제1학기")와 문자열이 같을 수 없다 — 연도로 맞춰 비교한다.
+function sameYear(yearSemester: string, targetSemester: string): boolean {
+  const year = yearSemester.match(/\d{4}/)?.[0];
+  return year ? targetSemester.match(/\d{4}/)?.[0] === year : yearSemester === targetSemester;
+}
+
 type Category = "mileage" | "advanced" | "eligibility";
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -190,7 +197,7 @@ export default function AdminHistoryPage() {
     return advancedApps.filter((a) => {
       if (advancedStatus !== "전체" && a.status !== advancedStatus) return false;
       if (q && !a.studentName.includes(q) && !a.studentId.includes(q)) return false;
-      if (semesterFilter !== ALL_SEMESTERS && a.targetSemester !== semesterFilter) return false;
+      if (semesterFilter !== ALL_SEMESTERS && !sameYear(semesterFilter, a.targetSemester)) return false;
       if (!inDateRange(a.processedAt, dateFrom, dateTo)) return false;
       return true;
     });
@@ -201,7 +208,7 @@ export default function AdminHistoryPage() {
     return eligibilityChecks.filter((e) => {
       if (eligibilityStatus !== "전체" && e.status !== eligibilityStatus) return false;
       if (q && !e.studentName.includes(q) && !e.studentId.includes(q)) return false;
-      if (semesterFilter !== ALL_SEMESTERS && e.targetSemester !== semesterFilter) return false;
+      if (semesterFilter !== ALL_SEMESTERS && !sameYear(semesterFilter, e.targetSemester)) return false;
       if (!inDateRange(e.processedAt, dateFrom, dateTo)) return false;
       return true;
     });

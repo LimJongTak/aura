@@ -182,22 +182,6 @@ export default function AdminStudentDetailPage() {
   const pendingCount = useMemo(() => scopedApplications.filter((a) => a.status === "검토중").length, [scopedApplications]);
   const rejectedCount = useMemo(() => scopedApplications.filter((a) => a.status === "반려").length, [scopedApplications]);
 
-  const scopedAdvanced = useMemo(
-    () =>
-      semesterFilter === ALL_SEMESTERS
-        ? advanced
-        : advanced.filter((a) => a.targetSemester === semesterFilter),
-    [advanced, semesterFilter]
-  );
-
-  const scopedEligibility = useMemo(
-    () =>
-      semesterFilter === ALL_SEMESTERS
-        ? eligibilityChecks
-        : eligibilityChecks.filter((e) => e.targetSemester === semesterFilter),
-    [eligibilityChecks, semesterFilter]
-  );
-
   const selectableIds = useMemo(
     () => scopedApplications.filter((a) => a.status === "승인").map((a) => a.id),
     [scopedApplications]
@@ -529,10 +513,10 @@ export default function AdminStudentDetailPage() {
 
       <div className="mt-10">
         <h2 className="font-bold text-foreground">
-          중고급 이수 신청 내역 ({semesterFilter}, {scopedAdvanced.length}건)
+          중고급 이수 신청 내역 ({advanced.length}건)
         </h2>
         <Card className="mt-3 overflow-x-auto p-0">
-          {scopedAdvanced.length === 0 ? (
+          {advanced.length === 0 ? (
             <p className="p-6 text-sm text-muted">신청 내역이 없습니다.</p>
           ) : (
             <table className="w-full text-left text-xs sm:text-sm">
@@ -548,7 +532,7 @@ export default function AdminStudentDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {scopedAdvanced.map((a) => (
+                {advanced.map((a) => (
                   <tr key={a.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">{a.targetSemester}</td>
                     <td className="px-4 py-2.5">{a.level}</td>
@@ -593,13 +577,13 @@ export default function AdminStudentDetailPage() {
 
       <div className="mt-10">
         <h2 className="font-bold text-foreground">
-          중고급 이수요건 확인 내역 ({semesterFilter}, {scopedEligibility.length}건)
+          중고급 이수요건 확인 내역 ({eligibilityChecks.length}건)
         </h2>
         <p className="mt-1 text-xs text-muted">
           항목별 판정 및 결과 확정은 관리자 홈의 &quot;이수요건 확인 · 검토중&quot;에서 처리합니다.
         </p>
         <Card className="mt-3 overflow-x-auto p-0">
-          {scopedEligibility.length === 0 ? (
+          {eligibilityChecks.length === 0 ? (
             <p className="p-6 text-sm text-muted">확인 내역이 없습니다.</p>
           ) : (
             <table className="w-full text-left text-xs sm:text-sm">
@@ -615,7 +599,7 @@ export default function AdminStudentDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {scopedEligibility.map((e) => (
+                {eligibilityChecks.map((e) => (
                   <tr key={e.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5">{e.targetSemester}</td>
                     <td className="px-4 py-2.5">{e.level}</td>
