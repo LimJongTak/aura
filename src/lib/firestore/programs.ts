@@ -402,13 +402,14 @@ export async function grantProgramMileage(
         studentId: a.studentId,
         studentName: a.studentName,
         category: opts.program.category,
-        activityName: multiSession ? `${opts.program.title} (${a.sessionRound}회차)` : opts.program.title,
+        // 지급 사유(활동명)는 프로그램명 그대로 — 회차는 비고에 남긴다.
+        activityName: opts.program.title,
         mileage,
         evidenceFileUrl: "",
         status: "승인",
         source: "bulk",
         semester: opts.semester,
-        note: "프로그램 참여",
+        note: multiSession ? `프로그램 참여 (${a.sessionRound}회차)` : "프로그램 참여",
         appliedAt: serverTimestamp(),
         processedAt: serverTimestamp(),
       });
