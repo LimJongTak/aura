@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Search } from "lucide-react";
+import { CalendarClock, Check, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge, ProgramTabs } from "@/components/programs/shared";
@@ -60,34 +60,49 @@ export default function ProgramsPage() {
       </div>
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          {(["전체", "개인", "팀"] as TeamFilter[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => {
-                setTeamFilter(t);
-                setPage(1);
-              }}
-              className={cn("font-semibold transition", teamFilter === t ? "text-primary-dark" : "text-muted hover:text-foreground")}
-            >
-              {teamFilter === t ? "✓ " : "· "}
-              {t}
-            </button>
-          ))}
-          <span className="h-4 w-px bg-border" />
-          <label className="flex items-center gap-1.5 text-sm font-semibold text-muted">
-            <input
-              type="checkbox"
-              checked={nonCurricularOnly}
-              onChange={(e) => {
-                setNonCurricularOnly(e.target.checked);
-                setPage(1);
-              }}
-              className="h-4 w-4 accent-primary"
-            />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 팀 구분: 세그먼트 컨트롤 */}
+          <div role="radiogroup" aria-label="팀 구분" className="inline-flex rounded-full border border-border bg-surface p-1">
+            {(["전체", "개인", "팀"] as TeamFilter[]).map((t) => {
+              const active = teamFilter === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => {
+                    setTeamFilter(t);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    "min-w-14 rounded-full px-4 py-1.5 text-sm font-semibold transition",
+                    active ? "bg-white text-primary-dark shadow-sm ring-1 ring-border" : "text-muted hover:text-foreground"
+                  )}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+          {/* 비교과프로그램만 보기: 토글 칩 */}
+          <button
+            type="button"
+            aria-pressed={nonCurricularOnly}
+            onClick={() => {
+              setNonCurricularOnly((v) => !v);
+              setPage(1);
+            }}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-semibold transition",
+              nonCurricularOnly
+                ? "border-primary bg-primary-light text-primary-dark"
+                : "border-border bg-white text-muted hover:border-primary/50 hover:text-foreground"
+            )}
+          >
+            <Check size={14} className={cn("transition", nonCurricularOnly ? "opacity-100" : "opacity-30")} />
             비교과프로그램
-          </label>
+          </button>
         </div>
         <div className="flex gap-2">
           <select
@@ -96,7 +111,7 @@ export default function ProgramsPage() {
               setPhaseFilter(e.target.value as PhaseFilter);
               setPage(1);
             }}
-            className="rounded-xl border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+            className="rounded-full border border-border bg-white px-4 py-2 text-sm outline-none focus:border-primary"
           >
             <option value="전체">모집상태 전체</option>
             <option value="모집중">모집중</option>
@@ -112,7 +127,7 @@ export default function ProgramsPage() {
                 setPage(1);
               }}
               placeholder="제목 검색"
-              className="py-2 pl-9"
+              className="rounded-full py-2 pl-9"
             />
           </div>
         </div>
