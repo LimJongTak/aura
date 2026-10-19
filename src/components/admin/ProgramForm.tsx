@@ -287,7 +287,7 @@ export function ProgramForm({ initial }: { initial: Program | null }) {
         </div>
         <div className="flex flex-col gap-2 rounded-xl bg-surface p-4">
           <Check checked={isNonCurricular} onChange={setIsNonCurricular} label="비교과 프로그램으로 인정되는 프로그램입니다">
-            학생 화면의 목록·상세에 &ldquo;비교과 인정&rdquo; 표시가 붙고, &ldquo;비교과 인정만&rdquo; 필터로 찾을 수 있어요.
+            학생 화면의 목록·상세에 &ldquo;비교과 인정&rdquo; 표시가 붙고, &ldquo;비교과프로그램&rdquo; 필터로 찾을 수 있어요.
           </Check>
           <Check checked={isPublished} onChange={setIsPublished} label="학생에게 공개">
             끄면 관리자만 볼 수 있어요 (작성 중인 글 임시 보관용).

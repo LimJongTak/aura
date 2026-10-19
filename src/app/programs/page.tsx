@@ -86,7 +86,7 @@ export default function ProgramsPage() {
               }}
               className="h-4 w-4 accent-primary"
             />
-            비교과 인정만
+            비교과프로그램
           </label>
         </div>
         <div className="flex gap-2">
