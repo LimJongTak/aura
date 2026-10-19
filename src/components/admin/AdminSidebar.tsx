@@ -6,6 +6,7 @@ import { signOut } from "firebase/auth";
 import {
   BarChart3,
   BookOpen,
+  CalendarCheck,
   CalendarDays,
   ClipboardList,
   HelpCircle,
@@ -57,6 +58,10 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/payments", label: "지급 관리", icon: Wallet },
       { href: "/admin/privacy-consents", label: "개인정보 동의자 관리", icon: ShieldCheck },
     ],
+  },
+  {
+    label: "프로그램",
+    items: [{ href: "/admin/programs", label: "프로그램 관리", icon: CalendarCheck, badge: "programs" }],
   },
   {
     label: "중고급 이수",

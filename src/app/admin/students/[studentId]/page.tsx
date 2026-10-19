@@ -33,6 +33,9 @@ import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
 import { getTrackCompletion, setSubjectCompletion, subjectCompletionKey } from "@/lib/firestore/trackCompletions";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
+import { formatDate, listMyProgramApplications } from "@/lib/firestore/programs";
+import { ProgramApplicationStatusBadge } from "@/components/programs/shared";
+import type { ProgramApplication } from "@/types/models";
 import {
   ACTIVITY_GROUPS,
   MAX_ADMIN_MILEAGE_GRANT,
@@ -62,6 +65,7 @@ export default function AdminStudentDetailPage() {
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
   const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
+  const [programApps, setProgramApps] = useState<ProgramApplication[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
@@ -77,7 +81,7 @@ export default function AdminStudentDetailPage() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [s, apps, advApps, elChecks, semesterList, convSettings, completion] = await Promise.all([
+    const [s, apps, advApps, elChecks, semesterList, convSettings, completion, progApps] = await Promise.all([
       getStudent(studentId),
       listApplicationsForStudent(studentId),
       listAdvancedApplicationsForStudent(studentId),
@@ -85,11 +89,13 @@ export default function AdminStudentDetailPage() {
       listSemesters(),
       getConversionSettings(),
       getTrackCompletion(studentId),
+      listMyProgramApplications(studentId).catch(() => [] as ProgramApplication[]),
     ]);
     setStudent(s);
     setApplications(apps);
     setAdvanced(advApps);
     setEligibilityChecks(elChecks);
+    setProgramApps(progApps);
     setSemesters(semesterList);
     setSettings(convSettings);
     setTrackCompletion(completion);
@@ -633,6 +639,46 @@ export default function AdminStudentDetailPage() {
                       >
                         <Trash2 size={15} />
                       </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="font-bold text-foreground">프로그램 신청 내역 ({programApps.length}건)</h2>
+        <p className="mt-1 text-xs text-muted">확정·반려·이수 처리는 프로그램 관리의 각 프로그램 신청자 관리에서 합니다.</p>
+        <Card className="mt-3 overflow-x-auto p-0">
+          {programApps.length === 0 ? (
+            <p className="p-6 text-sm text-muted">신청 내역이 없습니다.</p>
+          ) : (
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-4 py-3 font-semibold">신청일</th>
+                  <th className="px-4 py-3 font-semibold">프로그램</th>
+                  <th className="px-4 py-3 font-semibold">회차</th>
+                  <th className="px-4 py-3 font-semibold">결과</th>
+                </tr>
+              </thead>
+              <tbody>
+                {programApps.map((a) => (
+                  <tr key={a.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5 text-muted">{formatDate(a.appliedAt)}</td>
+                    <td className="px-4 py-2.5">
+                      <Link href={`/admin/programs/${a.programId}`} className="hover:text-primary">
+                        {a.programTitle}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5">{a.sessionRound}회차</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <ProgramApplicationStatusBadge status={a.status} />
+                        {a.mileageGranted && <Badge tone="success">마일리지 지급</Badge>}
+                      </div>
                     </td>
                   </tr>
                 ))}

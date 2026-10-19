@@ -52,6 +52,15 @@ const GROUPS = [
     order: 2,
     items: [{ label: "공지사항", href: "/announcements" }],
   },
+  {
+    id: "programs",
+    label: "프로그램",
+    order: 3,
+    items: [
+      { label: "프로그램 신청", href: "/programs" },
+      { label: "신청내역", href: "/programs/my" },
+    ],
+  },
 ];
 
 for (const { id, ...data } of GROUPS) {

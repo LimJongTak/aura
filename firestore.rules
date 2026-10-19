@@ -325,6 +325,107 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── 마일리지 프로그램 (게시글 · 회차별 신청 인원 · 신청) ─────────────────────
+
+    // 로그인한 학생 계정의 학번 (관리자 계정에는 의미 없음).
+    function myStudentId() {
+      return request.auth.token.email.split("@")[0];
+    }
+
+    function programApplicationPath(programId, sessionId, studentId) {
+      return /databases/$(database)/documents/programApplications/$(programId + "_" + sessionId + "_" + studentId);
+    }
+
+    // 공개된 글의 해당 회차가 지금 신청기간 안인지 — 시각은 서버 시각(request.time)으로 판정.
+    function programSessionOpen(programId, sessionId) {
+      let program = get(/databases/$(database)/documents/programs/$(programId)).data;
+      return program.isPublished == true &&
+        sessionId in program.sessions &&
+        request.time >= program.sessions[sessionId].applyStart &&
+        request.time <= program.sessions[sessionId].applyEnd;
+    }
+
+    function programCounterPath(programId, sessionId) {
+      return /databases/$(database)/documents/programs/$(programId)/counters/$(sessionId);
+    }
+
+    // 프로그램 게시글: 공개 글은 누구나 읽고(목록은 isPublished == true로 필터해서 조회),
+    // 쓰기는 관리자만. 단, 조회수(viewCount)는 누구나 정확히 1씩만 올릴 수 있다.
+    match /programs/{programId} {
+      allow read: if resource.data.isPublished == true || isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["viewCount"]) &&
+        request.resource.data.viewCount == resource.data.get("viewCount", 0) + 1
+      );
+
+      // 회차별 신청 인원 카운터 — 정원 초과 신청을 규칙으로 막기 위해 둔다. 학생은
+      // 본인 신청 문서가 같은 요청(트랜잭션)에서 새로 생길 때만 +1, 지워질 때만 -1 할 수 있고,
+      // +1 결과가 정원을 넘으면 거부된다.
+      match /counters/{sessionId} {
+        allow read: if true;
+        allow create, delete: if isAdmin();
+        allow update: if isAdmin() || (
+          isSignedIn() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["count"]) &&
+          (
+            (
+              request.resource.data.count == resource.data.count + 1 &&
+              !exists(programApplicationPath(programId, sessionId, myStudentId())) &&
+              existsAfter(programApplicationPath(programId, sessionId, myStudentId())) &&
+              (
+                get(/databases/$(database)/documents/programs/$(programId)).data.sessions[sessionId].capacity == null ||
+                request.resource.data.count <= get(/databases/$(database)/documents/programs/$(programId)).data.sessions[sessionId].capacity
+              )
+            ) ||
+            (
+              request.resource.data.count == resource.data.count - 1 &&
+              exists(programApplicationPath(programId, sessionId, myStudentId())) &&
+              !existsAfter(programApplicationPath(programId, sessionId, myStudentId()))
+            )
+          )
+        );
+      }
+    }
+
+    // 프로그램 신청: 문서 ID가 {programId}_{sessionId}_{studentId}로 고정돼 같은 회차 중복
+    // 신청이 불가능하다. 본인만 신청기간 안에 "신청" 상태로 생성할 수 있고, 반드시 회차
+    // 카운터 +1과 함께(트랜잭션) 일어나야 한다. 취소(삭제)도 "신청" 상태·신청기간 안에서만.
+    match /programApplications/{appId} {
+      allow read: if isSelf(resource.data.studentId) || isAdmin();
+
+      allow create: if
+        isSelf(request.resource.data.studentId) &&
+        appId == request.resource.data.programId + "_" + request.resource.data.sessionId + "_" + request.resource.data.studentId &&
+        request.resource.data.status == "신청" &&
+        request.resource.data.privacyAgreed == true &&
+        request.resource.data.studentName is string &&
+        request.resource.data.phone is string &&
+        request.resource.data.email is string &&
+        request.resource.data.applicationFileUrl is string &&
+        request.resource.data.keys().hasOnly([
+          "programId", "programTitle", "teamType", "sessionId", "sessionRound", "studentId", "studentName",
+          "department", "phone", "email", "teamName", "teamMembers", "applicationFileUrl",
+          "applicationFileName", "privacyAgreed", "status", "appliedAt"
+        ]) &&
+        exists(/databases/$(database)/documents/students/$(request.resource.data.studentId)) &&
+        programSessionOpen(request.resource.data.programId, request.resource.data.sessionId) &&
+        getAfter(programCounterPath(request.resource.data.programId, request.resource.data.sessionId)).data.count ==
+          get(programCounterPath(request.resource.data.programId, request.resource.data.sessionId)).data.count + 1;
+
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "note", "processedAt", "mileageGranted", "mileageGrantedAt"]);
+
+      allow delete: if isAdmin() || (
+        isSelf(resource.data.studentId) &&
+        resource.data.status == "신청" &&
+        programSessionOpen(resource.data.programId, resource.data.sessionId) &&
+        getAfter(programCounterPath(resource.data.programId, resource.data.sessionId)).data.count ==
+          get(programCounterPath(resource.data.programId, resource.data.sessionId)).data.count - 1
+      );
+    }
+
     // 학생 등록 신청: 이제 registerStudent Cloud Function(Admin SDK)이 관리자 승인 없이
     // 바로 계정·students 문서를 만들고 이 컬렉션에는 감사 기록만 남긴다 — 클라이언트
     // 직접 생성은 막는다. 예전에 접수된 검토중 건은 관리자가 계속 처리할 수 있다.

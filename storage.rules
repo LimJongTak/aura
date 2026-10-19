@@ -2,6 +2,16 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null &&
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+
+    function isSelf(studentId) {
+      return request.auth != null &&
+        request.auth.token.email == studentId + "@s.scnu.ac.kr";
+    }
+
     // 증빙서류/성적증명서: 예전에는 로그인 없이 아무나 임의의 studentId 경로에
     // 업로드·열람할 수 있었다(read/write 모두 if true) — 이러면 제3자가 다른
     // 학생 이름으로 파일을 끼워 넣거나(스팸/저장소 남용), 경로만 알면 누구나
@@ -13,20 +23,24 @@ service firebase.storage {
     // 이미 발급된 URL은 이 규칙과 무관하게 계속 열람 가능하다(Firebase Storage의
     // 알려진 동작). 이 규칙은 새 무단 업로드/추측 경로 접근을 막는 용도다.
     match /evidence/{studentId}/{fileName} {
-      function isAdmin() {
-        return request.auth != null &&
-          firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
-      }
-
-      function isSelf() {
-        return request.auth != null &&
-          request.auth.token.email == studentId + "@s.scnu.ac.kr";
-      }
-
-      allow read: if isSelf() || isAdmin();
-      allow write: if (isSelf() || isAdmin()) &&
+      allow read: if isSelf(studentId) || isAdmin();
+      allow write: if (isSelf(studentId) || isAdmin()) &&
         request.resource.size < 10 * 1024 * 1024 &&
         request.resource.contentType == "application/pdf";
+      allow delete: if false;
+    }
+
+    // 프로그램 게시글 이미지·첨부파일: 공개 안내물이라 누구나 읽고, 관리자만 올리고 지운다.
+    match /programs/{programId}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 20 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+
+    // 프로그램 신청 시 학생이 첨부하는 신청서: 본인·관리자만.
+    match /programApplications/{studentId}/{fileName} {
+      allow read: if isSelf(studentId) || isAdmin();
+      allow write: if (isSelf(studentId) || isAdmin()) && request.resource.size < 20 * 1024 * 1024;
       allow delete: if false;
     }
   }

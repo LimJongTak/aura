@@ -40,7 +40,22 @@ const DEFAULT_NAV_GROUPS: NavMenuGroup[] = [
     order: 2,
     items: [{ label: "공지사항", href: "/announcements" }],
   },
+  {
+    id: "programs",
+    label: "프로그램",
+    order: 3,
+    items: [
+      { label: "프로그램 신청", href: "/programs" },
+      { label: "신청내역", href: "/programs/my" },
+    ],
+  },
 ];
+
+/** /programs/abc처럼 메뉴 링크의 하위 경로에 있을 때도 해당 메뉴를 활성으로 표시한다
+ *  (홈 "/"은 모든 경로의 상위라 정확히 일치할 때만). */
+function isUnder(pathname: string, href: string) {
+  return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
+}
 
 export function Header() {
   const pathname = usePathname();
@@ -133,8 +148,8 @@ export function Header() {
           {navGroups.map((group) => {
             const soleItem = group.items.length === 1 ? group.items[0] : null;
             const active = soleItem
-              ? pathname === soleItem.href
-              : group.items.some((item) => item.href === pathname);
+              ? isUnder(pathname, soleItem.href)
+              : group.items.some((item) => isUnder(pathname, item.href));
             const highlighted = active || openGroupId === group.id;
 
             if (soleItem) {
@@ -283,7 +298,7 @@ export function Header() {
               );
             }
 
-            const active = group.items.some((item) => item.href === pathname);
+            const active = group.items.some((item) => isUnder(pathname, item.href));
             const open = mobileOpenGroupId === group.id;
             return (
               <div key={group.id}>

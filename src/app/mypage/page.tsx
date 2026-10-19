@@ -19,12 +19,15 @@ import { getMyBankAccount, saveBankAccount } from "@/lib/firestore/bankAccounts"
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import { TrackCompletionSection } from "@/components/mypage/TrackCompletionSection";
+import { ProgramApplicationStatusBadge } from "@/components/programs/shared";
+import { formatDate, listMyProgramApplications } from "@/lib/firestore/programs";
 import type {
   AdvancedApplication,
   ConversionSettings,
   CriterionStatus,
   EligibilityCheck,
   MileageApplication,
+  ProgramApplication,
   Semester,
   Student,
   StudentBankAccount,
@@ -67,6 +70,7 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
   const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
+  const [programApps, setProgramApps] = useState<ProgramApplication[]>([]);
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [currentSemester, setCurrentSemester] = useState<Semester | null>(null);
   const [bankAccount, setBankAccount] = useState<StudentBankAccount | null>(null);
@@ -82,7 +86,9 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
       listEligibilityChecksForStudent(student.studentId),
       getConversionSettings(),
       isPreview ? Promise.resolve(null) : getMyBankAccount(student.studentId),
-    ]).then(async ([semester, apps, advApps, eligChecks, convSettings, account]) => {
+      // 프로그램 신청 내역은 부가 정보라 조회에 실패해도 마이페이지 전체를 막지 않는다.
+      isPreview ? Promise.resolve([]) : listMyProgramApplications(student.studentId).catch(() => []),
+    ]).then(async ([semester, apps, advApps, eligChecks, convSettings, account, progApps]) => {
       const studentSummary = await computeStudentSummary(student, semester?.name);
       if (cancelled) return;
       setCurrentSemester(semester);
@@ -90,6 +96,7 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
       setApplications(apps);
       setAdvanced(advApps);
       setEligibilityChecks(eligChecks);
+      setProgramApps(progApps);
       setSettings(convSettings);
       setBankAccount(account);
       setLoading(false);
@@ -240,6 +247,55 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
                         {a.status === "반려" && a.note && (
                           <p className="text-xs text-danger">반려 사유: {a.note}</p>
                         )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-bold text-foreground">프로그램 신청 내역</h3>
+          <Link href="/programs/my" className="text-xs font-semibold text-primary hover:underline">
+            전체 보기
+          </Link>
+        </div>
+        <Card className="mt-3 overflow-x-auto p-0">
+          {programApps.length === 0 ? (
+            <p className="p-6 text-sm text-muted">
+              신청 내역이 없습니다.{" "}
+              <Link href="/programs" className="font-semibold text-primary hover:underline">
+                프로그램 둘러보기
+              </Link>
+            </p>
+          ) : (
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-4 py-3 font-semibold">신청일</th>
+                  <th className="px-4 py-3 font-semibold">프로그램</th>
+                  <th className="px-4 py-3 font-semibold">회차</th>
+                  <th className="px-4 py-3 font-semibold">결과</th>
+                </tr>
+              </thead>
+              <tbody>
+                {programApps.slice(0, 5).map((a) => (
+                  <tr key={a.id} className="border-b border-border last:border-0">
+                    <td className="px-4 py-2.5 text-muted">{formatDate(a.appliedAt)}</td>
+                    <td className="px-4 py-2.5">
+                      <Link href={`/programs/${a.programId}`} className="hover:text-primary">
+                        {a.programTitle}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5">{a.sessionRound}회차</td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <ProgramApplicationStatusBadge status={a.status} />
+                        {a.mileageGranted && <Badge tone="success">마일리지 지급</Badge>}
                       </div>
                     </td>
                   </tr>

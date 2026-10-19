@@ -7,21 +7,25 @@ export interface AdminPendingCounts {
   review: number;
   /** 검토중인 학생 등록 신청 (등록 신청 메뉴 배지) */
   registrations: number;
+  /** 아직 확정/반려하지 않은 프로그램 신청 (프로그램 관리 메뉴 배지) */
+  programs: number;
 }
 
-const EMPTY: AdminPendingCounts = { review: 0, registrations: 0 };
+const EMPTY: AdminPendingCounts = { review: 0, registrations: 0, programs: 0 };
 const POLL_INTERVAL_MS = 60_000;
 
 async function fetchCounts(): Promise<AdminPendingCounts> {
-  const [mileage, advanced, eligibility, registrations] = await Promise.all([
+  const [mileage, advanced, eligibility, registrations, programs] = await Promise.all([
     getCountFromServer(query(collection(db, "mileageApplications"), where("status", "==", "검토중"))),
     getCountFromServer(query(collection(db, "advancedApplications"), where("status", "==", "검토중"))),
     getCountFromServer(query(collection(db, "eligibilityChecks"), where("status", "==", "검토중"))),
     getCountFromServer(query(collection(db, "studentRegistrationRequests"), where("status", "==", "검토중"))),
+    getCountFromServer(query(collection(db, "programApplications"), where("status", "==", "신청"))),
   ]);
   return {
     review: mileage.data().count + advanced.data().count + eligibility.data().count,
     registrations: registrations.data().count,
+    programs: programs.data().count,
   };
 }
 

@@ -505,3 +505,104 @@ export interface TrackCompletionAck {
   seenVersion: number;
   updatedAt: number;
 }
+
+/** 마일리지 프로그램 게시글의 참여 단위 (참고: 진로취업포털 비교과 프로그램 "팀 구분"). */
+export type ProgramTeamType = "개인" | "팀";
+
+export const PROGRAM_TYPE_SUGGESTIONS = ["교육프로그램", "특강", "경진대회", "캠프", "멘토링", "취업프로그램", "기타"];
+
+/**
+ * 프로그램 게시글의 회차 1건. 회차마다 신청기간·진행기간·정원·지급 마일리지가 따로 있다.
+ * Firestore에는 programs/{id}.sessions 맵({sessionId: ...})으로 저장되며, 시각 값은 규칙이
+ * request.time과 비교할 수 있도록 Timestamp로 저장된다 (화면에서는 epoch ms로 변환해 쓴다).
+ * 신청 인원은 programs/{id}/counters/{sessionId}.count에 따로 둔다 — 정원 초과를
+ * Firestore 규칙으로 막기 위해서다.
+ */
+export interface ProgramSession {
+  id: string;
+  round: number;
+  /** 년도 (예: "2026") */
+  year: string;
+  /** 대상 학년 (예: "전체", "3~4학년") */
+  grade: string;
+  applyStart: number;
+  applyEnd: number;
+  runStart: number;
+  runEnd: number;
+  /** null이면 정원 제한 없음 */
+  capacity: number | null;
+  /** 이수 처리 시 지급할 마일리지 (0이면 지급 없음) */
+  mileage: number;
+}
+
+export interface ProgramFile {
+  name: string;
+  url: string;
+  /** Storage 경로 — 삭제 시 사용 */
+  path: string;
+}
+
+/** 마일리지 프로그램 게시글 → programs/{id}. 공개(isPublished)된 글만 학생에게 보인다. */
+export interface Program {
+  id: string;
+  title: string;
+  teamType: ProgramTeamType;
+  /** 프로그램 구분 (교육프로그램/특강 등 자유 입력) */
+  programType: string;
+  /** 지급 마일리지가 속하는 마일리지 활동 영역 */
+  category: ActivityGroup;
+  /** 비교과 프로그램으로 인정되는 프로그램인지 — 관리자가 글 작성 시 체크한다. */
+  isNonCurricular: boolean;
+  /** 담당부서 */
+  department: string;
+  /** 대상 (예: "참여학과 재학생") */
+  target: string;
+  content: string;
+  /** 본문 위에 보여줄 이미지 */
+  images: ProgramFile[];
+  attachments: ProgramFile[];
+  /** 신청 시 신청서 파일 첨부를 필수로 받을지 */
+  requireApplicationFile: boolean;
+  /** 신청서 첨부 안내 문구 */
+  applicationFileGuide: string;
+  isPublished: boolean;
+  viewCount: number;
+  sessions: ProgramSession[];
+  createdAt: number;
+  updatedAt?: number;
+}
+
+/** 신청 → (관리자) 확정/반려 → 이수(참여 완료, 마일리지 지급) */
+export type ProgramApplicationStatus = "신청" | "확정" | "반려" | "이수";
+
+/** 정원에 포함되는(자리를 차지하는) 신청 상태 — 반려만 자리를 돌려준다. */
+export const PROGRAM_SEAT_STATUSES: ProgramApplicationStatus[] = ["신청", "확정", "이수"];
+
+/**
+ * 프로그램 신청 1건 → programApplications/{programId}_{sessionId}_{studentId}.
+ * 문서 ID를 결정적으로 만들어 같은 회차 중복 신청을 규칙 차원에서 막는다.
+ */
+export interface ProgramApplication {
+  id: string;
+  programId: string;
+  programTitle: string;
+  teamType: ProgramTeamType;
+  sessionId: string;
+  sessionRound: number;
+  studentId: string;
+  studentName: string;
+  department: string;
+  phone: string;
+  email: string;
+  teamName: string;
+  teamMembers: string;
+  applicationFileUrl: string;
+  applicationFileName: string;
+  privacyAgreed: boolean;
+  status: ProgramApplicationStatus;
+  appliedAt: number;
+  processedAt?: number;
+  note?: string;
+  mileageGranted?: boolean;
+  mileageGrantedAt?: number;
+}
