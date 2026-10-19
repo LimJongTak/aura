@@ -10,12 +10,15 @@ import { Input, Select } from "@/components/ui/Input";
 import { PageSpinner } from "@/components/ui/PageSpinner";
 import { NonCurricularBadge, PhaseBadge, ProgramApplicationStatusBadge } from "@/components/programs/shared";
 import {
-  completeProgramApplications,
   deleteProgram,
   deleteProgramApplications,
   formatDate,
   formatDateTime,
   getProgram,
+  grantProgramMileage,
+  markProgramNonPayment,
+  ProgramNotEndedError,
+  sessionEnded,
   sessionPhase,
   setProgramApplicationsStatus,
   subscribeApplicationsForProgram,
@@ -27,7 +30,7 @@ import { deleteProgramFile } from "@/lib/storage/programFiles";
 import type { Program, ProgramApplication, ProgramApplicationStatus, Semester } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
 
-const STATUS_FILTERS: ("전체" | ProgramApplicationStatus)[] = ["전체", "신청", "확정", "이수", "반려"];
+const STATUS_FILTERS: ("전체" | ProgramApplicationStatus)[] = ["전체", "신청", "확정", "지급완료", "미지급", "반려"];
 
 export default function AdminProgramDetailPage() {
   const params = useParams<{ id: string }>();
@@ -42,7 +45,7 @@ export default function AdminProgramDetailPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modal, setModal] = useState<"reject" | "complete" | null>(null);
+  const [modal, setModal] = useState<"reject" | "grant" | "nonpay" | null>(null);
 
   useEffect(() => {
     getProgram(params.id).then(setProgram).catch(() => setProgram(null));
@@ -89,8 +92,12 @@ export default function AdminProgramDetailPage() {
       await action();
       setSelected(new Set());
       setModal(null);
-    } catch {
-      setError("처리에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } catch (err) {
+      setError(
+        err instanceof ProgramNotEndedError || (err instanceof Error && err.message.includes("미지급"))
+          ? err.message
+          : "처리에 실패했어요. 잠시 후 다시 시도해주세요."
+      );
     } finally {
       setBusy(false);
     }
@@ -117,6 +124,14 @@ export default function AdminProgramDetailPage() {
   if (program === null) return <p className="py-16 text-center text-sm text-muted">존재하지 않는 프로그램이에요.</p>;
 
   const sessionLabel = (sid: string) => `${program.sessions.find((s) => s.id === sid)?.round ?? "?"}회차`;
+  const sessionsById = new Map(program.sessions.map((s) => [s.id, s]));
+  // 선택한 신청들의 회차가 모두 진행 종료됐는지 — 지급/미지급 처리는 종료 후에만 가능하다.
+  const selectedAllEnded = selectedApps.every((a) => sessionEnded(sessionsById.get(a.sessionId)));
+  const selectedHasGranted = selectedApps.some((a) => a.mileageGranted);
+  const selectedHasRejected = selectedApps.some((a) => a.status === "반려");
+  const awaitingSettlement = (apps ?? []).filter(
+    (a) => (a.status === "신청" || a.status === "확정") && sessionEnded(sessionsById.get(a.sessionId))
+  ).length;
 
   return (
     <div>
@@ -174,10 +189,22 @@ export default function AdminProgramDetailPage() {
                 <br />
                 마일리지 {s.mileage}점
               </p>
+              <SessionSettlement
+                ended={sessionEnded(s)}
+                runEnd={s.runEnd}
+                apps={(apps ?? []).filter((a) => a.sessionId === s.id)}
+              />
             </Card>
           );
         })}
       </div>
+
+      {awaitingSettlement > 0 && (
+        <div className="mt-6 rounded-xl bg-warning-light px-4 py-3 text-sm text-warning">
+          진행이 끝난 회차에 아직 지급/미지급 처리하지 않은 신청자가 <b>{awaitingSettlement}명</b> 있어요. 요건을 충족한
+          학생은 선택 후 &ldquo;마일리지 지급&rdquo;, 중도이탈 등은 &ldquo;미지급 처리&rdquo;로 사유와 함께 처리해주세요.
+        </div>
+      )}
 
       <Card className="mt-6 p-0">
         <div className="flex flex-col gap-3 border-b border-border p-4 lg:flex-row lg:items-center lg:justify-between">
@@ -227,31 +254,69 @@ export default function AdminProgramDetailPage() {
         </div>
 
         {selectedApps.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-primary-light/50 px-4 py-2.5">
-            <span className="mr-1 text-xs font-bold text-primary-dark">{selectedApps.length}명 선택</span>
-            <Button size="sm" disabled={busy} onClick={() => run(() => setProgramApplicationsStatus(selectedApps, "확정"))}>
-              확정
-            </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => setModal("complete")}>
-              이수 처리 · 마일리지 지급
-            </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => setModal("reject")}>
-              반려
-            </Button>
-            <Button size="sm" variant="ghost" disabled={busy} onClick={() => run(() => setProgramApplicationsStatus(selectedApps, "신청"))}>
-              신청 상태로
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
-                if (confirm(`선택한 ${selectedApps.length}건의 신청을 삭제할까요? (학생 신청내역에서도 사라져요)`))
-                  run(() => deleteProgramApplications(selectedApps));
-              }}
-            >
-              <Trash2 size={14} /> 삭제
-            </Button>
+          <div className="flex flex-col gap-2 border-b border-border bg-primary-light/50 px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-xs font-bold text-primary-dark">{selectedApps.length}명 선택</span>
+              <span className="text-[11px] font-semibold text-muted">모집 단계</span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || selectedHasGranted}
+                onClick={() => run(() => setProgramApplicationsStatus(selectedApps, "확정"))}
+              >
+                확정
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy || selectedHasGranted} onClick={() => setModal("reject")}>
+                반려
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy || selectedHasGranted}
+                onClick={() => run(() => setProgramApplicationsStatus(selectedApps, "신청"))}
+              >
+                신청 상태로
+              </Button>
+              <span className="mx-1 h-5 w-px bg-border" />
+              <span className="text-[11px] font-semibold text-muted">종료 후 정산</span>
+              <Button size="sm" disabled={busy || !selectedAllEnded || selectedHasRejected} onClick={() => setModal("grant")}>
+                마일리지 지급
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !selectedAllEnded || selectedHasGranted}
+                onClick={() => setModal("nonpay")}
+              >
+                미지급 처리
+              </Button>
+              <span className="mx-1 h-5 w-px bg-border" />
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => {
+                  const warn = selectedHasGranted ? "\n이미 지급된 마일리지는 학생 상세에서 따로 회수해야 해요." : "";
+                  if (confirm(`선택한 ${selectedApps.length}건의 신청을 삭제할까요? (학생 신청내역에서도 사라져요)${warn}`))
+                    run(() => deleteProgramApplications(selectedApps));
+                }}
+              >
+                <Trash2 size={14} /> 삭제
+              </Button>
+            </div>
+            {!selectedAllEnded && (
+              <p className="text-[11px] text-muted">
+                진행이 끝나지 않은 회차의 신청자가 포함되어 있어 마일리지 지급·미지급 처리는 프로그램 종료 후에 할 수 있어요.
+              </p>
+            )}
+            {selectedAllEnded && selectedHasRejected && (
+              <p className="text-[11px] text-muted">반려된 신청이 포함되어 있어 마일리지를 지급할 수 없어요.</p>
+            )}
+            {selectedHasGranted && (
+              <p className="text-[11px] text-muted">
+                이미 지급완료된 신청이 포함되어 있어 확정·반려·미지급으로 바꿀 수 없어요 (회수는 학생 상세에서).
+              </p>
+            )}
           </div>
         )}
 
@@ -318,9 +383,17 @@ export default function AdminProgramDetailPage() {
                     <td className="px-2 py-3 text-xs text-muted">{formatDate(a.appliedAt)}</td>
                     <td className="px-2 py-3">
                       <ProgramApplicationStatusBadge status={a.status} />
-                      {a.status === "반려" && a.note && <p className="mt-1 max-w-32 text-[11px] text-danger">{a.note}</p>}
+                      {(a.status === "반려" || a.status === "미지급") && a.note && (
+                        <p className="mt-1 max-w-36 text-[11px] text-danger">사유: {a.note}</p>
+                      )}
                     </td>
-                    <td className="px-2 py-3 text-xs">{a.mileageGranted ? <span className="font-semibold text-success">지급완료</span> : "-"}</td>
+                    <td className="px-2 py-3 text-xs">
+                      {a.mileageGranted ? (
+                        <span className="font-semibold text-success">{sessionsById.get(a.sessionId)?.mileage ?? 0}점 지급</span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -337,16 +410,22 @@ export default function AdminProgramDetailPage() {
           onConfirm={(note) => run(() => setProgramApplicationsStatus(selectedApps, "반려", note))}
         />
       )}
-      {modal === "complete" && (
-        <CompleteModal
+      {modal === "grant" && (
+        <GrantModal
           program={program}
           apps={selectedApps}
           semesters={semesters}
           busy={busy}
           onClose={() => setModal(null)}
-          onConfirm={(grantMileage, semester) =>
-            run(() => completeProgramApplications(selectedApps, { program, grantMileage, semester }))
-          }
+          onConfirm={(semester) => run(() => grantProgramMileage(selectedApps, { program, semester }))}
+        />
+      )}
+      {modal === "nonpay" && (
+        <NonPaymentModal
+          count={selectedApps.length}
+          busy={busy}
+          onClose={() => setModal(null)}
+          onConfirm={(reason) => run(() => markProgramNonPayment(selectedApps, { program, reason }))}
         />
       )}
     </div>
@@ -403,7 +482,26 @@ function RejectModal({
   );
 }
 
-function CompleteModal({
+function SessionSettlement({ ended, runEnd, apps }: { ended: boolean; runEnd: number; apps: ProgramApplication[] }) {
+  if (!ended) {
+    return (
+      <p className="mt-2 rounded-lg bg-surface px-2.5 py-1.5 text-[11px] text-muted">
+        진행 종료({formatDateTime(runEnd)}) 후 지급 처리 가능
+      </p>
+    );
+  }
+  const paid = apps.filter((a) => a.status === "지급완료").length;
+  const unpaid = apps.filter((a) => a.status === "미지급").length;
+  const pending = apps.filter((a) => a.status === "신청" || a.status === "확정").length;
+  return (
+    <p className="mt-2 rounded-lg bg-surface px-2.5 py-1.5 text-[11px] text-muted">
+      진행 종료 · 지급 <b className="text-success">{paid}</b> · 미지급 <b className="text-foreground">{unpaid}</b> · 처리 대기{" "}
+      <b className={pending > 0 ? "text-warning" : "text-foreground"}>{pending}</b>
+    </p>
+  );
+}
+
+function GrantModal({
   program,
   apps,
   semesters,
@@ -416,9 +514,8 @@ function CompleteModal({
   semesters: Semester[];
   busy: boolean;
   onClose: () => void;
-  onConfirm: (grantMileage: boolean, semester: string) => void;
+  onConfirm: (semester: string) => void;
 }) {
-  const [grantMileage, setGrantMileage] = useState(true);
   const [semester, setSemester] = useState(() => semesters.find((s) => s.isCurrent)?.name ?? semesters[0]?.name ?? "");
   const mileageBySession = new Map(program.sessions.map((s) => [s.id, s.mileage]));
   const grantable = apps.filter((a) => !a.mileageGranted && (mileageBySession.get(a.sessionId) ?? 0) > 0);
@@ -426,27 +523,21 @@ function CompleteModal({
   const total = grantable.reduce((sum, a) => sum + (mileageBySession.get(a.sessionId) ?? 0), 0);
 
   return (
-    <ModalShell title={`${apps.length}명 이수 처리`} onClose={onClose}>
-      <p className="text-sm text-muted">선택한 신청을 &ldquo;이수&rdquo;로 바꿔요.</p>
-      <label className="mt-4 flex items-start gap-2.5">
-        <input
-          type="checkbox"
-          checked={grantMileage}
-          onChange={(e) => setGrantMileage(e.target.checked)}
-          className="mt-0.5 h-4 w-4 accent-primary"
-          disabled={grantable.length === 0}
-        />
-        <span className="text-sm">
-          <span className="font-semibold text-foreground">마일리지 함께 지급</span>
-          <span className="block text-xs text-muted">
-            {grantable.length > 0
-              ? `${grantable.length}명에게 총 ${total}점을 "${program.category}" 영역으로 바로 승인 지급해요.`
-              : "지급할 대상이 없어요 (회차 마일리지가 0점이거나 이미 지급됨)."}
-            {alreadyGranted > 0 && ` 이미 지급된 ${alreadyGranted}명은 중복 지급하지 않아요.`}
-          </span>
-        </span>
-      </label>
-      {grantMileage && grantable.length > 0 && (
+    <ModalShell title={`${apps.length}명 마일리지 지급`} onClose={onClose}>
+      <p className="text-sm text-muted">
+        지급 요건을 충족한 학생만 선택했는지 확인해주세요. 선택한 신청은 &ldquo;지급완료&rdquo;로 바뀌어요.
+      </p>
+      <div className="mt-4 rounded-xl bg-surface p-3 text-sm">
+        {grantable.length > 0 ? (
+          <p>
+            <b>{grantable.length}명</b>에게 총 <b>{total}점</b>을 &ldquo;{program.category}&rdquo; 영역으로 바로 승인 지급해요.
+          </p>
+        ) : (
+          <p>새로 지급할 마일리지가 없어요 (회차 마일리지가 0점이거나 이미 지급됨). 상태만 지급완료로 바뀌어요.</p>
+        )}
+        {alreadyGranted > 0 && <p className="mt-1 text-xs text-muted">이미 지급된 {alreadyGranted}명은 중복 지급하지 않아요.</p>}
+      </div>
+      {grantable.length > 0 && (
         <div className="mt-3">
           <label className="mb-1.5 block text-xs font-semibold text-muted">인정 학기</label>
           <Select value={semester} onChange={(e) => setSemester(e.target.value)}>
@@ -463,13 +554,62 @@ function CompleteModal({
         <Button variant="outline" size="sm" onClick={onClose}>
           취소
         </Button>
-        <Button
-          size="sm"
-          loading={busy}
-          disabled={grantMileage && grantable.length > 0 && !semester}
-          onClick={() => onConfirm(grantMileage && grantable.length > 0, semester)}
-        >
-          이수 처리
+        <Button size="sm" loading={busy} disabled={grantable.length > 0 && !semester} onClick={() => onConfirm(semester)}>
+          지급
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+const NON_PAYMENT_REASONS = ["중도이탈", "출석 기준 미달", "과제 미제출", "불참"];
+
+function NonPaymentModal({
+  count,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  count: number;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <ModalShell title={`${count}명 미지급 처리`} onClose={onClose}>
+      <p className="text-sm text-muted">
+        지급 요건을 채우지 못한 신청자를 미지급으로 처리해요. 사유는 학생 마이페이지와 신청내역에 표시됩니다.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {NON_PAYMENT_REASONS.map((r) => (
+          <button
+            key={r}
+            type="button"
+            onClick={() => setReason(r)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-semibold transition",
+              reason === r ? "border-primary bg-primary-light text-primary-dark" : "border-border text-muted hover:border-primary"
+            )}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        rows={3}
+        maxLength={200}
+        placeholder="미지급 사유 (필수)"
+        className="mt-3 w-full rounded-xl border border-border px-3.5 py-2.5 text-sm outline-none focus:border-primary"
+      />
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={onClose}>
+          취소
+        </Button>
+        <Button size="sm" loading={busy} disabled={!reason.trim()} onClick={() => onConfirm(reason.trim())}>
+          미지급 처리
         </Button>
       </div>
     </ModalShell>

@@ -366,20 +366,38 @@ export async function deleteProgramApplications(apps: ProgramApplication[]): Pro
   await batch.commit();
 }
 
-/** 이수 처리하면서 마일리지를 지급한다 — 일괄지급과 같은 방식(source "bulk", 바로 승인)으로
- *  mileageApplications에 기록하고, 신청 문서에는 지급 여부를 남겨 중복 지급을 막는다. */
-export async function completeProgramApplications(
+/** 회차 진행이 끝났는지 — 마일리지 지급/미지급 처리는 진행 종료 이후에만 할 수 있다. */
+export function sessionEnded(session: ProgramSession | undefined, now = Date.now()): boolean {
+  return !!session && now > session.runEnd;
+}
+
+export class ProgramNotEndedError extends Error {
+  constructor() {
+    super("아직 진행이 끝나지 않은 회차가 포함되어 있습니다.");
+  }
+}
+
+function assertSessionsEnded(apps: ProgramApplication[], program: Program) {
+  const sessionsById = new Map(program.sessions.map((s) => [s.id, s]));
+  if (apps.some((a) => !sessionEnded(sessionsById.get(a.sessionId)))) throw new ProgramNotEndedError();
+}
+
+/** 프로그램 종료 후, 관리자가 요건을 충족한 신청자에게 마일리지를 지급한다 — 일괄지급과 같은
+ *  방식(source "bulk", 바로 승인)으로 mileageApplications에 기록하고, 신청 문서에는 지급 여부를
+ *  남겨 중복 지급을 막는다. 회차 마일리지가 0점이면 기록 없이 지급완료 상태만 바꾼다. */
+export async function grantProgramMileage(
   apps: ProgramApplication[],
-  opts: { program: Program; grantMileage: boolean; semester: string }
+  opts: { program: Program; semester: string }
 ): Promise<void> {
+  assertSessionsEnded(apps, opts.program);
   const batch = writeBatch(db);
   const sessionsById = new Map(opts.program.sessions.map((s) => [s.id, s]));
   const multiSession = opts.program.sessions.length > 1;
   for (const a of apps) {
-    const session = sessionsById.get(a.sessionId);
-    const update: Record<string, unknown> = { status: "이수", processedAt: serverTimestamp() };
-    const mileage = session?.mileage ?? 0;
-    if (opts.grantMileage && !a.mileageGranted && mileage > 0) {
+    const mileage = sessionsById.get(a.sessionId)?.mileage ?? 0;
+    // 미지급이었다가 지급으로 정정하는 경우를 위해 미지급 사유는 지운다.
+    const update: Record<string, unknown> = { status: "지급완료", note: "", processedAt: serverTimestamp() };
+    if (!a.mileageGranted && mileage > 0) {
       batch.set(doc(collection(db, "mileageApplications")), {
         studentId: a.studentId,
         studentName: a.studentName,
@@ -390,7 +408,7 @@ export async function completeProgramApplications(
         status: "승인",
         source: "bulk",
         semester: opts.semester,
-        note: "프로그램 이수",
+        note: "프로그램 참여",
         appliedAt: serverTimestamp(),
         processedAt: serverTimestamp(),
       });
@@ -403,6 +421,17 @@ export async function completeProgramApplications(
     }
   }
   await batch.commit();
+}
+
+/** 프로그램 종료 후, 지급 요건을 채우지 못한 신청자(중도이탈 등)를 사유와 함께 미지급 처리한다.
+ *  이미 마일리지가 지급된 신청은 회수 절차(학생 상세의 회수)가 따로 필요하므로 여기서 받지 않는다. */
+export async function markProgramNonPayment(
+  apps: ProgramApplication[],
+  opts: { program: Program; reason: string }
+): Promise<void> {
+  assertSessionsEnded(apps, opts.program);
+  if (apps.some((a) => a.mileageGranted)) throw new Error("이미 마일리지가 지급된 신청은 미지급 처리할 수 없습니다.");
+  await setProgramApplicationsStatus(apps, "미지급", opts.reason);
 }
 
 // ─── 화면 공통 ────────────────────────────────────────────────────────────────
@@ -444,3 +473,11 @@ export function formatDate(ms: number): string {
   return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
 }
 
+
+/** 신청내역 화면에서 회차 정보(진행기간·마일리지)를 붙이기 위해 프로그램을 한꺼번에 불러온다.
+ *  비공개로 바뀐 글은 학생이 읽을 수 없어 null이 된다. */
+export async function getProgramsByIds(ids: string[]): Promise<Record<string, Program | null>> {
+  const unique = [...new Set(ids)];
+  const loaded = await Promise.all(unique.map((id) => getProgram(id).catch(() => null)));
+  return Object.fromEntries(unique.map((id, i) => [id, loaded[i]]));
+}

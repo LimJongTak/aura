@@ -650,7 +650,7 @@ export default function AdminStudentDetailPage() {
 
       <div className="mt-10">
         <h2 className="font-bold text-foreground">프로그램 신청 내역 ({programApps.length}건)</h2>
-        <p className="mt-1 text-xs text-muted">확정·반려·이수 처리는 프로그램 관리의 각 프로그램 신청자 관리에서 합니다.</p>
+        <p className="mt-1 text-xs text-muted">확정·반려·마일리지 지급·미지급 처리는 프로그램 관리의 각 프로그램 신청자 관리에서 합니다.</p>
         <Card className="mt-3 overflow-x-auto p-0">
           {programApps.length === 0 ? (
             <p className="p-6 text-sm text-muted">신청 내역이 없습니다.</p>
@@ -679,6 +679,9 @@ export default function AdminStudentDetailPage() {
                         <ProgramApplicationStatusBadge status={a.status} />
                         {a.mileageGranted && <Badge tone="success">마일리지 지급</Badge>}
                       </div>
+                      {(a.status === "반려" || a.status === "미지급") && a.note && (
+                        <p className="mt-1 text-xs text-danger">사유: {a.note}</p>
+                      )}
                     </td>
                   </tr>
                 ))}

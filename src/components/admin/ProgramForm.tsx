@@ -269,7 +269,7 @@ export function ProgramForm({ initial }: { initial: Program | null }) {
               ))}
             </datalist>
           </Field>
-          <Field label="마일리지 영역" hint="이수 처리 시 지급되는 마일리지의 활동 영역">
+          <Field label="마일리지 영역" hint="종료 후 지급되는 마일리지의 활동 영역">
             <Select value={category} onChange={(e) => setCategory(e.target.value as ActivityGroup)}>
               {ACTIVITY_GROUPS.map((g) => (
                 <option key={g} value={g}>
@@ -424,7 +424,7 @@ export function ProgramForm({ initial }: { initial: Program | null }) {
               <Field label="정원" hint="빈칸이면 제한없음">
                 <Input type="number" min={1} value={s.capacity} onChange={(e) => updateSession(s.id, { capacity: e.target.value })} placeholder="제한없음" />
               </Field>
-              <Field label="지급 마일리지" hint="이수 처리 시 지급">
+              <Field label="지급 마일리지" hint="종료 후 요건 충족자에게 지급">
                 <Input type="number" min={0} max={MAX_ADMIN_MILEAGE_GRANT} value={s.mileage} onChange={(e) => updateSession(s.id, { mileage: e.target.value })} placeholder="0" />
               </Field>
             </div>

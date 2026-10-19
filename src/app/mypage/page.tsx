@@ -19,14 +19,15 @@ import { getMyBankAccount, saveBankAccount } from "@/lib/firestore/bankAccounts"
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import { TrackCompletionSection } from "@/components/mypage/TrackCompletionSection";
-import { ProgramApplicationStatusBadge } from "@/components/programs/shared";
-import { formatDate, listMyProgramApplications } from "@/lib/firestore/programs";
+import { ProgramApplicationStatusBadge, ProgramMileageStatus } from "@/components/programs/shared";
+import { formatDate, getProgramsByIds, listMyProgramApplications } from "@/lib/firestore/programs";
 import type {
   AdvancedApplication,
   ConversionSettings,
   CriterionStatus,
   EligibilityCheck,
   MileageApplication,
+  Program,
   ProgramApplication,
   Semester,
   Student,
@@ -71,6 +72,7 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
   const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [programApps, setProgramApps] = useState<ProgramApplication[]>([]);
+  const [programs, setPrograms] = useState<Record<string, Program | null>>({});
   const [settings, setSettings] = useState<ConversionSettings | null>(null);
   const [currentSemester, setCurrentSemester] = useState<Semester | null>(null);
   const [bankAccount, setBankAccount] = useState<StudentBankAccount | null>(null);
@@ -97,6 +99,12 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
       setAdvanced(advApps);
       setEligibilityChecks(eligChecks);
       setProgramApps(progApps);
+      // 진행기간·지급 마일리지를 보여주려면 회차 정보가 필요하다 (실패해도 표는 그대로 보인다).
+      getProgramsByIds(progApps.map((a) => a.programId))
+        .then((loaded) => {
+          if (!cancelled) setPrograms(loaded);
+        })
+        .catch(() => {});
       setSettings(convSettings);
       setBankAccount(account);
       setLoading(false);
@@ -259,11 +267,34 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
 
       <div>
         <div className="flex items-center justify-between gap-2">
-          <h3 className="font-bold text-foreground">프로그램 신청 내역</h3>
+          <h3 className="font-bold text-foreground">프로그램 신청 현황</h3>
           <Link href="/programs/my" className="text-xs font-semibold text-primary hover:underline">
-            전체 보기
+            신청내역 · 신청취소
           </Link>
         </div>
+        {programApps.length > 0 &&
+          (() => {
+            const paidApps = programApps.filter((a) => a.status === "지급완료");
+            const paidMileage = paidApps.reduce(
+              (sum, a) =>
+                sum + (a.mileageGranted ? (programs[a.programId]?.sessions.find((s) => s.id === a.sessionId)?.mileage ?? 0) : 0),
+              0
+            );
+            const inProgress = programApps.filter((a) => a.status === "신청" || a.status === "확정").length;
+            const unpaid = programApps.filter((a) => a.status === "미지급").length;
+            return (
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatCard label="신청한 프로그램" value={`${programApps.length}건`} />
+                <StatCard label="진행·지급 심사중" value={`${inProgress}건`} tone="warning" />
+                <StatCard label="마일리지 지급" value={`${paidApps.length}건`} hint={`총 ${paidMileage}점`} tone="success" />
+                <StatCard label="미지급" value={`${unpaid}건`} tone="danger" />
+              </div>
+            );
+          })()}
+        <p className="mt-2 text-xs text-muted">
+          프로그램 마일리지는 신청만으로 지급되지 않아요. 프로그램이 끝난 뒤 사업단이 지급 요건(출석·과제 등)을 확인해
+          지급하며, 요건을 채우지 못하면 사유와 함께 미지급으로 표시돼요.
+        </p>
         <Card className="mt-3 overflow-x-auto p-0">
           {programApps.length === 0 ? (
             <p className="p-6 text-sm text-muted">
@@ -278,28 +309,36 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
                 <tr className="border-b border-border bg-surface text-muted">
                   <th className="px-4 py-3 font-semibold">신청일</th>
                   <th className="px-4 py-3 font-semibold">프로그램</th>
-                  <th className="px-4 py-3 font-semibold">회차</th>
+                  <th className="px-4 py-3 font-semibold">진행기간</th>
                   <th className="px-4 py-3 font-semibold">결과</th>
+                  <th className="px-4 py-3 font-semibold">마일리지</th>
                 </tr>
               </thead>
               <tbody>
-                {programApps.slice(0, 5).map((a) => (
-                  <tr key={a.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2.5 text-muted">{formatDate(a.appliedAt)}</td>
-                    <td className="px-4 py-2.5">
-                      <Link href={`/programs/${a.programId}`} className="hover:text-primary">
-                        {a.programTitle}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-2.5">{a.sessionRound}회차</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
+                {programApps.map((a) => {
+                  const session = programs[a.programId]?.sessions.find((s) => s.id === a.sessionId);
+                  return (
+                    <tr key={a.id} className="border-b border-border last:border-0 align-top">
+                      <td className="px-4 py-2.5 text-muted">{formatDate(a.appliedAt)}</td>
+                      <td className="px-4 py-2.5">
+                        <Link href={`/programs/${a.programId}`} className="hover:text-primary">
+                          {a.programTitle}
+                        </Link>
+                        <span className="ml-1 text-muted">· {a.sessionRound}회차</span>
+                        {a.status === "반려" && a.note && <p className="mt-0.5 text-xs text-danger">반려 사유: {a.note}</p>}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs text-muted">
+                        {session ? `${formatDate(session.runStart)} ~ ${formatDate(session.runEnd)}` : "-"}
+                      </td>
+                      <td className="px-4 py-2.5">
                         <ProgramApplicationStatusBadge status={a.status} />
-                        {a.mileageGranted && <Badge tone="success">마일리지 지급</Badge>}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-2.5 text-xs">
+                        <ProgramMileageStatus app={a} session={session} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

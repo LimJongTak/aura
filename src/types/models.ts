@@ -531,7 +531,7 @@ export interface ProgramSession {
   runEnd: number;
   /** null이면 정원 제한 없음 */
   capacity: number | null;
-  /** 이수 처리 시 지급할 마일리지 (0이면 지급 없음) */
+  /** 프로그램 종료 후 지급 요건 충족자에게 지급할 마일리지 (0이면 지급 없음) */
   mileage: number;
 }
 
@@ -572,11 +572,14 @@ export interface Program {
   updatedAt?: number;
 }
 
-/** 신청 → (관리자) 확정/반려 → 이수(참여 완료, 마일리지 지급) */
-export type ProgramApplicationStatus = "신청" | "확정" | "반려" | "이수";
+/**
+ * 신청 → (관리자) 확정/반려 → 프로그램 종료 후 (관리자) 지급완료(마일리지 지급) / 미지급(중도이탈 등, 사유 필수).
+ * 신청만으로 마일리지가 지급되지 않는다 — 지급완료·미지급 처리는 회차 진행 종료 이후에만 할 수 있다.
+ */
+export type ProgramApplicationStatus = "신청" | "확정" | "반려" | "지급완료" | "미지급";
 
 /** 정원에 포함되는(자리를 차지하는) 신청 상태 — 반려만 자리를 돌려준다. */
-export const PROGRAM_SEAT_STATUSES: ProgramApplicationStatus[] = ["신청", "확정", "이수"];
+export const PROGRAM_SEAT_STATUSES: ProgramApplicationStatus[] = ["신청", "확정", "지급완료", "미지급"];
 
 /**
  * 프로그램 신청 1건 → programApplications/{programId}_{sessionId}_{studentId}.
