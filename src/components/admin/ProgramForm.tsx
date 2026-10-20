@@ -66,7 +66,14 @@ function emptySession(round: number): SessionDraft {
 const textareaClass =
   "w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15";
 
-export function ProgramForm({ initial }: { initial: Program | null }) {
+export function ProgramForm({
+  initial,
+  savedHref = (id) => `/admin/programs/${id}`,
+}: {
+  initial: Program | null;
+  /** 저장 후 이동할 주소. 학생 화면(/programs/new)에서 쓸 때는 관리자 페이지 대신 게시글 상세로 보낸다. */
+  savedHref?: (id: string) => string;
+}) {
   const router = useRouter();
   // 새 글도 이미지·첨부를 저장 전에 올려야 하므로 문서 ID를 미리 정해둔다.
   const [programId] = useState(() => initial?.id ?? newProgramId());
@@ -233,7 +240,7 @@ export function ProgramForm({ initial }: { initial: Program | null }) {
       } else {
         await createProgram(programId, input);
       }
-      router.push(`/admin/programs/${programId}`);
+      router.push(savedHref(programId));
     } catch (err) {
       setError(err instanceof Error && err.message.includes("회차") ? err.message : "저장에 실패했어요.");
       setSubmitting(false);

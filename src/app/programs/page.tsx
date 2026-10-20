@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Check, Search } from "lucide-react";
+import { CalendarClock, Check, Plus, Search } from "lucide-react";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge, ProgramTabs } from "@/components/programs/shared";
@@ -12,6 +13,7 @@ import {
   programPhase,
   subscribePublishedPrograms,
 } from "@/lib/firestore/programs";
+import { useAdminUser } from "@/lib/auth/useAdminUser";
 import type { Program, ProgramTeamType } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
 
@@ -28,6 +30,7 @@ export default function ProgramsPage() {
   const [nonCurricularOnly, setNonCurricularOnly] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [page, setPage] = useState(1);
+  const { isAdmin } = useAdminUser();
 
   useEffect(() => {
     const unsub = subscribePublishedPrograms(setPrograms, () => setError(true));
@@ -52,8 +55,19 @@ export default function ProgramsPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
-      <h1 className="text-2xl font-extrabold text-foreground sm:text-3xl">프로그램 신청</h1>
-      <p className="mt-2 text-sm text-muted">사업단에서 운영하는 마일리지 프로그램을 확인하고 신청하세요.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold text-foreground sm:text-3xl">프로그램 신청</h1>
+          <p className="mt-2 text-sm text-muted">사업단에서 운영하는 마일리지 프로그램을 확인하고 신청하세요.</p>
+        </div>
+        {isAdmin && (
+          <Link href="/programs/new" className="shrink-0">
+            <Button size="sm">
+              <Plus size={16} /> 게시글 작성
+            </Button>
+          </Link>
+        )}
+      </div>
 
       <div className="mt-6">
         <ProgramTabs active="list" />
