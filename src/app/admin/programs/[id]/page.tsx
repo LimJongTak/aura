@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Download, ExternalLink, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, ClipboardList, Download, ExternalLink, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -13,6 +13,7 @@ import {
   deleteProgram,
   deleteProgramApplications,
   formatDate,
+  formatAnswer,
   formatDateTime,
   getProgram,
   grantProgramMileage,
@@ -25,7 +26,11 @@ import {
   subscribeProgramCounts,
 } from "@/lib/firestore/programs";
 import { listSemesters } from "@/lib/firestore/semesters";
-import { exportProgramApplicationsExcel } from "@/lib/excel/programApplicationsExport";
+import {
+  exportProgramApplications,
+  programExportColumns,
+  type ExportColumnGroup,
+} from "@/lib/excel/programApplicationsExport";
 import { deleteProgramFile } from "@/lib/storage/programFiles";
 import type { Program, ProgramApplication, ProgramApplicationStatus, Semester } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
@@ -45,7 +50,8 @@ export default function AdminProgramDetailPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modal, setModal] = useState<"reject" | "grant" | "nonpay" | null>(null);
+  const [modal, setModal] = useState<"reject" | "grant" | "nonpay" | "export" | null>(null);
+  const [answersOf, setAnswersOf] = useState<ProgramApplication | null>(null);
 
   useEffect(() => {
     getProgram(params.id).then(setProgram).catch(() => setProgram(null));
@@ -129,6 +135,7 @@ export default function AdminProgramDetailPage() {
   const selectedAllEnded = selectedApps.every((a) => sessionEnded(sessionsById.get(a.sessionId)));
   const selectedHasGranted = selectedApps.some((a) => a.mileageGranted);
   const selectedHasRejected = selectedApps.some((a) => a.status === "반려");
+  const hasSurvey = program.formQuestions.length > 0;
   const awaitingSettlement = (apps ?? []).filter(
     (a) => (a.status === "신청" || a.status === "확정") && sessionEnded(sessionsById.get(a.sessionId))
   ).length;
@@ -223,13 +230,8 @@ export default function AdminProgramDetailPage() {
               </Select>
             )}
             <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="학번·이름·학과" className="w-40 py-2" />
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={filtered.length === 0}
-              onClick={() => exportProgramApplicationsExcel(program, filtered)}
-            >
-              <Download size={15} /> 엑셀
+            <Button size="sm" variant="outline" disabled={filtered.length === 0} onClick={() => setModal("export")}>
+              <Download size={15} /> 내려받기
             </Button>
           </div>
         </div>
@@ -341,6 +343,7 @@ export default function AdminProgramDetailPage() {
                   {program.sessions.length > 1 && <th className="px-2 py-3">회차</th>}
                   {program.teamType === "팀" && <th className="px-2 py-3">팀</th>}
                   <th className="px-2 py-3">신청서</th>
+                  {hasSurvey && <th className="px-2 py-3">설문</th>}
                   <th className="px-2 py-3">신청일</th>
                   <th className="px-2 py-3">상태</th>
                   <th className="px-2 py-3">마일리지</th>
@@ -380,6 +383,17 @@ export default function AdminProgramDetailPage() {
                         <span className="text-muted">-</span>
                       )}
                     </td>
+                    {hasSurvey && (
+                      <td className="px-2 py-3 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setAnswersOf(a)}
+                          className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-primary hover:underline"
+                        >
+                          <ClipboardList size={13} /> 응답 보기
+                        </button>
+                      </td>
+                    )}
                     <td className="px-2 py-3 text-xs text-muted">{formatDate(a.appliedAt)}</td>
                     <td className="px-2 py-3">
                       <ProgramApplicationStatusBadge status={a.status} />
@@ -420,6 +434,10 @@ export default function AdminProgramDetailPage() {
           onConfirm={(semester) => run(() => grantProgramMileage(selectedApps, { program, semester }))}
         />
       )}
+      {modal === "export" && (
+        <ExportModal program={program} filtered={filtered} selected={selectedApps} onClose={() => setModal(null)} />
+      )}
+      {answersOf && <AnswersModal program={program} app={answersOf} onClose={() => setAnswersOf(null)} />}
       {modal === "nonpay" && (
         <NonPaymentModal
           count={selectedApps.length}
@@ -432,10 +450,23 @@ export default function AdminProgramDetailPage() {
   );
 }
 
-function ModalShell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function ModalShell({
+  title,
+  wide,
+  onClose,
+  children,
+}: {
+  title: string;
+  wide?: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={cn("max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white p-6 shadow-xl", wide ? "max-w-xl" : "max-w-md")}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-extrabold text-foreground">{title}</h2>
           <button type="button" onClick={onClose} aria-label="닫기" className="text-muted hover:text-foreground">
@@ -613,5 +644,190 @@ function NonPaymentModal({
         </Button>
       </div>
     </ModalShell>
+  );
+}
+
+function AnswersModal({ program, app, onClose }: { program: Program; app: ProgramApplication; onClose: () => void }) {
+  return (
+    <ModalShell title="설문 응답" wide onClose={onClose}>
+      <p className="text-sm font-semibold text-foreground">
+        {app.studentName} <span className="font-normal text-muted">· {app.studentId}</span>
+      </p>
+      <dl className="mt-3 flex flex-col gap-3">
+        {program.formQuestions.map((q, i) => {
+          const answer = formatAnswer(app.answers?.[q.id]);
+          return (
+            <div key={q.id} className="rounded-xl bg-surface p-3">
+              <dt className="text-xs font-bold text-muted">
+                {i + 1}. {q.title}
+              </dt>
+              <dd className={cn("mt-1 whitespace-pre-wrap break-words text-sm", answer ? "text-foreground" : "text-muted")}>
+                {answer || "(응답 없음)"}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </ModalShell>
+  );
+}
+
+const EXPORT_GROUPS: { id: ExportColumnGroup; label: string }[] = [
+  { id: "basic", label: "신청자 기본 정보" },
+  { id: "survey", label: "설문 응답" },
+];
+
+function ExportModal({
+  program,
+  filtered,
+  selected,
+  onClose,
+}: {
+  program: Program;
+  filtered: ProgramApplication[];
+  selected: ProgramApplication[];
+  onClose: () => void;
+}) {
+  const columns = useMemo(() => programExportColumns(program), [program]);
+  const [checked, setChecked] = useState<Set<string>>(() => new Set(columns.map((c) => c.key)));
+  const [scope, setScope] = useState<"filtered" | "selected">(selected.length > 0 ? "selected" : "filtered");
+  const [format, setFormat] = useState<"xlsx" | "csv">("xlsx");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const allChecked = columns.every((c) => checked.has(c.key));
+
+  function setMany(keys: string[], on: boolean) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => (on ? next.add(k) : next.delete(k)));
+      return next;
+    });
+  }
+
+  async function handleDownload() {
+    const apps = scope === "selected" ? selected : filtered;
+    // 열 순서는 체크한 순서가 아니라 화면에 보이는 항목 순서를 따른다.
+    const cols = columns.filter((c) => checked.has(c.key));
+    setBusy(true);
+    setError(null);
+    try {
+      await exportProgramApplications(program, apps, cols, format);
+      onClose();
+    } catch {
+      setError("파일을 만들지 못했어요. 다시 시도해주세요.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ModalShell title="신청자 명단 내려받기" wide onClose={onClose}>
+      <p className="mb-1.5 text-xs font-semibold text-muted">대상</p>
+      <div className="flex flex-wrap gap-2">
+        <ChoiceChip active={scope === "filtered"} onClick={() => setScope("filtered")}>
+          현재 목록 전체 ({filtered.length}명)
+        </ChoiceChip>
+        <ChoiceChip active={scope === "selected"} disabled={selected.length === 0} onClick={() => setScope("selected")}>
+          체크한 신청자 ({selected.length}명)
+        </ChoiceChip>
+      </div>
+      <p className="mt-1 text-[11px] text-muted">현재 목록은 회차·상태·검색 필터가 적용된 목록이에요.</p>
+
+      <p className="mb-1.5 mt-4 text-xs font-semibold text-muted">파일 형식</p>
+      <div className="flex gap-2">
+        <ChoiceChip active={format === "xlsx"} onClick={() => setFormat("xlsx")}>
+          엑셀 (.xlsx)
+        </ChoiceChip>
+        <ChoiceChip active={format === "csv"} onClick={() => setFormat("csv")}>
+          CSV (.csv)
+        </ChoiceChip>
+      </div>
+
+      <div className="mb-1.5 mt-4 flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted">
+          내려받을 항목 <span className="text-primary">{checked.size}</span> / {columns.length}
+        </p>
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-foreground">
+          <input
+            type="checkbox"
+            checked={allChecked}
+            onChange={() => setMany(columns.map((c) => c.key), !allChecked)}
+            className="h-4 w-4 accent-primary"
+          />
+          전체 선택
+        </label>
+      </div>
+      <div className="flex flex-col gap-3">
+        {EXPORT_GROUPS.map((g) => {
+          const cols = columns.filter((c) => c.group === g.id);
+          if (cols.length === 0) return null;
+          const groupChecked = cols.every((c) => checked.has(c.key));
+          return (
+            <div key={g.id} className="rounded-xl border border-border p-3">
+              <label className="flex cursor-pointer items-center gap-2 border-b border-border pb-2 text-sm font-bold text-foreground">
+                <input
+                  type="checkbox"
+                  checked={groupChecked}
+                  onChange={() => setMany(cols.map((c) => c.key), !groupChecked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                {g.label}
+                <span className="text-xs font-normal text-muted">({cols.length})</span>
+              </label>
+              <div className={cn("mt-2 grid gap-x-3 gap-y-1.5", g.id === "basic" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1")}>
+                {cols.map((c) => (
+                  <label key={c.key} className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={checked.has(c.key)}
+                      onChange={(e) => setMany([c.key], e.target.checked)}
+                      className="h-4 w-4 shrink-0 accent-primary"
+                    />
+                    <span className="truncate" title={c.label}>
+                      {c.label}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}
+      <div className="mt-5 flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={onClose}>
+          취소
+        </Button>
+        <Button size="sm" loading={busy} disabled={checked.size === 0} onClick={handleDownload}>
+          <Download size={14} /> 내려받기
+        </Button>
+      </div>
+    </ModalShell>
+  );
+}
+
+function ChoiceChip({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40",
+        active ? "border-primary bg-primary-light text-primary-dark" : "border-border text-muted hover:border-primary"
+      )}
+    >
+      {children}
+    </button>
   );
 }

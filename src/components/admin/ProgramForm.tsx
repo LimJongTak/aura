@@ -14,6 +14,7 @@ import {
   type ProgramInput,
 } from "@/lib/firestore/programs";
 import { deleteProgramFile, PROGRAM_FILE_MAX_BYTES, uploadProgramFile } from "@/lib/storage/programFiles";
+import { emptyQuestion, normalizeQuestions, ProgramQuestionsEditor } from "@/components/admin/ProgramQuestionsEditor";
 import {
   ACTIVITY_GROUPS,
   MAX_ADMIN_MILEAGE_GRANT,
@@ -21,6 +22,7 @@ import {
   type ActivityGroup,
   type Program,
   type ProgramFile,
+  type ProgramQuestion,
   type ProgramTeamType,
 } from "@/types/models";
 
@@ -89,6 +91,8 @@ export function ProgramForm({
   const [attachments, setAttachments] = useState<ProgramFile[]>(initial?.attachments ?? []);
   const [requireApplicationFile, setRequireApplicationFile] = useState(initial?.requireApplicationFile ?? false);
   const [applicationFileGuide, setApplicationFileGuide] = useState(initial?.applicationFileGuide ?? "");
+  const [useSurvey, setUseSurvey] = useState((initial?.formQuestions.length ?? 0) > 0);
+  const [questions, setQuestions] = useState<ProgramQuestion[]>(initial?.formQuestions ?? []);
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? true);
   const [sessions, setSessions] = useState<SessionDraft[]>(
     initial && initial.sessions.length > 0
@@ -204,6 +208,9 @@ export function ProgramForm({
         mileage,
       });
     }
+    const formQuestions = useSurvey ? normalizeQuestions(questions) : [];
+    if (typeof formQuestions === "string") return formQuestions;
+    if (useSurvey && formQuestions.length === 0) return "설문 문항을 1개 이상 추가하거나 \"추가 설문 받기\"를 꺼주세요.";
     return {
       title: title.trim(),
       teamType,
@@ -217,6 +224,7 @@ export function ProgramForm({
       attachments,
       requireApplicationFile,
       applicationFileGuide: applicationFileGuide.trim(),
+      formQuestions,
       isPublished,
       sessions: parsed.sort((a, b) => a.round - b.round),
     };
@@ -381,6 +389,30 @@ export function ProgramForm({
             placeholder="예: 첨부파일의 참여신청서를 작성해 PDF로 올려주세요."
           />
         </Field>
+        <div className="flex flex-col gap-3 rounded-xl bg-surface p-4">
+          <Check
+            checked={useSurvey}
+            onChange={(v) => {
+              setUseSurvey(v);
+              if (v && questions.length === 0) setQuestions([emptyQuestion()]);
+            }}
+            label="추가 설문 받기 (선택)"
+          >
+            구글폼·네이버폼처럼 질문을 직접 만들어, 학생이 신청할 때 기본 양식 아래에서 함께 답하게 할 수 있어요. 응답은 신청자
+            관리에서 확인하고 엑셀·CSV로 내려받을 수 있어요.
+          </Check>
+          {useSurvey && (
+            <>
+              {initial && initial.formQuestions.length > 0 && (
+                <p className="text-[11px] text-warning">
+                  이미 받은 응답은 문항에 연결돼 있어요. 질문 문구·보기를 고쳐도 응답은 유지되지만, 문항을 삭제하면 그 문항의 응답은
+                  더 이상 보이지 않아요.
+                </p>
+              )}
+              <ProgramQuestionsEditor questions={questions} onChange={setQuestions} />
+            </>
+          )}
+        </div>
       </Card>
 
       <Card className="flex flex-col gap-4">

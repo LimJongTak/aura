@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Paperclip, Settings, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge } from "@/components/programs/shared";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
@@ -21,7 +21,7 @@ import {
   subscribeProgramCounts,
 } from "@/lib/firestore/programs";
 import { PROGRAM_FILE_MAX_BYTES, uploadProgramApplicationFile } from "@/lib/storage/programFiles";
-import type { Program, ProgramApplication, ProgramSession, Student } from "@/types/models";
+import type { Program, ProgramAnswer, ProgramApplication, ProgramQuestion, ProgramSession, Student } from "@/types/models";
 
 export default function ProgramDetailPage() {
   const params = useParams<{ id: string }>();
@@ -319,6 +319,7 @@ function ApplyModal({
   const [teamName, setTeamName] = useState("");
   const [teamMembers, setTeamMembers] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [answers, setAnswers] = useState<Record<string, ProgramAnswer>>({});
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -334,6 +335,8 @@ function ApplyModal({
     if (isTeam && (!teamName.trim() || !teamMembers.trim())) return setError("팀명과 팀원 정보를 입력해주세요.");
     if (program.requireApplicationFile && !file) return setError("신청서 파일을 첨부해주세요.");
     if (file && file.size > PROGRAM_FILE_MAX_BYTES) return setError("파일은 20MB 이하만 첨부할 수 있어요.");
+    const unanswered = program.formQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
+    if (unanswered) return setError(`설문 "${unanswered.title}"에 답해주세요.`);
     if (!agreed) return setError("개인정보 제공에 동의해주세요.");
 
     setSubmitting(true);
@@ -351,6 +354,7 @@ function ApplyModal({
         teamMembers: isTeam ? teamMembers.trim() : "",
         applicationFileUrl: uploaded?.url ?? "",
         applicationFileName: uploaded?.name ?? "",
+        answers: cleanAnswers(program.formQuestions, answers),
       };
       await applyToProgram(input);
       setDone(true);
@@ -370,6 +374,7 @@ function ApplyModal({
         teamMembers: input.teamMembers,
         applicationFileUrl: input.applicationFileUrl,
         applicationFileName: input.applicationFileName,
+        answers: input.answers,
         privacyAgreed: true,
         status: "신청",
         appliedAt: Date.now(),
@@ -447,6 +452,22 @@ function ApplyModal({
               <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
             </label>
           </FormRow>
+          {program.formQuestions.length > 0 && (
+            <div className="border-b border-border bg-surface px-3 py-2 text-xs font-bold text-foreground">추가 설문</div>
+          )}
+          {program.formQuestions.map((q) => (
+            <div key={q.id} className="border-b border-border px-3 py-3">
+              <p className="mb-1.5 break-words text-sm font-semibold text-foreground">
+                {q.required && <span className="text-danger">* </span>}
+                {q.title}
+              </p>
+              <QuestionInput
+                question={q}
+                value={answers[q.id]}
+                onChange={(v) => setAnswers((prev) => ({ ...prev, [q.id]: v }))}
+              />
+            </div>
+          ))}
           <FormRow label="개인정보 동의" required>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="h-4 w-4 accent-primary" />
@@ -466,6 +487,83 @@ function ApplyModal({
         </div>
       </form>
     </ModalShell>
+  );
+}
+
+function isBlankAnswer(answer: ProgramAnswer | undefined): boolean {
+  return answer === undefined || (Array.isArray(answer) ? answer.length === 0 : answer.trim() === "");
+}
+
+/** 현재 문항에 해당하는 응답만 남기고 앞뒤 공백을 정리한다 (빈 응답은 저장하지 않는다). */
+function cleanAnswers(questions: ProgramQuestion[], answers: Record<string, ProgramAnswer>): Record<string, ProgramAnswer> {
+  const result: Record<string, ProgramAnswer> = {};
+  for (const q of questions) {
+    const a = answers[q.id];
+    if (isBlankAnswer(a)) continue;
+    // 체크박스는 학생이 누른 순서가 아니라 보기 순서대로 저장한다.
+    result[q.id] = Array.isArray(a) ? q.options.filter((o) => a.includes(o)) : a!.trim();
+  }
+  return result;
+}
+
+const textareaClass =
+  "w-full rounded-xl border border-border bg-white px-3.5 py-2 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15";
+
+function QuestionInput({
+  question: q,
+  value,
+  onChange,
+}: {
+  question: ProgramQuestion;
+  value: ProgramAnswer | undefined;
+  onChange: (v: ProgramAnswer) => void;
+}) {
+  const text = typeof value === "string" ? value : "";
+  const checked = Array.isArray(value) ? value : [];
+  return (
+    <div>
+      {q.description && <p className="mb-1.5 whitespace-pre-wrap text-xs text-muted">{q.description}</p>}
+      {q.type === "short" && <Input value={text} onChange={(e) => onChange(e.target.value)} maxLength={500} className="py-2" />}
+      {q.type === "long" && (
+        <textarea value={text} onChange={(e) => onChange(e.target.value)} rows={4} maxLength={3000} className={textareaClass} />
+      )}
+      {q.type === "date" && <Input type="date" value={text} onChange={(e) => onChange(e.target.value)} className="py-2" />}
+      {q.type === "dropdown" && (
+        <Select value={text} onChange={(e) => onChange(e.target.value)} className="py-2">
+          <option value="">선택</option>
+          {q.options.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </Select>
+      )}
+      {(q.type === "single" || q.type === "multiple") && (
+        <div className="flex flex-col gap-1.5 py-0.5">
+          {q.options.map((o) => (
+            <label key={o} className="flex cursor-pointer items-center gap-2 text-sm">
+              {q.type === "single" ? (
+                <input
+                  type="radio"
+                  name={`q-${q.id}`}
+                  checked={text === o}
+                  onChange={() => onChange(o)}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={checked.includes(o)}
+                  onChange={(e) => onChange(e.target.checked ? [...checked, o] : checked.filter((x) => x !== o))}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+              )}
+              <span className="break-words">{o}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

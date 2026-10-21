@@ -21,7 +21,9 @@ import {
   type Program,
   type ProgramApplication,
   type ProgramApplicationStatus,
+  type ProgramAnswer,
   type ProgramFile,
+  type ProgramQuestion,
   type ProgramSession,
   type ProgramTeamType,
 } from "@/types/models";
@@ -66,6 +68,7 @@ function programFromSnap(id: string, data: Record<string, unknown>): Program {
     attachments: (data.attachments as ProgramFile[]) ?? [],
     requireApplicationFile: !!data.requireApplicationFile,
     applicationFileGuide: String(data.applicationFileGuide ?? ""),
+    formQuestions: (data.formQuestions as ProgramQuestion[]) ?? [],
     isPublished: !!data.isPublished,
     viewCount: Number(data.viewCount ?? 0),
     sessions,
@@ -151,6 +154,7 @@ export interface ProgramInput {
   attachments: ProgramFile[];
   requireApplicationFile: boolean;
   applicationFileGuide: string;
+  formQuestions: ProgramQuestion[];
   isPublished: boolean;
   sessions: ProgramSession[];
 }
@@ -161,6 +165,10 @@ export function newProgramId(): string {
 }
 
 export function newSessionId(): string {
+  return nanoid(8);
+}
+
+export function newQuestionId(): string {
   return nanoid(8);
 }
 
@@ -250,6 +258,7 @@ export interface ProgramApplyInput {
   teamMembers: string;
   applicationFileUrl: string;
   applicationFileName: string;
+  answers: Record<string, ProgramAnswer>;
 }
 
 export class ProgramFullError extends Error {
@@ -284,6 +293,7 @@ export async function applyToProgram(input: ProgramApplyInput): Promise<void> {
       teamMembers: input.teamMembers,
       applicationFileUrl: input.applicationFileUrl,
       applicationFileName: input.applicationFileName,
+      answers: input.answers,
       privacyAgreed: true,
       status: "신청" satisfies ProgramApplicationStatus,
       appliedAt: serverTimestamp(),
@@ -436,6 +446,12 @@ export async function markProgramNonPayment(
 }
 
 // ─── 화면 공통 ────────────────────────────────────────────────────────────────
+
+/** 설문 응답 1건을 화면·엑셀에 보여줄 문자열로 바꾼다 (체크박스는 쉼표로 잇는다). */
+export function formatAnswer(answer: ProgramAnswer | undefined): string {
+  if (answer === undefined) return "";
+  return Array.isArray(answer) ? answer.join(", ") : answer;
+}
 
 export type SessionPhase = "모집예정" | "신청가능" | "정원마감" | "신청마감";
 

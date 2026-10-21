@@ -406,8 +406,9 @@ service cloud.firestore {
         request.resource.data.keys().hasOnly([
           "programId", "programTitle", "teamType", "sessionId", "sessionRound", "studentId", "studentName",
           "department", "phone", "email", "teamName", "teamMembers", "applicationFileUrl",
-          "applicationFileName", "privacyAgreed", "status", "appliedAt"
+          "applicationFileName", "answers", "privacyAgreed", "status", "appliedAt"
         ]) &&
+        (!("answers" in request.resource.data) || request.resource.data.answers is map) &&
         exists(/databases/$(database)/documents/students/$(request.resource.data.studentId)) &&
         programSessionOpen(request.resource.data.programId, request.resource.data.sessionId) &&
         getAfter(programCounterPath(request.resource.data.programId, request.resource.data.sessionId)).data.count ==

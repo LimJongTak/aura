@@ -542,6 +542,40 @@ export interface ProgramFile {
   path: string;
 }
 
+/** 신청 설문 문항 유형 (구글폼의 단답형/장문형/객관식/체크박스/드롭다운/날짜). */
+export type ProgramQuestionType = "short" | "long" | "single" | "multiple" | "dropdown" | "date";
+
+export const PROGRAM_QUESTION_TYPE_LABELS: Record<ProgramQuestionType, string> = {
+  short: "단답형",
+  long: "장문형",
+  single: "객관식 (하나 선택)",
+  multiple: "체크박스 (여러 개 선택)",
+  dropdown: "드롭다운",
+  date: "날짜",
+};
+
+/** 보기 목록이 있는 문항 유형 */
+export const PROGRAM_CHOICE_QUESTION_TYPES: ProgramQuestionType[] = ["single", "multiple", "dropdown"];
+
+/**
+ * 관리자가 게시글마다 선택적으로 붙이는 신청 설문 문항. 학생은 신청 창에서 기본 신청 양식
+ * 아래에 이어서 답하고, 답은 ProgramApplication.answers[문항 id]에 저장된다. 문항 id는
+ * 수정해도 바뀌지 않으므로 제목·보기를 고쳐도 기존 응답이 그대로 연결된다.
+ */
+export interface ProgramQuestion {
+  id: string;
+  type: ProgramQuestionType;
+  title: string;
+  /** 문항 아래 작은 글씨로 보여줄 설명 */
+  description: string;
+  required: boolean;
+  /** 객관식·체크박스·드롭다운의 보기 */
+  options: string[];
+}
+
+/** 설문 응답 값 — 체크박스는 고른 보기 목록, 나머지는 문자열 (날짜는 "YYYY-MM-DD"). */
+export type ProgramAnswer = string | string[];
+
 /** 마일리지 프로그램 게시글 → programs/{id}. 공개(isPublished)된 글만 학생에게 보인다. */
 export interface Program {
   id: string;
@@ -565,6 +599,8 @@ export interface Program {
   requireApplicationFile: boolean;
   /** 신청서 첨부 안내 문구 */
   applicationFileGuide: string;
+  /** 신청 설문 문항 (선택 사항 — 비어 있으면 기본 신청 양식만 받는다) */
+  formQuestions: ProgramQuestion[];
   isPublished: boolean;
   viewCount: number;
   sessions: ProgramSession[];
@@ -601,6 +637,8 @@ export interface ProgramApplication {
   teamMembers: string;
   applicationFileUrl: string;
   applicationFileName: string;
+  /** 신청 설문 응답 ({문항 id: 응답}) — 설문이 없던 글의 신청에는 없다. */
+  answers?: Record<string, ProgramAnswer>;
   privacyAgreed: boolean;
   status: ProgramApplicationStatus;
   appliedAt: number;
