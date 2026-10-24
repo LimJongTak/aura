@@ -6,7 +6,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="text-sm leading-relaxed">
           <p>국립순천대학교 AI인재양성부트캠프사업단</p>
-          <p className="mt-1">대표전화 : 061-750-5391</p>
+          <p className="mt-1">대표전화 : 061-750-5396</p>
         </div>
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
