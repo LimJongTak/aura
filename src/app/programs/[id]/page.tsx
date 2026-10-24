@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, Paperclip, Settings, Upload, X } from "lucide-
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge } from "@/components/programs/shared";
+import { ProgramContent } from "@/components/programs/ProgramContent";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { toStudentEmail } from "@/lib/auth/studentAuth";
@@ -136,7 +137,7 @@ export default function ProgramDetailPage() {
                   ))}
                 </div>
               )}
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">{program.content}</p>
+              <ProgramContent content={program.content} />
             </div>
 
             <dl className="grid grid-cols-1 text-sm">

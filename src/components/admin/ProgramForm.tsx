@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ImagePlus, Paperclip, Plus, Trash2, Upload, X } from "lucide-react";
+import { ChevronDown, ImagePlus, Paperclip, Plus, Table2, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -13,7 +13,10 @@ import {
   updateProgram,
   type ProgramInput,
 } from "@/lib/firestore/programs";
+import { MILEAGE_SCORE_TABLE } from "@/lib/constants/mileageScoreTable";
+import { cn } from "@/lib/utils/cn";
 import { deleteProgramFile, PROGRAM_FILE_MAX_BYTES, uploadProgramFile } from "@/lib/storage/programFiles";
+import { ProgramContentEditor } from "@/components/admin/ProgramContentEditor";
 import { emptyQuestion, normalizeQuestions, ProgramQuestionsEditor } from "@/components/admin/ProgramQuestionsEditor";
 import {
   ACTIVITY_GROUPS,
@@ -82,7 +85,8 @@ export function ProgramForm({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [teamType, setTeamType] = useState<ProgramTeamType>(initial?.teamType ?? "개인");
   const [programType, setProgramType] = useState(initial?.programType ?? "교육프로그램");
-  const [category, setCategory] = useState<ActivityGroup>(initial?.category ?? "역량향상");
+  const [category, setCategory] = useState<ActivityGroup>(initial?.category ?? "AI기반참여");
+  const [scoreTableOpen, setScoreTableOpen] = useState(false);
   const [isNonCurricular, setIsNonCurricular] = useState(initial?.isNonCurricular ?? false);
   const [department, setDepartment] = useState(initial?.department ?? "AI인재양성부트캠프사업단");
   const [target, setTarget] = useState(initial?.target ?? "재학생");
@@ -285,13 +289,26 @@ export function ProgramForm({
             </datalist>
           </Field>
           <Field label="마일리지 영역" hint="종료 후 지급되는 마일리지의 활동 영역">
-            <Select value={category} onChange={(e) => setCategory(e.target.value as ActivityGroup)}>
-              {ACTIVITY_GROUPS.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </Select>
+            <div className="flex gap-2">
+              <Select value={category} onChange={(e) => setCategory(e.target.value as ActivityGroup)}>
+                {ACTIVITY_GROUPS.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </Select>
+              <button
+                type="button"
+                onClick={() => setScoreTableOpen((v) => !v)}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-1 rounded-xl border border-border px-3 text-xs font-semibold text-foreground transition hover:border-primary hover:text-primary",
+                  scoreTableOpen && "border-primary text-primary"
+                )}
+              >
+                <Table2 size={14} /> 점수표
+                <ChevronDown size={14} className={cn("transition", scoreTableOpen && "rotate-180")} />
+              </button>
+            </div>
           </Field>
           <Field label="담당부서">
             <Input value={department} onChange={(e) => setDepartment(e.target.value)} />
@@ -300,6 +317,34 @@ export function ProgramForm({
             <Input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="예: 참여학과 재학생" />
           </Field>
         </div>
+        {scoreTableOpen && (
+          <div className="rounded-xl bg-surface p-4">
+            <p className="mb-3 text-xs text-muted">마일리지 점수표 · 카드를 누르면 해당 영역으로 선택돼요.</p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {ACTIVITY_GROUPS.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setCategory(g)}
+                  className={cn(
+                    "rounded-xl border bg-white p-3.5 text-left transition hover:border-primary",
+                    category === g ? "border-primary ring-2 ring-primary/15" : "border-border"
+                  )}
+                >
+                  <p className={cn("mb-2 text-sm font-bold", category === g ? "text-primary-dark" : "text-foreground")}>{g}</p>
+                  <ul className="flex flex-col gap-1">
+                    {MILEAGE_SCORE_TABLE.filter((row) => row.group === g).map((row) => (
+                      <li key={row.label} className="flex justify-between gap-2 text-xs">
+                        <span className="text-foreground/80">{row.label}</span>
+                        <span className="shrink-0 font-semibold text-primary-dark">{row.score}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex flex-col gap-2 rounded-xl bg-surface p-4">
           <Check checked={isNonCurricular} onChange={setIsNonCurricular} label="비교과 프로그램으로 인정되는 프로그램입니다">
             학생 화면의 목록·상세에 &ldquo;비교과 인정&rdquo; 표시가 붙고, &ldquo;비교과프로그램&rdquo; 필터로 찾을 수 있어요.
@@ -345,7 +390,7 @@ export function ProgramForm({
           />
         </Field>
         <Field label="내용" required>
-          <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={14} className={textareaClass} placeholder="사업 개요, 일시·장소, 지원 내용, 문의처 등" />
+          <ProgramContentEditor value={content} onChange={setContent} />
         </Field>
         <Field label="첨부파일" hint="신청서 양식, 안내문 등 — 학생이 내려받을 수 있어요">
           {attachments.length > 0 && (
