@@ -533,20 +533,20 @@ export function ProgramForm({
               <Field label="학년">
                 <Input value={s.grade} onChange={(e) => updateSession(s.id, { grade: e.target.value })} placeholder="전체" />
               </Field>
-              <Field label="신청 시작" required>
-                <Input type="datetime-local" value={s.applyStart} onChange={(e) => updateSession(s.id, { applyStart: e.target.value })} />
-              </Field>
-              <Field label="신청 마감" required>
-                <Input type="datetime-local" value={s.applyEnd} onChange={(e) => updateSession(s.id, { applyEnd: e.target.value })} />
-              </Field>
-              <div className="hidden sm:block" />
-              <Field label="진행 시작" required>
-                <Input type="datetime-local" value={s.runStart} onChange={(e) => updateSession(s.id, { runStart: e.target.value })} />
-              </Field>
-              <Field label="진행 종료" required>
-                <Input type="datetime-local" value={s.runEnd} onChange={(e) => updateSession(s.id, { runEnd: e.target.value })} />
-              </Field>
-              <div className="hidden sm:block" />
+              <div className="grid gap-3 sm:col-span-3 sm:grid-cols-2">
+                <Field label="신청 시작" required>
+                  <DateTimeInput value={s.applyStart} onChange={(v) => updateSession(s.id, { applyStart: v })} />
+                </Field>
+                <Field label="신청 마감" required>
+                  <DateTimeInput value={s.applyEnd} onChange={(v) => updateSession(s.id, { applyEnd: v })} />
+                </Field>
+                <Field label="진행 시작" required>
+                  <DateTimeInput value={s.runStart} onChange={(v) => updateSession(s.id, { runStart: v })} />
+                </Field>
+                <Field label="진행 종료" required>
+                  <DateTimeInput value={s.runEnd} onChange={(v) => updateSession(s.id, { runEnd: v })} />
+                </Field>
+              </div>
               <Field label="정원" hint="빈칸이면 제한없음">
                 <Input type="number" min={1} value={s.capacity} onChange={(e) => updateSession(s.id, { capacity: e.target.value })} placeholder="제한없음" />
               </Field>
@@ -568,6 +568,54 @@ export function ProgramForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
+const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+
+/** 회차 일시 입력 — 브라우저 기본 datetime-local은 분을 1분 단위로 보여줘서, 날짜 + 시 + 분(5분 단위)
+ *  선택으로 나눠 받는다. 값은 기존과 같은 "YYYY-MM-DDTHH:mm" 문자열이다. */
+function DateTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [date = "", time = ""] = value.split("T");
+  const [hour = "00", minute = "00"] = time.split(":");
+  // 예전에 5분 단위가 아닌 시각으로 저장된 회차도 값이 사라지지 않도록 보기에 넣어둔다.
+  const minutes = MINUTES.includes(minute) ? MINUTES : [...MINUTES, minute].sort();
+
+  function emit(d: string, h: string, m: string) {
+    onChange(d ? `${d}T${h}:${m}` : "");
+  }
+
+  return (
+    <div className="flex gap-1.5">
+      <Input type="date" value={date} onChange={(e) => emit(e.target.value, hour, minute)} className="min-w-0 flex-1" />
+      <Select
+        value={hour}
+        disabled={!date}
+        onChange={(e) => emit(date, e.target.value, minute)}
+        aria-label="시"
+        className="w-[4.75rem] shrink-0 px-2.5 disabled:bg-surface"
+      >
+        {HOURS.map((h) => (
+          <option key={h} value={h}>
+            {h}시
+          </option>
+        ))}
+      </Select>
+      <Select
+        value={minute}
+        disabled={!date}
+        onChange={(e) => emit(date, hour, e.target.value)}
+        aria-label="분"
+        className="w-[4.75rem] shrink-0 px-2.5 disabled:bg-surface"
+      >
+        {minutes.map((m) => (
+          <option key={m} value={m}>
+            {m}분
+          </option>
+        ))}
+      </Select>
+    </div>
   );
 }
 
