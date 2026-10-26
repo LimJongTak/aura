@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ClipboardList, GraduationCap, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardList, GraduationCap, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { MILEAGE_SCORE_TABLE } from "@/lib/constants/mileageScoreTable";
@@ -9,6 +9,58 @@ const AURA_LETTERS = [
   { letter: "U", word: "Upgrade", desc: "역량 향상 및 심화 학습" },
   { letter: "R", word: "Realize", desc: "실전 적용 및 성과 창출" },
   { letter: "A", word: "Achieve", desc: "목표 달성 및 성장 완성" },
+];
+
+const USAGE_STEPS = [
+  {
+    href: "/mypage",
+    title: "마이페이지",
+    desc: "로그인하면 누적 승인 마일리지, 신청 내역, 중고급 이수 신청·이수 과목 체크 현황을 한 곳에서 확인할 수 있습니다.",
+  },
+  {
+    href: "/apply",
+    title: "마일리지 신청",
+    desc: "활동 구분과 세부 활동을 선택하면 부여될 마일리지와 필요한 증빙서류가 자동으로 표시됩니다. 증빙서류를 첨부해 신청하세요.",
+  },
+  {
+    href: "/apply-advanced",
+    title: "중고급 이수 신청",
+    desc: "참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청 가능한 별도 장학금 트랙입니다.",
+  },
+];
+
+const NOTICES:{ title: string; body: React.ReactNode }[] = [
+  {
+    title: "증빙서류에 학번·이름 기재",
+    body: "증빙서류(파일 또는 사진)에는 반드시 본인의 학번과 이름을 기재해서 첨부해야 합니다. 기재되지 않으면 반려될 수 있습니다.",
+  },
+  {
+    title: "환산 금액은 학기 말 확정",
+    body: (
+      <>
+        1점당 환산 금액은 학기 말에 사업단이 예산과 인원수를 반영해 단 1회 최종 확정합니다. 확정
+        전까지는 &quot;사업단 확정 대기&quot;로만 표시되며, 예상 금액을 미리 알 수 없습니다.
+      </>
+    ),
+  },
+  {
+    title: "학기별 지급 한도",
+    body: "확정 후 참여학과(인공지능공학전공·전기공학전공·전자공학전공)는 학기별 150만원, 비참여학과는 100만원 한도 내에서 지급됩니다.",
+  },
+  {
+    title: "사업단 검토 후 확정",
+    body: "신청 후 사업단 검토를 거쳐 승인·반려 상태로 확정되며, 허위 증빙 제출 시 마일리지가 취소될 수 있습니다.",
+  },
+];
+
+const ADVANCED_REQUIREMENTS = [
+  {
+    count: "2개",
+    label: "지원 대상 교과 이수",
+    hint: "초급 공통교과 제외, 본인 학과 지정 교과목 중에서 선택",
+  },
+  { count: "1개", label: "몰입형 교육프로그램 이수" },
+  { count: "1개", label: "비교과 프로그램 이수" },
 ];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -73,50 +125,42 @@ export default function HomePage() {
 
           <Section title="이용 방법">
             <div className="grid gap-4 sm:grid-cols-3">
-              <Card>
-                <Search className="text-primary" size={22} />
-                <p className="mt-3 font-bold">① 마이페이지</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                  로그인하면 누적 승인 마일리지, 신청 내역, 중고급 이수 신청·이수 과목 체크 현황을 한
-                  곳에서 확인할 수 있습니다.
-                </p>
-              </Card>
-              <Card>
-                <ClipboardList className="text-primary" size={22} />
-                <p className="mt-3 font-bold">② 마일리지 신청</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                  활동 구분과 세부 활동을 선택하면 부여될 마일리지와 필요한 증빙서류가 자동으로
-                  표시됩니다. 증빙서류를 첨부해 신청하세요.
-                </p>
-              </Card>
-              <Card>
-                <GraduationCap className="text-primary" size={22} />
-                <p className="mt-3 font-bold">③ 중고급 이수 신청</p>
-                <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                  참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청 가능한 별도
-                  장학금 트랙입니다.
-                </p>
-              </Card>
+              {USAGE_STEPS.map((step, i) => (
+                <Link key={step.href} href={step.href} className="group">
+                  <Card className="flex h-full flex-col transition group-hover:border-primary/50">
+                    <p className="font-bold">
+                      {"①②③"[i]} {step.title}
+                    </p>
+                    <p className="mt-1.5 flex-1 text-xs leading-relaxed text-muted">{step.desc}</p>
+                    <span className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground transition group-hover:border-primary group-hover:bg-primary group-hover:text-white">
+                      {step.title} 바로가기 <ArrowRight size={15} />
+                    </span>
+                  </Card>
+                </Link>
+              ))}
             </div>
           </Section>
 
           <Section title="신청 시 꼭 확인하세요">
-            <ul className="flex flex-col gap-1.5">
-              <li>· 증빙서류(파일 또는 사진)에는 반드시 본인의 학번과 이름을 기재해서 첨부해야 합니다. 기재되지 않으면 반려될 수 있습니다.</li>
-              <li>
-                · 1점당 환산 금액은 학기 말에 사업단이 예산과 인원수를 반영해 단 1회 최종 확정합니다.
-                확정 전까지는 &quot;사업단 확정 대기&quot;로만 표시되며, 예상 금액을 미리 알 수 없습니다.
-              </li>
-              <li>
-                · 확정 후 참여학과(인공지능공학전공·전기공학전공·전자공학전공)는 학기별 150만원,
-                비참여학과는 100만원 한도 내에서 지급됩니다.
-              </li>
-              <li>· 신청 후 사업단 검토를 거쳐 승인·반려 상태로 확정되며, 허위 증빙 제출 시 마일리지가 취소될 수 있습니다.</li>
-              <li className="font-semibold text-primary-dark">
-                · 중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지 않습니다
-                (중복 수혜 불가).
-              </li>
-            </ul>
+            <Card className="p-0">
+              <ol className="divide-y divide-border">
+                {NOTICES.map((n, i) => (
+                  <li key={n.title} className="flex gap-4 px-5 py-4 sm:px-6">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-light text-xs font-bold text-primary-dark">
+                      {i + 1}
+                    </span>
+                    <div>
+                      <p className="font-bold text-foreground">{n.title}</p>
+                      <p className="mt-1 text-foreground/70">{n.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <p className="rounded-b-2xl border-t border-primary/15 bg-primary-light px-5 py-3.5 font-semibold text-primary-dark sm:px-6">
+                중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지
+                않습니다 (중복 수혜 불가).
+              </p>
+            </Card>
           </Section>
 
           <Section title="마일리지 점수표">
@@ -143,21 +187,30 @@ export default function HomePage() {
           </Section>
 
           <Section title="중고급 이수자 신청 (참여학과 한정)">
-            <p>
-              참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청할 수 있는 별도
-              트랙이에요. 아래 조건을 모두 충족하고 사업단 승인을 받으면, AURA 마일리지 환산과는
-              무관하게 별도 장학금 150만원이 지급돼요.
-            </p>
-            <ul className="mt-2 flex flex-col gap-1">
-              <li>· 지원 대상 교과 2개 이수 (초급 공통교과 제외, 본인 학과 지정 교과목 중에서 선택)</li>
-              <li>· 몰입형 교육프로그램 1개 이수</li>
-              <li>· 비교과 프로그램 1개 이수</li>
-            </ul>
-            <p className="mt-2 text-xs text-muted">
-              단, 중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금은 지급되지
-              않아요. 두 제도는 학기 단위로 중복 수혜가 불가하니, 신청 전에 어느 쪽이 유리한지 미리
-              확인해보세요.
-            </p>
+            <Card>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <p className="max-w-2xl">
+                  참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청할 수 있는 별도
+                  트랙이에요. 아래 조건을 모두 충족하고 사업단 승인을 받으면, AURA 마일리지 환산과는
+                  무관하게 별도 장학금이 지급돼요.
+                </p>
+                <div className="shrink-0 sm:text-right">
+                  <p className="text-xs font-semibold text-muted">별도 장학금</p>
+                  <p className="text-2xl font-extrabold text-primary">150만원</p>
+                </div>
+              </div>
+
+              <p className="mt-6 text-xs font-semibold text-muted">신청 조건 · 모두 충족</p>
+              <ul className="mt-2 grid gap-3 sm:grid-cols-3">
+                {ADVANCED_REQUIREMENTS.map((r) => (
+                  <li key={r.label} className="rounded-xl border border-border bg-surface px-4 py-3.5">
+                    <p className="text-lg font-extrabold text-foreground">{r.count}</p>
+                    <p className="mt-0.5 font-semibold text-foreground">{r.label}</p>
+                    {r.hint && <p className="mt-1 text-xs leading-snug text-muted">{r.hint}</p>}
+                  </li>
+                ))}
+              </ul>
+            </Card>
           </Section>
 
           <Section title="문의처">
