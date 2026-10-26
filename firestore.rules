@@ -127,6 +127,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // 학생이 등록한 휴대전화번호 — bankAccounts와 같은 방식으로 savePhoneNumber
+    // Cloud Function이 암호화해 저장한다(phoneEnc). 마스킹된 표시값(phoneMasked)만
+    // 평문이라 본인·관리자로만 read를 제한하고, 쓰기는 항상 false.
+    match /studentContacts/{studentId} {
+      allow read: if isSelf(studentId) || isAdmin();
+      allow write: if false;
+    }
+
+    // 관리자가 학생정보 엑셀에 휴대전화번호·계좌정보를 포함해 내려받을 때마다
+    // 남기는 감사 로그. Cloud Function(Admin SDK)만 기록하고, 관리자만 조회 가능.
+    match /studentInfoExportLogs/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // 관리자가 지급용으로 계좌정보를 복호화해서 내보낼 때마다 남기는 감사 로그.
     // Cloud Function(Admin SDK)만 기록하고, 관리자만 조회 가능.
     match /bankAccountExportLogs/{id} {

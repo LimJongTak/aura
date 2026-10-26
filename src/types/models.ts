@@ -353,6 +353,18 @@ export interface StudentBankAccount {
   updatedAt: number;
 }
 
+/**
+ * 학생이 마이페이지에서 등록한 휴대전화번호 → studentContacts/{studentId}.
+ * StudentBankAccount와 마찬가지로 savePhoneNumber Cloud Function만 쓰며, 원문은
+ * 암호화된 phoneEnc로만 저장되고 클라이언트에는 마스킹된 값만 내려간다.
+ */
+export interface StudentContact {
+  studentId: string;
+  /** 표시용 — "010-****-1234" 형태. */
+  phoneMasked: string;
+  updatedAt: number;
+}
+
 export const PARTICIPATING_DEPARTMENTS = [
   "인공지능공학전공",
   "전기공학전공",

@@ -548,6 +548,112 @@ export const listBankAccountStudentIds = onCall(async (request) => {
   return { studentIds: snap.docs.map((d) => d.id) };
 });
 
+const PHONE_PATTERN = /^01[016789]\d{7,8}$/;
+
+/** "01012345678" → "010-****-5678". 표시용 마스킹 값만 평문으로 남긴다. */
+function maskPhone(digits: string): string {
+  return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
+}
+
+/** 학생이 마이페이지에서 휴대전화번호를 등록/수정한다. 계좌번호와 같은 방식으로
+ * 여기서만 암호화되고(키도 BANK_ACCOUNT_ENC_KEY를 함께 쓴다), Firestore에는
+ * 암호문과 마스킹된 표시값만 저장된다. students 문서는 로그인 없이 단건 조회가
+ * 가능하므로(get: if true) 전화번호를 거기에 두지 않고 studentContacts에 분리한다. */
+export const savePhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
+  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const { phone } = request.data as { phone?: string };
+  const digitsOnly = (phone ?? "").replace(/[^0-9]/g, "");
+
+  if (!PHONE_PATTERN.test(digitsOnly)) {
+    throw new HttpsError("invalid-argument", "휴대전화번호를 올바르게 입력해주세요.");
+  }
+
+  const phoneMasked = maskPhone(digitsOnly);
+  await admin
+    .firestore()
+    .collection("studentContacts")
+    .doc(studentId)
+    .set({
+      studentId,
+      phoneMasked,
+      phoneEnc: encryptSecret(digitsOnly, BANK_ACCOUNT_ENC_KEY.value()),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+  return { success: true, phoneMasked };
+});
+
+/** 학생 관리 화면에서 "전화번호 등록 여부"만 표시하기 위한 조회 — 문서 ID만 내려간다. */
+export const listPhoneStudentIds = onCall(async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const snap = await admin.firestore().collection("studentContacts").select().get();
+  return { studentIds: snap.docs.map((d) => d.id) };
+});
+
+type StudentPrivateField = "phone" | "bank";
+
+/** 관리자가 학생 관리에서 학생정보 엑셀을 내려받을 때, 개인정보 항목(휴대전화번호·
+ * 계좌정보)을 고른 경우에만 그 순간 서버에서 복호화해 반환한다. 어떤 항목을 어떤
+ * 학번들에 대해 조회했는지 studentInfoExportLogs에 감사 기록을 남긴다. */
+export const exportStudentPrivateInfo = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const { studentIds, fields } = request.data as { studentIds?: string[]; fields?: StudentPrivateField[] };
+
+  if (!Array.isArray(studentIds) || studentIds.length === 0) {
+    throw new HttpsError("invalid-argument", "studentIds가 필요합니다.");
+  }
+  if (studentIds.length > MAX_EXPORT_BATCH) {
+    throw new HttpsError("invalid-argument", `한 번에 최대 ${MAX_EXPORT_BATCH}명까지 내보낼 수 있습니다.`);
+  }
+  if (!studentIds.every((id) => typeof id === "string" && id.length > 0)) {
+    throw new HttpsError("invalid-argument", "studentIds 형식이 올바르지 않습니다.");
+  }
+  if (
+    !Array.isArray(fields) ||
+    fields.length === 0 ||
+    !fields.every((f) => f === "phone" || f === "bank")
+  ) {
+    throw new HttpsError("invalid-argument", "fields 형식이 올바르지 않습니다.");
+  }
+
+  const db = admin.firestore();
+  const key = BANK_ACCOUNT_ENC_KEY.value();
+  const phones: Record<string, string> = {};
+  const banks: Record<string, { bankName: string; accountHolder: string; accountNumber: string }> = {};
+
+  if (fields.includes("phone")) {
+    const snaps = await db.getAll(...studentIds.map((id) => db.collection("studentContacts").doc(id)));
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      phones[snap.id] = decryptSecret(snap.data()!.phoneEnc, key);
+    }
+  }
+  if (fields.includes("bank")) {
+    const snaps = await db.getAll(...studentIds.map((id) => db.collection("bankAccounts").doc(id)));
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      const data = snap.data()!;
+      banks[snap.id] = {
+        bankName: data.bankName,
+        accountHolder: data.accountHolder,
+        accountNumber: decryptSecret(data.accountNumberEnc, key),
+      };
+    }
+  }
+
+  await db.collection("studentInfoExportLogs").add({
+    adminUid: request.auth!.uid,
+    adminEmail: request.auth?.token.email ?? null,
+    fields,
+    studentIds,
+    phoneCount: Object.keys(phones).length,
+    bankCount: Object.keys(banks).length,
+    exportedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { phones, banks };
+});
+
 /** 학생 등록 신청 화면에서, 아직 관리자 승인 전인 같은 학번의 신청이 이미
  * 접수돼있는지 미리 확인한다. studentRegistrationRequests는 개인정보라
  * Firestore 규칙상 관리자만 읽을 수 있어(get/list: if isAdmin()), 로그인

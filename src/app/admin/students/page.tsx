@@ -2,10 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Eye, Pencil, Search, UserX } from "lucide-react";
+import { Download, Eye, Pencil, Search, ShieldAlert, UserX } from "lucide-react";
 import { deleteStudent, listAllStudents, upsertStudent } from "@/lib/firestore/students";
 import { computeSemesterCap, listApprovedMileageApplications } from "@/lib/firestore/mileageApplications";
 import { listBankAccountStudentIds } from "@/lib/firestore/bankAccounts";
+import { exportStudentPrivateInfo, listPhoneStudentIds } from "@/lib/firestore/studentContacts";
+import {
+  exportStudents,
+  requiredPrivateFields,
+  STUDENT_EXPORT_COLUMNS,
+  type StudentExportGroup,
+} from "@/lib/excel/studentsExport";
 import { listSemesters } from "@/lib/firestore/semesters";
 import type { MileageApplication, Semester, Student } from "@/types/models";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +25,7 @@ interface StudentRow extends Student {
   approvedMileage: number;
   rank: number;
   bankRegistered: boolean;
+  phoneRegistered: boolean;
 }
 
 const ALL_SEMESTERS = "전체 학기";
@@ -27,6 +35,8 @@ export default function AdminStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [approvedApps, setApprovedApps] = useState<MileageApplication[]>([]);
   const [bankRegisteredIds, setBankRegisteredIds] = useState<Set<string>>(new Set());
+  const [phoneRegisteredIds, setPhoneRegisteredIds] = useState<Set<string>>(new Set());
+  const [exportOpen, setExportOpen] = useState(false);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semesterFilter, setSemesterFilter] = useState(ALL_SEMESTERS);
   const [dataLoading, setDataLoading] = useState(false);
@@ -43,16 +53,19 @@ export default function AdminStudentsPage() {
     setDataLoading(true);
     setLoadError(null);
     try {
-      const [studentList, apps, semesterList, bankIds] = await Promise.all([
+      const [studentList, apps, semesterList, bankIds, phoneIds] = await Promise.all([
         listAllStudents({ includeTestAccounts }),
         listApprovedMileageApplications(),
         listSemesters(),
         listBankAccountStudentIds(),
+        // 등록 여부 표시는 부가 정보라 실패해도 학생 목록 전체를 막지 않는다.
+        listPhoneStudentIds().catch(() => new Set<string>()),
       ]);
       setStudents(studentList);
       setApprovedApps(apps);
       setSemesters(semesterList);
       setBankRegisteredIds(bankIds);
+      setPhoneRegisteredIds(phoneIds);
       const current = semesterList.find((s) => s.isCurrent);
       if (current) setSemesterFilter(current.name);
     } catch {
@@ -79,10 +92,11 @@ export default function AdminStudentsPage() {
         ...s,
         approvedMileage: totals.get(s.studentId) ?? 0,
         bankRegistered: bankRegisteredIds.has(s.studentId),
+        phoneRegistered: phoneRegisteredIds.has(s.studentId),
       }))
       .sort((a, b) => b.approvedMileage - a.approvedMileage)
       .map((s, i) => ({ ...s, rank: i + 1 }));
-  }, [students, approvedApps, semesterFilter, bankRegisteredIds]);
+  }, [students, approvedApps, semesterFilter, bankRegisteredIds, phoneRegisteredIds]);
 
   const departments = useMemo(() => {
     const set = new Set(rows.map((r) => r.department).filter(Boolean));
@@ -117,50 +131,14 @@ export default function AdminStudentsPage() {
     }
   }
 
-  /** CSV 셀 하나를 안전하게 이스케이프한다 — 콤마·줄바꿈·큰따옴표가 섞인 값이
-   *  (학과 등 관리자가 자유 입력하는 필드) 열 구조를 깨뜨리지 않도록 항상
-   *  큰따옴표로 감싸고, 스프레드시트가 수식으로 해석할 수 있는 선행 문자
-   *  (=+-@)는 작은따옴표를 붙여 무력화한다(수식 주입 방지). */
-  function csvCell(value: string | number): string {
-    let s = String(value);
-    if (/^[=+\-@]/.test(s)) s = `'${s}`;
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-
-  function handleExportCsv() {
-    const header = ["순위", "학번", "이름", "학과", "참여학과", "계좌등록", "승인 마일리지", "학기 한도(원)"];
-    const lines = filtered.map((r) =>
-      [
-        r.rank,
-        r.studentId,
-        r.name,
-        r.department,
-        r.isParticipating ? "Y" : "N",
-        r.bankRegistered ? "Y" : "N",
-        r.approvedMileage,
-        computeSemesterCap(r),
-      ]
-        .map(csvCell)
-        .join(",")
-    );
-    const csv = [header.map(csvCell).join(","), ...lines].join("\n");
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `학생별_마일리지_순위_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
     <div>
       <PageHeader
         title="학생 관리 · 마일리지 순위"
         description={`${semesterFilter} 기준 전체 ${rows.length}명 중 ${filtered.length}명 표시`}
         actions={
-          <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download size={15} /> CSV 다운로드
+          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)} disabled={filtered.length === 0}>
+            <Download size={15} /> 엑셀 다운로드
           </Button>
         }
       />
@@ -224,6 +202,7 @@ export default function AdminStudentsPage() {
                 <th className="px-4 py-3 font-semibold">이름</th>
                 <th className="px-4 py-3 font-semibold">학과</th>
                 <th className="px-4 py-3 font-semibold">참여학과</th>
+                <th className="px-4 py-3 font-semibold">전화번호</th>
                 <th className="px-4 py-3 font-semibold">계좌등록</th>
                 <th className="px-4 py-3 text-right font-semibold">승인 마일리지</th>
                 <th className="px-4 py-3 font-semibold">상세</th>
@@ -251,6 +230,9 @@ export default function AdminStudentsPage() {
                         </span>
                       )}
                     </div>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <RegisteredBadge registered={r.phoneRegistered} />
                   </td>
                   <td className="px-4 py-2.5">
                     {r.bankRegistered ? (
@@ -295,6 +277,10 @@ export default function AdminStudentsPage() {
         )}
         <Pagination page={page} totalPages={totalPages} onChange={setPage} />
       </Card>
+
+      {exportOpen && (
+        <ExportStudentsModal rows={filtered} semesterLabel={semesterFilter} onClose={() => setExportOpen(false)} />
+      )}
 
       {editing && (
         <EditStudentModal
@@ -372,6 +358,132 @@ function EditStudentModal({
               저장
             </Button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegisteredBadge({ registered }: { registered: boolean }) {
+  return registered ? (
+    <span className="rounded-full bg-success-light px-2 py-0.5 text-xs font-semibold text-success">등록</span>
+  ) : (
+    <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-semibold text-muted">미등록</span>
+  );
+}
+
+const EXPORT_GROUPS: { id: StudentExportGroup; label: string }[] = [
+  { id: "basic", label: "기본 정보" },
+  { id: "private", label: "개인정보" },
+];
+
+function ExportStudentsModal({
+  rows,
+  semesterLabel,
+  onClose,
+}: {
+  rows: StudentRow[];
+  semesterLabel: string;
+  onClose: () => void;
+}) {
+  const columns = STUDENT_EXPORT_COLUMNS;
+  // 개인정보 항목은 실수로 내려받지 않도록 기본으로 꺼둔다.
+  const [checked, setChecked] = useState<Set<string>>(
+    () => new Set(columns.filter((c) => c.group === "basic").map((c) => c.key))
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const selectedColumns = columns.filter((c) => checked.has(c.key));
+  const privateFields = requiredPrivateFields(selectedColumns);
+
+  function setMany(keys: string[], on: boolean) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => (on ? next.add(k) : next.delete(k)));
+      return next;
+    });
+  }
+
+  async function handleDownload() {
+    setBusy(true);
+    setError(null);
+    try {
+      const info = await exportStudentPrivateInfo(
+        rows.map((r) => r.studentId),
+        privateFields
+      );
+      await exportStudents(
+        rows.map((r) => ({ ...r, semesterCap: computeSemesterCap(r) })),
+        selectedColumns,
+        info
+      );
+      onClose();
+    } catch {
+      setError("파일을 만들지 못했어요. 다시 시도해주세요.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-foreground">학생정보 엑셀 내려받기</h2>
+        <p className="mt-1 text-xs text-muted">
+          현재 목록(검색·학과·참여학과 필터 적용) {rows.length}명 · 마일리지는 {semesterLabel} 기준 · .xlsx 파일
+        </p>
+
+        <div className="mt-4 flex flex-col gap-3">
+          {EXPORT_GROUPS.map((g) => {
+            const cols = columns.filter((c) => c.group === g.id);
+            const groupChecked = cols.every((c) => checked.has(c.key));
+            return (
+              <div key={g.id} className="rounded-xl border border-border p-3">
+                <label className="flex cursor-pointer items-center gap-2 border-b border-border pb-2 text-sm font-bold text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={groupChecked}
+                    onChange={() => setMany(cols.map((c) => c.key), !groupChecked)}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  {g.label}
+                  <span className="text-xs font-normal text-muted">({cols.length})</span>
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-3">
+                  {cols.map((c) => (
+                    <label key={c.key} className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={checked.has(c.key)}
+                        onChange={(e) => setMany([c.key], e.target.checked)}
+                        className="h-4 w-4 shrink-0 accent-primary"
+                      />
+                      <span className="truncate">{c.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {privateFields.length > 0 && (
+          <div className="mt-3 flex gap-2 rounded-xl bg-danger-light px-3 py-2.5 text-xs text-danger">
+            <ShieldAlert size={15} className="mt-px shrink-0" />
+            <p>
+              개인정보(휴대전화번호·계좌정보)가 포함됩니다. 내려받는 순간 서버에서 복호화되며, 내려받은 관리자와
+              대상 학번이 기록으로 남습니다. 파일은 업무 목적으로만 사용하고 사용 후 즉시 삭제해주세요.
+            </p>
+          </div>
+        )}
+
+        {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
+            취소
+          </Button>
+          <Button size="sm" loading={busy} disabled={checked.size === 0} onClick={handleDownload}>
+            <Download size={14} /> 내려받기
+          </Button>
         </div>
       </div>
     </div>

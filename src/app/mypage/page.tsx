@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Landmark } from "lucide-react";
+import { Landmark, Smartphone } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, StatCard } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -16,6 +16,7 @@ import {
 import { listAdvancedApplicationsForStudent } from "@/lib/firestore/advancedApplications";
 import { DEFAULT_ELIGIBILITY_CRITERIA, listEligibilityChecksForStudent } from "@/lib/firestore/eligibilityChecks";
 import { getMyBankAccount, saveBankAccount } from "@/lib/firestore/bankAccounts";
+import { getMyContact, savePhoneNumber } from "@/lib/firestore/studentContacts";
 import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import { TrackCompletionSection } from "@/components/mypage/TrackCompletionSection";
@@ -32,6 +33,7 @@ import type {
   Semester,
   Student,
   StudentBankAccount,
+  StudentContact,
   StudentMileageSummary,
 } from "@/types/models";
 
@@ -77,6 +79,8 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
   const [currentSemester, setCurrentSemester] = useState<Semester | null>(null);
   const [bankAccount, setBankAccount] = useState<StudentBankAccount | null>(null);
   const [bankModalOpen, setBankModalOpen] = useState(false);
+  const [contact, setContact] = useState<StudentContact | null>(null);
+  const [phoneModalOpen, setPhoneModalOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,9 +92,11 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
       listEligibilityChecksForStudent(student.studentId),
       getConversionSettings(),
       isPreview ? Promise.resolve(null) : getMyBankAccount(student.studentId),
+      // 전화번호는 부가 정보라 조회에 실패해도 마이페이지 전체를 막지 않는다.
+      isPreview ? Promise.resolve(null) : getMyContact(student.studentId).catch(() => null),
       // 프로그램 신청 내역은 부가 정보라 조회에 실패해도 마이페이지 전체를 막지 않는다.
       isPreview ? Promise.resolve([]) : listMyProgramApplications(student.studentId).catch(() => []),
-    ]).then(async ([semester, apps, advApps, eligChecks, convSettings, account, progApps]) => {
+    ]).then(async ([semester, apps, advApps, eligChecks, convSettings, account, myContact, progApps]) => {
       const studentSummary = await computeStudentSummary(student, semester?.name);
       if (cancelled) return;
       setCurrentSemester(semester);
@@ -107,6 +113,7 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
         .catch(() => {});
       setSettings(convSettings);
       setBankAccount(account);
+      setContact(myContact);
       setLoading(false);
     });
     return () => {
@@ -135,15 +142,23 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
               )}
             </span>
           </h2>
-          <div className="flex flex-col items-end gap-1">
-            <Button size="sm" variant="outline" onClick={() => setBankModalOpen(true)} disabled={isPreview}>
-              <Landmark size={15} /> {bankAccount ? "계좌 정보 수정" : "계좌 등록"}
-            </Button>
-            <p className="text-xs text-muted">
-              {bankAccount
-                ? `${bankAccount.bankName} ****${bankAccount.accountNumberLast4}`
-                : "장학금 수령 계좌가 등록되지 않았습니다."}
-            </p>
+          <div className="flex flex-wrap justify-end gap-x-4 gap-y-2">
+            <div className="flex flex-col items-end gap-1">
+              <Button size="sm" variant="outline" onClick={() => setPhoneModalOpen(true)} disabled={isPreview}>
+                <Smartphone size={15} /> {contact ? "전화번호 수정" : "전화번호 등록"}
+              </Button>
+              <p className="text-xs text-muted">{contact ? contact.phoneMasked : "휴대전화번호가 등록되지 않았습니다."}</p>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <Button size="sm" variant="outline" onClick={() => setBankModalOpen(true)} disabled={isPreview}>
+                <Landmark size={15} /> {bankAccount ? "계좌 정보 수정" : "계좌 등록"}
+              </Button>
+              <p className="text-xs text-muted">
+                {bankAccount
+                  ? `${bankAccount.bankName} ****${bankAccount.accountNumberLast4}`
+                  : "장학금 수령 계좌가 등록되지 않았습니다."}
+              </p>
+            </div>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -478,6 +493,18 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
 
       {summary.student.isParticipating && <TrackCompletionSection student={summary.student} isPreview={isPreview} />}
 
+      {phoneModalOpen && (
+        <PhoneNumberModal
+          studentId={student.studentId}
+          current={contact}
+          onClose={() => setPhoneModalOpen(false)}
+          onSaved={(next) => {
+            setContact(next);
+            setPhoneModalOpen(false);
+          }}
+        />
+      )}
+
       {bankModalOpen && (
         <BankAccountModal
           studentId={student.studentId}
@@ -579,6 +606,79 @@ function BankAccountModal({
               <p className="mt-1 text-[11px] text-muted">
                 보안을 위해 이전 계좌번호는 다시 표시되지 않습니다 — 변경하지 않더라도 계좌번호를 처음부터 다시
                 입력해주세요.
+              </p>
+            )}
+          </div>
+          {error && <p className="text-sm font-medium text-danger">{error}</p>}
+          <div className="mt-1 flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              취소
+            </Button>
+            <Button type="submit" size="sm" loading={submitting}>
+              저장
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
+function PhoneNumberModal({
+  studentId,
+  current,
+  onClose,
+  onSaved,
+}: {
+  studentId: string;
+  current: StudentContact | null;
+  onClose: () => void;
+  onSaved: (next: StudentContact) => void;
+}) {
+  const [phone, setPhone] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const digits = phone.replace(/[^0-9]/g, "");
+    if (!/^01[016789]d{7,8}$/.test(digits)) {
+      setError("휴대전화번호를 올바르게 입력해주세요. (예: 01012345678)");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { phoneMasked } = await savePhoneNumber(digits);
+      onSaved({ studentId, phoneMasked, updatedAt: Date.now() });
+    } catch {
+      setError("저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <Card className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-foreground">휴대전화번호 등록</h3>
+        <p className="mt-1 text-xs text-muted">
+          장학금 지급·프로그램 운영 관련 안내 연락에 쓰입니다. 전화번호는 암호화되어 저장되며, 등록 후에는
+          가운데 자리가 가려진 형태로만 다시 확인할 수 있습니다.
+        </p>
+        <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">휴대전화번호 (숫자만)</label>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              inputMode="numeric"
+              autoComplete="tel"
+              placeholder={current ? `등록된 번호: ${current.phoneMasked} (수정하려면 새로 입력)` : "예: 01012345678"}
+            />
+            {current && (
+              <p className="mt-1 text-[11px] text-muted">
+                보안을 위해 이전 번호는 다시 표시되지 않습니다 — 변경하려면 번호를 처음부터 다시 입력해주세요.
               </p>
             )}
           </div>
