@@ -23,11 +23,13 @@ import {
   MAX_ADMIN_MILEAGE_GRANT,
   PROGRAM_TYPE_SUGGESTIONS,
   type ActivityGroup,
+  type ApplicationFileType,
   type Program,
   type ProgramFile,
   type ProgramQuestion,
   type ProgramTeamType,
 } from "@/types/models";
+import { APPLICATION_FILE_TYPE_KEYS, APPLICATION_FILE_TYPES } from "@/lib/constants/applicationFileTypes";
 
 /** 회차 입력 행 — datetime-local 값(문자열)을 그대로 들고 있다가 저장할 때 epoch ms로 바꾼다. */
 interface SessionDraft {
@@ -95,6 +97,9 @@ export function ProgramForm({
   const [attachments, setAttachments] = useState<ProgramFile[]>(initial?.attachments ?? []);
   const [requireApplicationFile, setRequireApplicationFile] = useState(initial?.requireApplicationFile ?? false);
   const [applicationFileGuide, setApplicationFileGuide] = useState(initial?.applicationFileGuide ?? "");
+  const [applicationFileTypes, setApplicationFileTypes] = useState<ApplicationFileType[]>(
+    initial?.applicationFileTypes ?? []
+  );
   const [useSurvey, setUseSurvey] = useState((initial?.formQuestions.length ?? 0) > 0);
   const [questions, setQuestions] = useState<ProgramQuestion[]>(initial?.formQuestions ?? []);
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? true);
@@ -228,6 +233,8 @@ export function ProgramForm({
       attachments,
       requireApplicationFile,
       applicationFileGuide: applicationFileGuide.trim(),
+      // 저장 순서를 고정해 둔다 (체크한 순서와 무관하게 PDF → 한글 → 워드 → 이미지).
+      applicationFileTypes: APPLICATION_FILE_TYPE_KEYS.filter((t) => applicationFileTypes.includes(t)),
       formQuestions,
       isPublished,
       sessions: parsed.sort((a, b) => a.round - b.round),
@@ -425,6 +432,37 @@ export function ProgramForm({
         <Check checked={requireApplicationFile} onChange={setRequireApplicationFile} label="신청서 파일 첨부 필수">
           끄면 첨부는 선택 사항이 돼요.
         </Check>
+        <Field
+          label="신청서 파일 형식"
+          hint={
+            applicationFileTypes.length === 0
+              ? "선택하지 않으면 모든 형식의 파일을 받아요."
+              : "선택한 형식의 파일만 첨부할 수 있어요."
+          }
+        >
+          <div className="flex flex-wrap gap-2">
+            {APPLICATION_FILE_TYPE_KEYS.map((t) => {
+              const active = applicationFileTypes.includes(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() =>
+                    setApplicationFileTypes((prev) => (active ? prev.filter((x) => x !== t) : [...prev, t]))
+                  }
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-sm font-semibold transition",
+                    active
+                      ? "border-primary bg-primary text-white"
+                      : "border-border bg-white text-foreground hover:border-primary hover:text-primary"
+                  )}
+                >
+                  {APPLICATION_FILE_TYPES[t].label}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
         <Field label="신청서 첨부 안내 문구" hint="신청 창의 신청서 칸에 보여줄 안내">
           <textarea
             value={applicationFileGuide}

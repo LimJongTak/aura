@@ -589,6 +589,8 @@ export interface ProgramQuestion {
 export type ProgramAnswer = string | string[];
 
 /** 마일리지 프로그램 게시글 → programs/{id}. 공개(isPublished)된 글만 학생에게 보인다. */
+export type ApplicationFileType = "pdf" | "hwp" | "word" | "image";
+
 export interface Program {
   id: string;
   title: string;
@@ -611,6 +613,8 @@ export interface Program {
   requireApplicationFile: boolean;
   /** 신청서 첨부 안내 문구 */
   applicationFileGuide: string;
+  /** 신청서로 받을 파일 형식 — 비어 있으면 형식 제한 없음. */
+  applicationFileTypes: ApplicationFileType[];
   /** 신청 설문 문항 (선택 사항 — 비어 있으면 기본 신청 양식만 받는다) */
   formQuestions: ProgramQuestion[];
   isPublished: boolean;

@@ -18,6 +18,7 @@ import { nanoid } from "@/lib/utils/nanoid";
 import {
   PROGRAM_SEAT_STATUSES,
   type ActivityGroup,
+  type ApplicationFileType,
   type Program,
   type ProgramApplication,
   type ProgramApplicationStatus,
@@ -68,6 +69,7 @@ function programFromSnap(id: string, data: Record<string, unknown>): Program {
     attachments: (data.attachments as ProgramFile[]) ?? [],
     requireApplicationFile: !!data.requireApplicationFile,
     applicationFileGuide: String(data.applicationFileGuide ?? ""),
+    applicationFileTypes: (data.applicationFileTypes as ApplicationFileType[]) ?? [],
     formQuestions: (data.formQuestions as ProgramQuestion[]) ?? [],
     isPublished: !!data.isPublished,
     viewCount: Number(data.viewCount ?? 0),
@@ -154,6 +156,7 @@ export interface ProgramInput {
   attachments: ProgramFile[];
   requireApplicationFile: boolean;
   applicationFileGuide: string;
+  applicationFileTypes: ApplicationFileType[];
   formQuestions: ProgramQuestion[];
   isPublished: boolean;
   sessions: ProgramSession[];

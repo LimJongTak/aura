@@ -22,7 +22,16 @@ export async function savePhoneNumber(phone: string): Promise<{ phoneMasked: str
   return { phoneMasked: result.data.phoneMasked };
 }
 
-const listPhoneStudentIdsFn = httpsCallable<void, { studentIds: string[] }>(functions, "listPhoneStudentIds");
+const getMyPhoneNumberFn = httpsCallable<void, { phone: string | null }>(functions, "getMyPhoneNumber");
+
+/** 로그인한 학생 본인이 등록한 휴대전화번호 원문 — 프로그램 신청 창의 연락처 자동 입력용.
+ *  등록하지 않았으면 null. */
+export async function getMyPhoneNumber(): Promise<string | null> {
+  const result = await getMyPhoneNumberFn();
+  return result.data.phone;
+}
+
+const listPhoneStudentIdsFn =httpsCallable<void, { studentIds: string[] }>(functions, "listPhoneStudentIds");
 
 /** 관리자 전용 — 전화번호를 등록한 학번 목록만 가져온다. */
 export async function listPhoneStudentIds(): Promise<Set<string>> {

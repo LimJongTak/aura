@@ -37,7 +37,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return (
       <div className="mx-auto max-w-sm px-4 py-16 text-center sm:px-6">
         <p className="text-sm text-muted">
-          {user.email} 계정에는 관리자 권한이 없습니다. Firestore admins 컬렉션에 UID를 등록해주세요.
+          {user.email} 계정에는 관리자 권한이 없습니다.
         </p>
       </div>
     );

@@ -11,6 +11,8 @@ import { ProgramContent } from "@/components/programs/ProgramContent";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { toStudentEmail } from "@/lib/auth/studentAuth";
+import { getMyPhoneNumber } from "@/lib/firestore/studentContacts";
+import { allowedExtensions, describeFileTypes, isAllowedFile } from "@/lib/constants/applicationFileTypes";
 import {
   applyToProgram,
   formatDateTime,
@@ -330,6 +332,20 @@ function ApplyModal({
   onApplied: (app: ProgramApplication) => void;
 }) {
   const [phone, setPhone] = useState(student.phone ?? "");
+  const fileTypes = program.applicationFileTypes;
+
+  // 마이페이지에 등록한 휴대전화번호가 있으면 연락처를 미리 채운다 (학생이 이미 입력하기 시작했으면 덮어쓰지 않는다).
+  useEffect(() => {
+    let cancelled = false;
+    getMyPhoneNumber()
+      .then((registered) => {
+        if (!cancelled && registered) setPhone((prev) => (prev.trim() ? prev : registered));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [email, setEmail] = useState(toStudentEmail(student.studentId));
   const [teamName, setTeamName] = useState("");
   const [teamMembers, setTeamMembers] = useState("");
@@ -349,6 +365,8 @@ function ApplyModal({
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("이메일 형식을 확인해주세요.");
     if (isTeam && (!teamName.trim() || !teamMembers.trim())) return setError("팀명과 팀원 정보를 입력해주세요.");
     if (program.requireApplicationFile && !file) return setError("신청서 파일을 첨부해주세요.");
+    if (file && !isAllowedFile(file.name, fileTypes))
+      return setError(`신청서는 ${describeFileTypes(fileTypes)} 파일만 첨부할 수 있어요.`);
     if (file && file.size > PROGRAM_FILE_MAX_BYTES) return setError("파일은 20MB 이하만 첨부할 수 있어요.");
     const unanswered = program.formQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
     if (unanswered) return setError(`설문 "${unanswered.title}"에 답해주세요.`);
@@ -463,9 +481,33 @@ function ApplyModal({
             )}
             <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted transition hover:border-primary hover:text-primary">
               <Upload size={14} className="shrink-0" />
-              <span className="truncate">{file ? file.name : "파일 선택 (20MB 이하)"}</span>
-              <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              <span className="truncate">
+                {file
+                  ? file.name
+                  : fileTypes.length > 0
+                    ? `${describeFileTypes(fileTypes)} 파일 선택 (20MB 이하)`
+                    : "파일 선택 (20MB 이하)"}
+              </span>
+              <input
+                type="file"
+                accept={fileTypes.length > 0 ? allowedExtensions(fileTypes).join(",") : undefined}
+                className="hidden"
+                onChange={(e) => {
+                  const picked = e.target.files?.[0] ?? null;
+                  setError(
+                    picked && !isAllowedFile(picked.name, fileTypes)
+                      ? `신청서는 ${describeFileTypes(fileTypes)} 파일만 첨부할 수 있어요.`
+                      : null
+                  );
+                  setFile(picked);
+                }}
+              />
             </label>
+            {fileTypes.length > 0 && (
+              <p className="mt-1 text-[11px] font-semibold text-primary-dark">
+                {describeFileTypes(fileTypes)} 형식만 받아요.
+              </p>
+            )}
           </FormRow>
           {program.formQuestions.length > 0 && (
             <div className="border-b border-border bg-surface px-3 py-2 text-xs font-bold text-foreground">추가 설문</div>

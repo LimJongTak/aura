@@ -583,6 +583,15 @@ export const savePhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async
   return { success: true, phoneMasked };
 });
 
+/** 로그인한 학생 본인의 휴대전화번호를 복호화해 돌려준다 — 프로그램 신청 창의 연락처
+ * 자동 입력용. 학번은 요청 값이 아니라 로그인 토큰에서만 꺼내므로 남의 번호는 조회할 수 없다. */
+export const getMyPhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
+  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const snap = await admin.firestore().collection("studentContacts").doc(studentId).get();
+  if (!snap.exists) return { phone: null };
+  return { phone: decryptSecret(snap.data()!.phoneEnc, BANK_ACCOUNT_ENC_KEY.value()) };
+});
+
 /** 학생 관리 화면에서 "전화번호 등록 여부"만 표시하기 위한 조회 — 문서 ID만 내려간다. */
 export const listPhoneStudentIds = onCall(async (request) => {
   await requireAdminAuth(request.auth?.uid);
