@@ -33,7 +33,9 @@ export default function LoginPage() {
       if (student?.mustChangePassword) {
         router.push("/change-password");
       } else {
-        router.push("/mypage");
+        // 프로그램 상세 등에서 넘어온 경우 원래 페이지로 돌려보낸다. 외부 주소로의 이동은 막는다.
+        const next = new URLSearchParams(window.location.search).get("next");
+        router.push(next && /^\/(?![/\\])/.test(next) ? next : "/mypage");
       }
       void cred;
     } catch {

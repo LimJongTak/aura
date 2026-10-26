@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Paperclip, Settings, Upload, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Info, Paperclip, Settings, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge } from "@/components/programs/shared";
@@ -174,21 +174,35 @@ export default function ProgramDetailPage() {
 
           {notice && <p className="mt-3 text-right text-sm font-medium text-danger">{notice}</p>}
 
-          <div className="mt-4 flex justify-end">
-            {sessionLoading ? null : user && student ? (
+          {sessionLoading ? null : user && student ? (
+            <div className="mt-4 flex justify-end">
               <Button size="lg" onClick={handleApplyClick} className="rounded-lg">
                 프로그램 신청
               </Button>
-            ) : user && isAdmin ? (
+            </div>
+          ) : user && isAdmin ? (
+            <div className="mt-4 flex justify-end">
               <p className="text-sm text-muted">관리자 계정에서는 신청할 수 없습니다.</p>
-            ) : (
-              <Link href="/login">
-                <Button size="lg" className="rounded-lg">
+            </div>
+          ) : (
+            <div className="mt-6 flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary-light px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-3">
+                <Info size={18} className="mt-0.5 shrink-0 text-primary" />
+                <div className="text-sm">
+                  <p className="font-bold text-primary-dark">로그인 후 신청할 수 있어요</p>
+                  <p className="mt-1 leading-relaxed text-foreground/75">
+                    프로그램 참여 마일리지는 로그인한 학번으로 신청한 내역을 기준으로 지급돼요. 마일리지를
+                    받으려면 꼭 본인 학번으로 로그인한 뒤 신청해주세요.
+                  </p>
+                </div>
+              </div>
+              <Link href={`/login?next=${encodeURIComponent(`/programs/${program.id}`)}`} className="shrink-0">
+                <Button size="lg" className="w-full rounded-lg sm:w-auto">
                   로그인 후 신청
                 </Button>
               </Link>
-            )}
-          </div>
+            </div>
+          )}
 
           {applyOpen && selectedSession && student && (
             <ApplyModal
