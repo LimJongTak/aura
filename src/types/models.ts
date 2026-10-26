@@ -589,7 +589,7 @@ export interface ProgramQuestion {
 export type ProgramAnswer = string | string[];
 
 /** 마일리지 프로그램 게시글 → programs/{id}. 공개(isPublished)된 글만 학생에게 보인다. */
-export type ApplicationFileType = "pdf" | "hwp" | "word" | "image";
+export type ApplicationFileType = "pdf" | "hwp" | "word" | "excel" | "image";
 
 export interface Program {
   id: string;

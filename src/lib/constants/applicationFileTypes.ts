@@ -5,8 +5,12 @@ export const APPLICATION_FILE_TYPES: Record<ApplicationFileType, { label: string
   pdf: { label: "PDF", extensions: [".pdf"] },
   hwp: { label: "한글(HWP·HWPX)", extensions: [".hwp", ".hwpx"] },
   word: { label: "워드(DOC·DOCX)", extensions: [".doc", ".docx"] },
+  excel: { label: "엑셀(XLS·XLSX)", extensions: [".xls", ".xlsx"] },
   image: { label: "이미지(JPG·PNG)", extensions: [".jpg", ".jpeg", ".png"] },
 };
+
+/** 새 글의 기본 신청서 형식 — PDF만 받고, 다른 형식은 관리자가 골라서 추가한다. */
+export const DEFAULT_APPLICATION_FILE_TYPES: ApplicationFileType[] = ["pdf"];
 
 export const APPLICATION_FILE_TYPE_KEYS = Object.keys(APPLICATION_FILE_TYPES) as ApplicationFileType[];
 

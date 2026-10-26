@@ -29,7 +29,11 @@ import {
   type ProgramQuestion,
   type ProgramTeamType,
 } from "@/types/models";
-import { APPLICATION_FILE_TYPE_KEYS, APPLICATION_FILE_TYPES } from "@/lib/constants/applicationFileTypes";
+import {
+  APPLICATION_FILE_TYPE_KEYS,
+  APPLICATION_FILE_TYPES,
+  DEFAULT_APPLICATION_FILE_TYPES,
+} from "@/lib/constants/applicationFileTypes";
 
 /** 회차 입력 행 — datetime-local 값(문자열)을 그대로 들고 있다가 저장할 때 epoch ms로 바꾼다. */
 interface SessionDraft {
@@ -98,7 +102,7 @@ export function ProgramForm({
   const [requireApplicationFile, setRequireApplicationFile] = useState(initial?.requireApplicationFile ?? false);
   const [applicationFileGuide, setApplicationFileGuide] = useState(initial?.applicationFileGuide ?? "");
   const [applicationFileTypes, setApplicationFileTypes] = useState<ApplicationFileType[]>(
-    initial?.applicationFileTypes ?? []
+    initial?.applicationFileTypes ?? DEFAULT_APPLICATION_FILE_TYPES
   );
   const [useSurvey, setUseSurvey] = useState((initial?.formQuestions.length ?? 0) > 0);
   const [questions, setQuestions] = useState<ProgramQuestion[]>(initial?.formQuestions ?? []);
@@ -233,7 +237,7 @@ export function ProgramForm({
       attachments,
       requireApplicationFile,
       applicationFileGuide: applicationFileGuide.trim(),
-      // 저장 순서를 고정해 둔다 (체크한 순서와 무관하게 PDF → 한글 → 워드 → 이미지).
+      // 저장 순서를 고정해 둔다 (체크한 순서와 무관하게 PDF → 한글 → 워드 → 엑셀 → 이미지).
       applicationFileTypes: APPLICATION_FILE_TYPE_KEYS.filter((t) => applicationFileTypes.includes(t)),
       formQuestions,
       isPublished,
