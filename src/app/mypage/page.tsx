@@ -643,7 +643,7 @@ function PhoneNumberModal({
     e.preventDefault();
     setError(null);
     const digits = phone.replace(/[^0-9]/g, "");
-    if (!/^01[016789]d{7,8}$/.test(digits)) {
+    if (!/^01[016789]\d{7,8}$/.test(digits)) {
       setError("휴대전화번호를 올바르게 입력해주세요. (예: 01012345678)");
       return;
     }
