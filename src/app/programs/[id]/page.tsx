@@ -185,12 +185,12 @@ export default function ProgramDetailPage() {
               <p className="text-sm text-muted">관리자 계정에서는 신청할 수 없습니다.</p>
             </div>
           ) : (
-            <div className="mt-6 flex flex-col gap-4 rounded-xl border border-primary/20 bg-primary-light px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex gap-3">
-                <Info size={18} className="mt-0.5 shrink-0 text-primary" />
+            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-2">
+                <Info size={18} className="mt-0.5 shrink-0 text-danger" />
                 <div className="text-sm">
-                  <p className="font-bold text-primary-dark">로그인 후 신청할 수 있어요</p>
-                  <p className="mt-1 leading-relaxed text-foreground/75">
+                  <p className="font-bold text-danger">로그인 후 신청할 수 있어요</p>
+                  <p className="mt-1 font-medium leading-relaxed text-danger">
                     프로그램 참여 마일리지는 로그인한 학번으로 신청한 내역을 기준으로 지급돼요. 마일리지를
                     받으려면 꼭 본인 학번으로 로그인한 뒤 신청해주세요.
                   </p>
