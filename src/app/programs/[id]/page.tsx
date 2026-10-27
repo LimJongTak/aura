@@ -586,7 +586,7 @@ function QuestionInput({
   const checked = Array.isArray(value) ? value : [];
   return (
     <div>
-      {q.description && <p className="mb-1.5 whitespace-pre-wrap text-xs text-muted">{q.description}</p>}
+      {q.description && <p className="mb-1.5 whitespace-pre-wrap break-words text-xs text-muted">{q.description}</p>}
       {q.type === "short" && <Input value={text} onChange={(e) => onChange(e.target.value)} maxLength={500} className="py-2" />}
       {q.type === "long" && (
         <textarea value={text} onChange={(e) => onChange(e.target.value)} rows={4} maxLength={3000} className={textareaClass} />

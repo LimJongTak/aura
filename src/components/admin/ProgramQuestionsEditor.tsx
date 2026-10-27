@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
@@ -99,13 +100,7 @@ export function ProgramQuestionsEditor({
               ))}
             </Select>
           </div>
-          <Input
-            value={q.description}
-            onChange={(e) => update(q.id, { description: e.target.value })}
-            maxLength={300}
-            placeholder="설명 (선택)"
-            className="mt-2 py-2 text-xs"
-          />
+          <DescriptionTextarea value={q.description} onChange={(description) => update(q.id, { description })} />
 
           {isChoice(q.type) && (
             <div className="mt-3 flex flex-col gap-1.5">
@@ -155,6 +150,39 @@ export function ProgramQuestionsEditor({
       <Button type="button" size="sm" variant="outline" onClick={() => onChange([...questions, emptyQuestion()])} className="self-start">
         <Plus size={15} /> 문항 추가
       </Button>
+    </div>
+  );
+}
+
+const DESCRIPTION_MAX_LENGTH = 2000;
+
+/** 문항 설명 입력칸 — 줄바꿈을 그대로 받고, 내용이 늘어나면 칸도 아래로 늘어난다. */
+function DescriptionTextarea({ value, onChange }: { value: string; onChange: (next: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [value]);
+
+  return (
+    <div className="mt-2">
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={DESCRIPTION_MAX_LENGTH}
+        rows={2}
+        placeholder="설명 (선택) — Enter로 줄을 바꿀 수 있어요"
+        className="block w-full resize-none overflow-hidden rounded-xl border border-border bg-white px-3.5 py-2 text-xs leading-relaxed outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
+      />
+      {value.length > DESCRIPTION_MAX_LENGTH * 0.8 && (
+        <p className="mt-1 text-right text-[11px] text-muted">
+          {value.length.toLocaleString()} / {DESCRIPTION_MAX_LENGTH.toLocaleString()}자
+        </p>
+      )}
     </div>
   );
 }
