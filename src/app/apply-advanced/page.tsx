@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
+import { CompletedNonCurricularSelect } from "@/components/advanced/CompletedNonCurricularSelect";
 import {
   Chip,
   DEFAULT_IMMERSIVE_SUBJECTS,
@@ -414,6 +415,15 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">비교과 참여 (1회)</label>
+            <CompletedNonCurricularSelect
+              studentId={student.studentId}
+              programName={nonCurricularProgram}
+              yearMonth={nonCurricularYearMonth}
+              onPick={(name, ym) => {
+                setNonCurricularProgram(name);
+                setNonCurricularYearMonth(ym);
+              }}
+            />
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input
                 value={nonCurricularProgram}

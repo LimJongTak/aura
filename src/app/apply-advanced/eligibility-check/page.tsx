@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
 import { RequireStudentLogin } from "@/components/auth/RequireStudentLogin";
+import { CompletedNonCurricularSelect } from "@/components/advanced/CompletedNonCurricularSelect";
 import {
   Chip,
   DEFAULT_IMMERSIVE_SUBJECTS,
@@ -396,6 +397,19 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
                 참여 예정
               </button>
             </div>
+            {!nonCurricularPlanned && (
+              <div className="mt-2">
+                <CompletedNonCurricularSelect
+                  studentId={student.studentId}
+                  programName={nonCurricularProgram}
+                  yearMonth={nonCurricularYearMonth}
+                  onPick={(name, ym) => {
+                    setNonCurricularProgram(name);
+                    setNonCurricularYearMonth(ym);
+                  }}
+                />
+              </div>
+            )}
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input
                 value={nonCurricularProgram}
