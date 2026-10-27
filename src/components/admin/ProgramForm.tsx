@@ -609,7 +609,11 @@ function DateTimeInput({
   endOfRange?: boolean;
 }) {
   const [date = "", time = ""] = value.split("T");
-  const [hour = "00", minute = "00"] = time.split(":");
+  // 빈 값이면 "".split(":")이 [""]라 기본값(= "00")이 안 먹으므로 || 로 채운다 — 안 그러면 시를 안 고른
+  // 회차가 "2026-12-01T:00"으로 저장돼 날짜를 다 넣어도 "날짜를 확인해주세요"가 뜬다.
+  const [rawHour, rawMinute] = time.split(":");
+  const hour = rawHour || "00";
+  const minute = rawMinute || "00";
   const base = endOfRange ? [...MINUTES, "59"] : MINUTES;
   // 예전에 5분 단위가 아닌 시각으로 저장된 회차도 값이 사라지지 않도록 보기에 넣어둔다.
   const minutes = base.includes(minute) ? base : [...base, minute].sort();
