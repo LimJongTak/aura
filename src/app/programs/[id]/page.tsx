@@ -76,6 +76,8 @@ export default function ProgramDetailPage() {
   }, [program, counts, selectedSessionId]);
 
   const selectedSession = program?.sessions.find((s) => s.id === selectedSessionId) ?? null;
+  // 모든 회차의 신청기간이 지났으면 신청 버튼 대신 마감 안내만 보여준다.
+  const applyClosed = !!program && program.sessions.every((s) => sessionPhase(s, counts[s.id] ?? 0) === "신청마감");
 
   function handleApplyClick() {
     setNotice(null);
@@ -177,7 +179,11 @@ export default function ProgramDetailPage() {
 
           {notice && <p className="mt-3 text-right text-sm font-medium text-danger">{notice}</p>}
 
-          {sessionLoading ? null : user && student ? (
+          {sessionLoading ? null : applyClosed ? (
+            <div className="mt-4 flex justify-end">
+              <p className="text-sm font-semibold text-muted">신청기간이 끝난 프로그램이에요.</p>
+            </div>
+          ) : user && student ? (
             <div className="mt-4 flex justify-end">
               <Button size="lg" onClick={handleApplyClick} className="rounded-lg">
                 프로그램 신청
