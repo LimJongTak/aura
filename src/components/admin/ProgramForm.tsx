@@ -189,7 +189,8 @@ export function ProgramForm({
 
   function buildInput(): ProgramInput | string {
     if (!title.trim()) return "제목을 입력해주세요.";
-    if (!content.trim()) return "내용을 입력해주세요.";
+    // 포스터 이미지만으로 안내하는 글도 있어서, 이미지가 있으면 본문은 비워둘 수 있다.
+    if (!content.trim() && images.length === 0) return "내용을 입력하거나 본문 이미지를 1개 이상 올려주세요.";
     if (sessions.length === 0) return "회차를 1개 이상 추가해주세요.";
     const rounds = new Set<number>();
     const parsed = [];
@@ -203,7 +204,17 @@ export function ProgramForm({
       const applyEnd = fromLocalInput(s.applyEnd);
       const runStart = fromLocalInput(s.runStart);
       const runEnd = fromLocalInput(s.runEnd);
-      if ([applyStart, applyEnd, runStart, runEnd].some(Number.isNaN)) return `${label}: 신청기간과 진행기간을 모두 입력해주세요.`;
+      const missing = (
+        [
+          ["신청 시작", applyStart],
+          ["신청 마감", applyEnd],
+          ["진행 시작", runStart],
+          ["진행 종료", runEnd],
+        ] as const
+      )
+        .filter(([, v]) => Number.isNaN(v))
+        .map(([name]) => name);
+      if (missing.length > 0) return `${label}: ${missing.join(", ")} 날짜를 확인해주세요. (연도·월·일을 모두 입력)`;
       if (applyStart >= applyEnd) return `${label}: 신청 마감이 시작보다 늦어야 해요.`;
       if (runStart > runEnd) return `${label}: 진행 종료가 시작보다 늦어야 해요.`;
       const capacity = s.capacity.trim() === "" ? null : Number(s.capacity);
@@ -406,7 +417,7 @@ export function ProgramForm({
             onFiles={(f) => handleUpload("images", f)}
           />
         </Field>
-        <Field label="내용" required>
+        <Field label="내용" required={images.length === 0} hint={images.length > 0 ? "이미지가 있으면 비워둬도 돼요" : undefined}>
           <ProgramContentEditor value={content} onChange={setContent} />
         </Field>
         <Field label="첨부파일" hint="신청서 양식, 안내문 등 — 학생이 내려받을 수 있어요">
@@ -582,6 +593,8 @@ export function ProgramForm({
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+const DATE_MIN = "2000-01-01";
+const DATE_MAX = "2099-12-31";
 
 /** 회차 일시 입력 — 브라우저 기본 datetime-local은 분을 1분 단위로 보여줘서, 날짜 + 시 + 분(5분 단위)
  *  선택으로 나눠 받는다. 값은 기존과 같은 "YYYY-MM-DDTHH:mm" 문자열이다.
@@ -607,7 +620,16 @@ function DateTimeInput({
 
   return (
     <div className="flex gap-1.5">
-      <Input type="date" value={date} onChange={(e) => emit(e.target.value, hour, minute)} className="min-w-0 flex-1" />
+      {/* max가 없으면 크롬이 연도 칸에 6자리까지 받아서, "20261201"을 이어 치면 연도가 202612가 되고
+          값이 빈 채로 남는다(화면엔 입력된 것처럼 보임). 연도를 4자리로 묶어 바로 월·일로 넘어가게 한다. */}
+      <Input
+        type="date"
+        min={DATE_MIN}
+        max={DATE_MAX}
+        value={date}
+        onChange={(e) => emit(e.target.value, hour, minute)}
+        className="min-w-0 flex-1"
+      />
       <Select
         value={hour}
         disabled={!date}

@@ -142,7 +142,7 @@ export default function ProgramDetailPage() {
                   ))}
                 </div>
               )}
-              <ProgramContent content={program.content} />
+              {program.content.trim() && <ProgramContent content={program.content} />}
             </div>
 
             <dl className="grid grid-cols-1 text-sm">
