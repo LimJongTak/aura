@@ -544,13 +544,13 @@ export function ProgramForm({
                   <DateTimeInput value={s.applyStart} onChange={(v) => updateSession(s.id, { applyStart: v })} />
                 </Field>
                 <Field label="신청 마감" required>
-                  <DateTimeInput value={s.applyEnd} onChange={(v) => updateSession(s.id, { applyEnd: v })} />
+                  <DateTimeInput value={s.applyEnd} onChange={(v) => updateSession(s.id, { applyEnd: v })} endOfRange />
                 </Field>
                 <Field label="진행 시작" required>
                   <DateTimeInput value={s.runStart} onChange={(v) => updateSession(s.id, { runStart: v })} />
                 </Field>
                 <Field label="진행 종료" required>
-                  <DateTimeInput value={s.runEnd} onChange={(v) => updateSession(s.id, { runEnd: v })} />
+                  <DateTimeInput value={s.runEnd} onChange={(v) => updateSession(s.id, { runEnd: v })} endOfRange />
                 </Field>
               </div>
               <Field label="정원" hint="빈칸이면 제한없음">
@@ -584,12 +584,22 @@ const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
 
 /** 회차 일시 입력 — 브라우저 기본 datetime-local은 분을 1분 단위로 보여줘서, 날짜 + 시 + 분(5분 단위)
- *  선택으로 나눠 받는다. 값은 기존과 같은 "YYYY-MM-DDTHH:mm" 문자열이다. */
-function DateTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+ *  선택으로 나눠 받는다. 값은 기존과 같은 "YYYY-MM-DDTHH:mm" 문자열이다.
+ *  endOfRange(신청 마감·진행 종료)는 "23시 59분 마감"처럼 쓸 수 있게 59분도 고를 수 있다. */
+function DateTimeInput({
+  value,
+  onChange,
+  endOfRange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  endOfRange?: boolean;
+}) {
   const [date = "", time = ""] = value.split("T");
   const [hour = "00", minute = "00"] = time.split(":");
+  const base = endOfRange ? [...MINUTES, "59"] : MINUTES;
   // 예전에 5분 단위가 아닌 시각으로 저장된 회차도 값이 사라지지 않도록 보기에 넣어둔다.
-  const minutes = MINUTES.includes(minute) ? MINUTES : [...MINUTES, minute].sort();
+  const minutes = base.includes(minute) ? base : [...base, minute].sort();
 
   function emit(d: string, h: string, m: string) {
     onChange(d ? `${d}T${h}:${m}` : "");
