@@ -18,6 +18,38 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email == (studentId + "@s.scnu.ac.kr");
     }
 
+    function studentPath(studentId) {
+      return /databases/$(database)/documents/students/$(studentId);
+    }
+
+    // 본인이면서 초기 비밀번호(00000000)를 이미 바꾼 계정인지. 초기 비밀번호는 모두가 아는
+    // 값이라, 바꾸기 전 계정은 로그인만 되면 남이 신청·계좌등록·성적증명서 열람을 할 수
+    // 있었다 — 비밀번호 변경(학교 메일 인증) 전에는 본인 데이터 읽기·쓰기를 모두 막는다.
+    function isActiveSelf(studentId) {
+      return isSelf(studentId) &&
+        exists(studentPath(studentId)) &&
+        get(studentPath(studentId)).data.get("mustChangePassword", false) != true;
+    }
+
+    // 신청서에 적는 이름·학과가 학생명단과 같은지 — 다른 사람 이름으로 신청서를 꾸미지 못하게 한다.
+    function matchesStudent(data) {
+      return data.studentName == get(studentPath(data.studentId)).data.name;
+    }
+
+    function matchesStudentWithDept(data) {
+      return matchesStudent(data) &&
+        data.department == get(studentPath(data.studentId)).data.department;
+    }
+
+    // 업로드한 파일 URL이 이 프로젝트 Storage의 본인 경로({folder}/{학번}/...)를 가리키는지.
+    // 임의 문자열을 받으면 관리자 화면의 "증빙 보기" 링크로 외부(피싱) 주소를 심을 수 있었다.
+    function isOwnStorageUrl(url, folder, studentId) {
+      return url is string && url.matches(
+        "^https://firebasestorage[.]googleapis[.]com/v0/b/aura-d2e32[.]firebasestorage[.]app/o/" +
+        folder + "%2F" + studentId + "%2F[^?#]+[?]alt=media&token=[0-9a-f-]+$"
+      );
+    }
+
     // 현재 학기 및 마일리지 신청 기간의 단일 진실 공급원. semesters 컬렉션에서
     // 관리자가 "현재 학기"로 지정할 때마다 이 문서도 함께 갱신된다 — 마일리지
     // 신청 마감을 클라이언트가 보낸 값이 아니라 항상 서버에 저장된 이 값으로
@@ -32,11 +64,12 @@ service cloud.firestore {
       allow list, write: if false;
     }
 
-    // 학생명단: 이름+학번 본인확인(단건 조회, get)은 로그인 없이 가능해야
-    // 하지만, 컬렉션 전체를 훑는 목록 조회(list)까지 열어두면 전화번호를
-    // 포함한 전체 명단이 그대로 유출된다 — list는 관리자만 허용한다.
+    // 학생명단: 본인(로그인 후 세션 확인용)과 관리자만 읽는다. 예전에는 단건 조회(get)를
+    // 로그인 없이 열어둬서 학번을 대입하면 이름·학과·전화번호와 초기 비밀번호 사용 여부
+    // (mustChangePassword)까지 누구나 알아낼 수 있었다. 로그인 전 확인이 필요한 화면은
+    // 모두 Cloud Function(registerStudent·checkPrivacyConsent 등)을 거친다.
     match /students/{studentId} {
-      allow get: if true;
+      allow get: if isSelf(studentId) || isAdmin();
       allow list: if isAdmin();
       allow write: if isAdmin();
     }
@@ -123,7 +156,7 @@ service cloud.firestore {
     // false — saveBankAccount Cloud Function(Admin SDK)을 통해서만 기록되게 강제해
     // 암호화 키가 클라이언트 코드에 노출되지 않게 한다.
     match /bankAccounts/{studentId} {
-      allow read: if isSelf(studentId) || isAdmin();
+      allow read: if isActiveSelf(studentId) || isAdmin();
       allow write: if false;
     }
 
@@ -131,7 +164,7 @@ service cloud.firestore {
     // Cloud Function이 암호화해 저장한다(phoneEnc). 마스킹된 표시값(phoneMasked)만
     // 평문이라 본인·관리자로만 read를 제한하고, 쓰기는 항상 false.
     match /studentContacts/{studentId} {
-      allow read: if isSelf(studentId) || isAdmin();
+      allow read: if isActiveSelf(studentId) || isAdmin();
       allow write: if false;
     }
 
@@ -159,6 +192,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // 로그인 없이 부르는 Cloud Function의 IP별 호출 횟수 기록: Cloud Functions만 접근한다.
+    match /rateLimits/{id} {
+      allow read, write: if false;
+    }
+
     // 학기 목록(학기별 관리·필터용)과 "현재 학기" 상태 — 둘 다 공개 읽기,
     // 관리자만 쓰기.
     match /semesters/{id} {
@@ -171,13 +209,23 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // 방문 통계 문서 ID("YYYY-MM-DD")가 오늘 날짜인지 — 시간대 차이를 감안해 서버 시각
+    // 기준 앞뒤 하루까지 허용한다. 예전에는 아무 문자열 ID로나 문서를 만들 수 있었다.
+    function isAroundToday(date) {
+      return date.matches("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") &&
+        request.time > timestamp.date(int(date[0:4]), int(date[5:7]), int(date[8:10])) - duration.value(2, "d") &&
+        request.time < timestamp.date(int(date[0:4]), int(date[5:7]), int(date[8:10])) + duration.value(2, "d");
+    }
+
     // 방문자 통계: 누구나 오늘 카운트를 정확히 1씩만 늘릴 수 있고, 그 외
     // 필드는 손댈 수 없다. 집계된 히스토리 조회는 관리자만 가능.
     match /visitStats/{date} {
       allow get, list: if isAdmin();
-      allow create: if request.resource.data.count == 1
+      allow create: if isAroundToday(date)
+                    && request.resource.data.count == 1
                     && request.resource.data.keys().hasOnly(["count", "updatedAt"]);
-      allow update: if request.resource.data.count == resource.data.count + 1
+      allow update: if isAroundToday(date)
+                    && request.resource.data.count == resource.data.count + 1
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["count", "updatedAt"]);
       allow delete: if false;
     }
@@ -191,12 +239,17 @@ service cloud.firestore {
       // 쿼리한다) — 관리자는 심사를 위해 전체 조회 가능. 예전에는 컬렉션
       // 전체를 누구나 읽을 수 있어(read: if true) 로그인 없이도 전체 학생의
       // 이름·활동명·마일리지가 그대로 노출됐다.
-      allow read: if isSelf(resource.data.studentId) || isAdmin();
+      allow read: if isActiveSelf(resource.data.studentId) || isAdmin();
 
       allow create: if
         (
           (
-            isSelf(request.resource.data.studentId) &&
+            isActiveSelf(request.resource.data.studentId) &&
+            matchesStudent(request.resource.data) &&
+            (
+              request.resource.data.get("evidenceFileUrl", "") == "" ||
+              isOwnStorageUrl(request.resource.data.evidenceFileUrl, "evidence", request.resource.data.studentId)
+            ) &&
             request.resource.data.status == "검토중" &&
             request.resource.data.source == "self" &&
             request.resource.data.mileage <= 50 &&
@@ -236,10 +289,11 @@ service cloud.firestore {
       // mileageApplications와 동일한 이유로 본인·관리자만 조회 가능. 이 문서에는
       // 성적증명서 다운로드 URL(transcriptFileUrl)까지 들어있어, 예전처럼 공개
       // 읽기를 열어두면 전체 학생의 성적증명서가 그대로 유출될 수 있었다.
-      allow read: if isSelf(resource.data.studentId) || isAdmin();
+      allow read: if isActiveSelf(resource.data.studentId) || isAdmin();
 
       allow create: if
-        isSelf(request.resource.data.studentId) &&
+        isActiveSelf(request.resource.data.studentId) &&
+        matchesStudentWithDept(request.resource.data) &&
         request.resource.data.status == "검토중" &&
         request.resource.data.studentId is string &&
         request.resource.data.studentName is string &&
@@ -251,9 +305,7 @@ service cloud.firestore {
         request.resource.data.immersive is map &&
         request.resource.data.nonCurricularProgram is string &&
         request.resource.data.nonCurricularYearMonth is string &&
-        request.resource.data.transcriptFileUrl is string &&
-        request.resource.data.transcriptFileUrl.size() > 0 &&
-        exists(/databases/$(database)/documents/students/$(request.resource.data.studentId));
+        isOwnStorageUrl(request.resource.data.transcriptFileUrl, "evidence", request.resource.data.studentId);
 
       allow update: if isAdmin() &&
         request.resource.data.diff(resource.data).affectedKeys()
@@ -269,10 +321,11 @@ service cloud.firestore {
     match /eligibilityChecks/{id} {
       // advancedApplications와 동일하게 성적증명서 URL을 포함하므로 본인·관리자만
       // 조회 가능하게 제한한다.
-      allow read: if isSelf(resource.data.studentId) || isAdmin();
+      allow read: if isActiveSelf(resource.data.studentId) || isAdmin();
 
       allow create: if
-        isSelf(request.resource.data.studentId) &&
+        isActiveSelf(request.resource.data.studentId) &&
+        matchesStudentWithDept(request.resource.data) &&
         request.resource.data.status == "검토중" &&
         request.resource.data.studentId is string &&
         request.resource.data.studentName is string &&
@@ -285,8 +338,7 @@ service cloud.firestore {
         request.resource.data.nonCurricularPlanned is bool &&
         request.resource.data.nonCurricularProgram is string &&
         request.resource.data.nonCurricularYearMonth is string &&
-        request.resource.data.transcriptFileUrl is string &&
-        request.resource.data.transcriptFileUrl.size() > 0 &&
+        isOwnStorageUrl(request.resource.data.transcriptFileUrl, "evidence", request.resource.data.studentId) &&
         // 세부 항목 판정은 항상 "검토중"에서 시작해야 한다 — 신청자가 직접
         // 충족 상태로 만들어서 제출하는 걸 막는다.
         request.resource.data.criteria == {
@@ -317,7 +369,7 @@ service cloud.firestore {
     // 참여학과 학생의 트랙별 이수 과목 체크 현황 — 신청서 제출과 무관하게
     // 관리자가 수기로 이수 여부·이수 학기를 기록한다. 본인은 읽기만 가능.
     match /trackCompletions/{studentId} {
-      allow read: if isSelf(studentId) || isAdmin();
+      allow read: if isActiveSelf(studentId) || isAdmin();
       allow write: if isAdmin();
     }
 
@@ -331,8 +383,8 @@ service cloud.firestore {
     // 학생이 이수 과목 체크 화면을 확인한 마지막 버전 — 민감정보가 없어 본인이
     // 직접 쓸 수 있다(버전 숫자만, 다른 학생 문서는 못 건드림).
     match /trackCompletionAcks/{studentId} {
-      allow read: if isSelf(studentId) || isAdmin();
-      allow create, update: if isSelf(studentId) &&
+      allow read: if isActiveSelf(studentId) || isAdmin();
+      allow create, update: if isActiveSelf(studentId) &&
         request.resource.data.studentId == studentId &&
         request.resource.data.seenVersion is number &&
         request.resource.data.updatedAt is number &&
@@ -381,7 +433,7 @@ service cloud.firestore {
         allow read: if true;
         allow create, delete: if isAdmin();
         allow update: if isAdmin() || (
-          isSignedIn() &&
+          isActiveSelf(myStudentId()) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(["count"]) &&
           (
             (
@@ -408,10 +460,15 @@ service cloud.firestore {
     // 신청이 불가능하다. 본인만 신청기간 안에 "신청" 상태로 생성할 수 있고, 반드시 회차
     // 카운터 +1과 함께(트랜잭션) 일어나야 한다. 취소(삭제)도 "신청" 상태·신청기간 안에서만.
     match /programApplications/{appId} {
-      allow read: if isSelf(resource.data.studentId) || isAdmin();
+      allow read: if isActiveSelf(resource.data.studentId) || isAdmin();
 
       allow create: if
-        isSelf(request.resource.data.studentId) &&
+        isActiveSelf(request.resource.data.studentId) &&
+        matchesStudentWithDept(request.resource.data) &&
+        (
+          request.resource.data.applicationFileUrl == "" ||
+          isOwnStorageUrl(request.resource.data.applicationFileUrl, "programApplications", request.resource.data.studentId)
+        ) &&
         appId == request.resource.data.programId + "_" + request.resource.data.sessionId + "_" + request.resource.data.studentId &&
         request.resource.data.status == "신청" &&
         request.resource.data.privacyAgreed == true &&
@@ -435,7 +492,7 @@ service cloud.firestore {
           .hasOnly(["status", "note", "processedAt", "mileageGranted", "mileageGrantedAt"]);
 
       allow delete: if isAdmin() || (
-        isSelf(resource.data.studentId) &&
+        isActiveSelf(resource.data.studentId) &&
         resource.data.status == "신청" &&
         programSessionOpen(resource.data.programId, resource.data.sessionId) &&
         getAfter(programCounterPath(resource.data.programId, resource.data.sessionId)).data.count ==

@@ -29,7 +29,6 @@ export interface UpdateStudentInput {
   name: string;
   department: string;
   isParticipating: boolean;
-  phone?: string;
   isTestAccount?: boolean;
 }
 
@@ -43,7 +42,7 @@ export async function upsertStudent(studentId: string, input: UpdateStudentInput
       name: input.name.trim(),
       department: input.department.trim(),
       isParticipating: input.isParticipating,
-      phone: input.phone ?? "",
+      // 휴대전화번호는 평문으로 두지 않는다 — 학생이 등록한 번호는 studentContacts에 암호화돼 있다.
       isTestAccount: input.isTestAccount ?? false,
     },
     { merge: true }

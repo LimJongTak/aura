@@ -11,7 +11,7 @@
 
 ### 학생
 
-- **학번 로그인** — `{학번}@s.scnu.ac.kr` 계정으로 로그인. 최초 비밀번호(000000)로 로그인하면
+- **학번 로그인** — `{학번}@s.scnu.ac.kr` 계정으로 로그인. 최초 비밀번호(00000000, 0 여덟 개)로 로그인하면
   학교 이메일로 받은 인증번호로 본인 확인 후 새 비밀번호(8자 이상)로 강제 변경
 - **마일리지 안내** — AURA 마일리지 제도 소개, 점수표, 신청 방법, 유의사항 안내
 - **마일리지 조회** — 로그인한 본인의 누적 승인 마일리지, 신청 내역, 중고급 이수요건 확인·신청
@@ -94,7 +94,9 @@
   무관하게 계속 열람 가능한 Firebase Storage의 특성이 있으니, 민감 파일 URL을 별도 채널로
   공유하지 않도록 주의하세요.
 - 비밀번호 변경은 학교 이메일로 발송한 6자리 인증번호(10분 유효, 5회 시도 제한)로 본인 확인 후
-  진행되며, 새 비밀번호는 8자 이상이어야 하고 초기 비밀번호(000000)는 재사용할 수 없습니다.
+  진행되며, 새 비밀번호는 8자 이상이어야 하고 초기 비밀번호(00000000)는 재사용할 수 없습니다. Firebase
+  Authentication 비밀번호 정책(8~64자)도 켜져 있습니다 — 이 정책은 관리자 SDK의 계정 생성에도
+  적용되므로 초기 비밀번호를 8자 미만으로 바꾸면 학생 등록이 실패합니다.
 - **장학금 수령 계좌번호는 Firestore에 평문으로 저장되지 않습니다.** `saveBankAccount` Cloud
   Function이 AES-256-GCM으로 암호화한 값(`accountNumberEnc`)만 저장하고, 클라이언트에는 표시용
   마지막 4자리(`accountNumberLast4`)만 내려줍니다. 암호화 키(`BANK_ACCOUNT_ENC_KEY`)는 Secret
@@ -103,8 +105,21 @@
   지급 관리에서 엑셀을 내보낼 때 `exportBankAccountsForPayment` Cloud Function 안에서만
   일어나고, 호출할 때마다 관리자 UID·대상 학번·건수를 `bankAccountExportLogs`에 감사 기록으로
   남깁니다.
-- Resend API 키, 계좌번호 암호화 키는 코드에 넣지 않고 Cloud Functions 시크릿(`RESEND_API_KEY`,
-  `BANK_ACCOUNT_ENC_KEY`)으로 관리합니다.
+- 휴대전화번호도 같은 방식으로 `studentContacts`에 암호문(`phoneEnc`)과 마스킹 값만 저장하되,
+  계좌번호와 **다른 키**(`PHONE_ENC_KEY`)를 씁니다 — 한 키가 새어도 다른 정보는 풀리지 않습니다.
+- **초기 비밀번호(00000000)를 바꾸기 전 계정은 아무것도 할 수 없습니다.** 초기 비밀번호는 모두가
+  아는 값이라, Firestore·Storage 규칙(`isActiveSelf`)과 Cloud Functions(`requireActiveStudent`)가
+  `mustChangePassword: true`인 계정의 본인 데이터 읽기·신청·파일 업로드·계좌/전화번호 등록을
+  모두 막습니다. 비밀번호 변경은 학교 메일 인증번호가 있어야 하므로, 남이 학번+00000000으로
+  로그인해도 할 수 있는 일이 없습니다.
+- `students` 문서는 본인·관리자만 읽을 수 있고, 로그인 전 확인이 필요한 화면은 Cloud Function을
+  거칩니다. 로그인 없이 부르는 함수(`registerStudent`·`checkPrivacyConsent`·
+  `hasPendingStudentRegistration`·`requestPasswordResetCode`)는 IP별 호출 횟수를 제한합니다
+  (`rateLimits` 컬렉션, IP는 해시로만 저장).
+- Firebase Authentication의 클라이언트 회원가입은 꺼져 있습니다(학생 계정은 `registerStudent`
+  함수와 관리자만 만든다). 다시 켜면 아무나 `{남의 학번}@s.scnu.ac.kr`로 가입할 수 있으니 켜지 마세요.
+- Resend API 키, 계좌번호·전화번호 암호화 키는 코드에 넣지 않고 Cloud Functions 시크릿
+  (`RESEND_API_KEY`, `BANK_ACCOUNT_ENC_KEY`, `PHONE_ENC_KEY`)으로 관리합니다.
 - `serviceAccountKey.json`, `.env*`는 `.gitignore`에 포함되어 있으며 커밋되어서는 안 됩니다.
 
 ## 시작하기
@@ -149,7 +164,7 @@ seed-advanced-tracks` 등) 일회성 마이그레이션을 수행하는 스크�
 npm run create-student-accounts
 ```
 
-`students` 컬렉션의 모든 학생에게 `{학번}@s.scnu.ac.kr` / 초기 비밀번호(000000) 계정을
+`students` 컬렉션의 모든 학생에게 `{학번}@s.scnu.ac.kr` / 초기 비밀번호(00000000) 계정을
 만들고 `mustChangePassword: true`를 설정합니다. 이미 계정이 있는 학번은 건너뛰므로 여러 번
 실행해도 안전합니다.
 
@@ -168,11 +183,14 @@ npx firebase deploy --only firestore:rules,firestore:indexes,storage
 firebase functions:secrets:set RESEND_API_KEY          # 최초 1회
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" \
   | firebase functions:secrets:set BANK_ACCOUNT_ENC_KEY --data-file -  # 최초 1회 — 계좌번호 암호화 키
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" \
+  | firebase functions:secrets:set PHONE_ENC_KEY --data-file -  # 최초 1회 — 휴대전화번호 암호화 키
 firebase deploy --only functions
 ```
 
-> `BANK_ACCOUNT_ENC_KEY`를 다시 생성(회전)하면 그 전에 암호화되어 저장된 계좌번호는 새 키로
-> 복호화할 수 없게 됩니다 — 이미 등록된 계좌가 있다면 키를 함부로 바꾸지 마세요.
+> `BANK_ACCOUNT_ENC_KEY`·`PHONE_ENC_KEY`를 다시 생성(회전)하면 그 전에 암호화되어 저장된 값은 새
+> 키로 복호화할 수 없게 됩니다 — 이미 등록된 값이 있다면 키를 함부로 바꾸지 마세요. 전화번호를
+> 계좌번호 키에서 전화번호 키로 옮길 때는 `scripts/migrate-phone-encryption-key.mjs`를 씁니다.
 
 Windows에서 `TypeError: fetch failed`로 배포가 중간에 실패하면, Node의 IPv6/IPv4 루프백 주소
 해석 문제로 알려진 firebase-tools 이슈입니다. IPv4 우선으로 강제하고 재시도하세요.

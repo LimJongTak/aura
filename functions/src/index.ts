@@ -12,7 +12,13 @@ const RESEND_API_KEY = defineSecret("RESEND_API_KEY");
 // 학생 계좌번호를 암호화하는 대칭키(base64, 32바이트). 클라이언트에는 절대 전달되지
 // 않고 Cloud Functions 런타임에만 주입된다 — 생성/등록 방법은 README 참고.
 const BANK_ACCOUNT_ENC_KEY = defineSecret("BANK_ACCOUNT_ENC_KEY");
+// 학생 휴대전화번호 전용 대칭키(base64, 32바이트). 예전에는 계좌번호 키를 함께 써서 한 키가
+// 새면 두 정보가 함께 풀렸다 — 키를 분리해 피해 범위를 나눈다.
+const PHONE_ENC_KEY = defineSecret("PHONE_ENC_KEY");
 const STUDENT_EMAIL_DOMAIN = "s.scnu.ac.kr";
+// 새 학생 계정의 초기 비밀번호 — src/components/auth/PasswordUi.tsx의 INITIAL_PASSWORD와 같게 유지한다.
+// Firebase Auth 비밀번호 정책(8자 이상)이 관리자 SDK 계정 생성에도 적용되므로 8자리여야 한다.
+const INITIAL_PASSWORD = "00000000";
 const CODE_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 5;
 const MAX_EXPORT_BATCH = 1000;
@@ -51,6 +57,50 @@ function requireStudentAuth(authEmail: string | undefined): string {
   return studentIdFromEmail(authEmail);
 }
 
+/** 학생 본인이면서 초기 비밀번호를 이미 바꾼 계정인지 확인한다. 초기 비밀번호는
+ *  모두가 아는 값이라, 바꾸기 전 계정으로는 계좌·전화번호 같은 개인정보를 다루지 못하게 한다. */
+async function requireActiveStudent(authEmail: string | undefined): Promise<string> {
+  const studentId = requireStudentAuth(authEmail);
+  const snap = await admin.firestore().collection("students").doc(studentId).get();
+  if (!snap.exists || snap.data()?.mustChangePassword === true) {
+    throw new HttpsError("failed-precondition", "초기 비밀번호를 먼저 변경해주세요.");
+  }
+  return studentId;
+}
+
+/** 로그인 없이 부르는 함수의 남용(대량 등록·이름 대조 등)을 막기 위한 IP별 호출 횟수 제한.
+ *  IP는 해시로만 저장한다. 학교 와이파이처럼 여러 학생이 한 IP를 쓰는 경우를 고려해 넉넉히 잡는다. */
+async function enforceRateLimit(
+  request: { rawRequest?: { ip?: string; headers?: Record<string, unknown> } },
+  name: string,
+  limit: number,
+  windowSeconds: number
+): Promise<void> {
+  const forwarded = String(request.rawRequest?.headers?.["x-forwarded-for"] ?? "").split(",")[0].trim();
+  const ip = request.rawRequest?.ip || forwarded || "unknown";
+  const ref = admin
+    .firestore()
+    .collection("rateLimits")
+    .doc(`${name}_${crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32)}`);
+  const now = Date.now();
+  const allowed = await admin.firestore().runTransaction(async (tx) => {
+    const data = (await tx.get(ref)).data();
+    const windowStart = (data?.windowStart as number | undefined) ?? 0;
+    const inWindow = now - windowStart < windowSeconds * 1000;
+    const count = inWindow ? ((data?.count as number | undefined) ?? 0) : 0;
+    if (count >= limit) return false;
+    tx.set(ref, {
+      windowStart: inWindow ? windowStart : now,
+      count: count + 1,
+      expiresAt: admin.firestore.Timestamp.fromMillis(now + windowSeconds * 1000),
+    });
+    return true;
+  });
+  if (!allowed) {
+    throw new HttpsError("resource-exhausted", "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+  }
+}
+
 async function requireAdminAuth(uid: string | undefined): Promise<void> {
   if (!uid) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
   const doc = await admin.firestore().collection("admins").doc(uid).get();
@@ -61,14 +111,35 @@ async function requireAdminAuth(uid: string | undefined): Promise<void> {
 export const requestPasswordChangeCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
   const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
 
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const expiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
+  // 비밀번호 찾기와 같은 방식: 안전한 난수로 만들고 해시로만 저장하며, 재발송 간격·시간당 횟수를 제한한다.
+  const code = String(crypto.randomInt(100000, 1000000));
+  const ref = admin.firestore().collection("passwordResets").doc(studentId);
+  const now = Date.now();
 
-  await admin.firestore().collection("passwordResets").doc(studentId).set({
-    code,
-    expiresAt,
-    attempts: 0,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  await admin.firestore().runTransaction(async (tx) => {
+    const prev = (await tx.get(ref)).data();
+    const lastSentAt = (prev?.lastSentAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
+    const windowStart = (prev?.windowStart as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
+    const inWindow = now - windowStart < 60 * 60 * 1000;
+    const sendCount = inWindow ? ((prev?.sendCount as number | undefined) ?? 0) : 0;
+
+    const waitSeconds = Math.ceil((lastSentAt + RESET_RESEND_COOLDOWN_SECONDS * 1000 - now) / 1000);
+    if (waitSeconds > 0) {
+      throw new HttpsError("resource-exhausted", `${waitSeconds}초 후에 다시 요청해주세요.`);
+    }
+    if (sendCount >= RESET_MAX_SENDS_PER_HOUR) {
+      throw new HttpsError("resource-exhausted", "인증번호 요청 횟수를 초과했습니다. 1시간 후에 다시 시도해주세요.");
+    }
+
+    tx.set(ref, {
+      codeHash: sha256(code),
+      expiresAt: admin.firestore.Timestamp.fromMillis(now + CODE_TTL_MINUTES * 60 * 1000),
+      attempts: 0,
+      lastSentAt: admin.firestore.Timestamp.fromMillis(now),
+      windowStart: admin.firestore.Timestamp.fromMillis(inWindow ? windowStart : now),
+      sendCount: sendCount + 1,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
   });
 
   const resend = new Resend(RESEND_API_KEY.value());
@@ -96,14 +167,17 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
   const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
   const { code, newPassword } = request.data as { code?: string; newPassword?: string };
 
-  if (!code || typeof code !== "string") {
+  if (!code || typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
     throw new HttpsError("invalid-argument", "인증번호를 입력해주세요.");
   }
-  if (!newPassword || newPassword.length < 8) {
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
     throw new HttpsError("invalid-argument", "비밀번호는 8자 이상이어야 합니다.");
   }
-  if (newPassword === "000000") {
-    throw new HttpsError("invalid-argument", "초기 비밀번호(000000)는 새 비밀번호로 쓸 수 없습니다.");
+  if (newPassword.length > 64) {
+    throw new HttpsError("invalid-argument", "비밀번호는 64자 이하여야 합니다.");
+  }
+  if (newPassword === INITIAL_PASSWORD) {
+    throw new HttpsError("invalid-argument", `초기 비밀번호(${INITIAL_PASSWORD})는 새 비밀번호로 쓸 수 없습니다.`);
   }
 
   const ref = admin.firestore().collection("passwordResets").doc(studentId);
@@ -112,6 +186,9 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
   }
   const data = snap.data()!;
+  if (!data.codeHash) {
+    throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
+  }
 
   if (data.attempts >= MAX_ATTEMPTS) {
     throw new HttpsError("resource-exhausted", "시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.");
@@ -119,7 +196,7 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
   if ((data.expiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) {
     throw new HttpsError("deadline-exceeded", "인증번호가 만료되었습니다. 다시 요청해주세요.");
   }
-  if (data.code !== code) {
+  if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) {
     await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
     throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
   }
@@ -127,7 +204,8 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
   const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
   await admin.auth().updateUser(userRecord.uid, { password: newPassword });
   await admin.firestore().collection("students").doc(studentId).set({ mustChangePassword: false }, { merge: true });
-  await ref.delete();
+  // 인증번호만 지우고 재발송 제한 기록(lastSentAt·sendCount)은 남긴다.
+  await ref.update({ codeHash: null, expiresAt: null });
 
   return { success: true };
 });
@@ -164,6 +242,8 @@ function parseStudentId(raw: unknown): string {
 /** 비밀번호 찾기 1단계: 학번으로 계정을 확인하고 학교 메일로 인증번호를 보낸다. */
 export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
   const studentId = parseStudentId((request.data as { studentId?: unknown })?.studentId);
+  // 학번별 재발송 제한과 별개로, 한 IP가 여러 학번에 메일을 뿌리지 못하게 막는다.
+  await enforceRateLimit(request, "requestPasswordResetCode", 20, 10 * 60);
   const email = toStudentEmail(studentId);
 
   try {
@@ -288,8 +368,8 @@ export const resetPasswordWithToken = onCall(async (request) => {
   if (newPassword.length > 64) {
     throw new HttpsError("invalid-argument", "비밀번호는 64자 이하여야 합니다.");
   }
-  if (newPassword === "000000") {
-    throw new HttpsError("invalid-argument", "초기 비밀번호(000000)는 새 비밀번호로 쓸 수 없습니다.");
+  if (newPassword === INITIAL_PASSWORD) {
+    throw new HttpsError("invalid-argument", `초기 비밀번호(${INITIAL_PASSWORD})는 새 비밀번호로 쓸 수 없습니다.`);
   }
 
   const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
@@ -315,7 +395,7 @@ export const resetPasswordWithToken = onCall(async (request) => {
   return { success: true };
 });
 
-/** 관리자가 학생 등록 신청을 승인하면 Firebase Auth 계정(초기 비밀번호 0000)과
+/** 관리자가 학생 등록 신청을 승인하면 Firebase Auth 계정(초기 비밀번호 INITIAL_PASSWORD)과
  * Firestore 학생 문서를 함께 생성한다. */
 export const approveStudentRegistration = onCall(async (request) => {
   await requireAdminAuth(request.auth?.uid);
@@ -329,7 +409,7 @@ export const approveStudentRegistration = onCall(async (request) => {
 
   const email = toStudentEmail(reg.studentId);
   try {
-    await admin.auth().createUser({ email, password: "000000", displayName: reg.name });
+    await admin.auth().createUser({ email, password: INITIAL_PASSWORD, displayName: reg.name });
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code !== "auth/email-already-exists") throw err;
@@ -352,7 +432,7 @@ export const approveStudentRegistration = onCall(async (request) => {
 const PARTICIPATING_DEPARTMENTS = ["인공지능공학전공", "전기공학전공", "전자공학전공"];
 
 /** 학생 등록 신청 — 관리자 승인 없이 바로 학번@s.scnu.ac.kr 계정(초기 비밀번호
- * 000000)과 students 문서를 만든다. 이미 있는 학번이면 아무것도 바꾸지 않고
+ * INITIAL_PASSWORD)과 students 문서를 만든다. 이미 있는 학번이면 아무것도 바꾸지 않고
  * 이름 일치 여부만 알려준다(기존 회원 안내용). 기존 이름 등 원본 데이터는 돌려주지 않는다.
  * 모든 시도는 studentRegistrationLogs에 결과와 함께 남겨 관리자 화면에서 볼 수 있다. */
 export const registerStudent = onCall(async (request) => {
@@ -367,6 +447,9 @@ export const registerStudent = onCall(async (request) => {
   if (!/^\d{6,10}$/.test(id)) throw new HttpsError("invalid-argument", "학번은 숫자 6~10자리로 입력해주세요.");
   if (!trimmedName || trimmedName.length > 30) throw new HttpsError("invalid-argument", "이름을 올바르게 입력해주세요.");
   if (!trimmedDept || trimmedDept.length > 50) throw new HttpsError("invalid-argument", "학과를 올바르게 입력해주세요.");
+  // 로그인 없이 계정을 만드는 함수라 대량 등록(학번 선점)을 막는다. 남이 먼저 등록해도 초기
+  // 비밀번호 상태에서는 아무것도 할 수 없고, 비밀번호 변경은 학교 메일 인증이 있어야 한다.
+  await enforceRateLimit(request, "registerStudent", 30, 10 * 60);
 
   const db = admin.firestore();
   const studentRef = db.collection("students").doc(id);
@@ -414,7 +497,7 @@ export const registerStudent = onCall(async (request) => {
     }
 
     try {
-      await admin.auth().createUser({ email: toStudentEmail(id), password: "000000", displayName: trimmedName });
+      await admin.auth().createUser({ email: toStudentEmail(id), password: INITIAL_PASSWORD, displayName: trimmedName });
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code !== "auth/email-already-exists") {
@@ -455,7 +538,7 @@ export const deleteStudent = onCall(async (request) => {
  * (Firestore에는 암호문과 마지막 4자리만 저장), 이후 이 값이 평문으로 다시
  * 클라이언트에 내려가는 일은 없다 — 바꾸려면 처음부터 다시 입력해야 한다. */
 export const saveBankAccount = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
-  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const studentId = await requireActiveStudent(request.auth?.token.email as string | undefined);
   const { bankName, accountHolder, accountNumber } = request.data as {
     bankName?: string;
     accountHolder?: string;
@@ -555,12 +638,22 @@ function maskPhone(digits: string): string {
   return `${digits.slice(0, 3)}-****-${digits.slice(-4)}`;
 }
 
+/** 전화번호 암호문을 복호화한다. 키 분리 전(계좌번호 키로 암호화된) 값이 남아 있으면 예전 키로
+ *  한 번 더 시도한다 — scripts/migrate-phone-encryption-key.mjs로 모두 다시 암호화한 뒤에도
+ *  배포 사이에 예전 함수가 쓴 값이 있을 수 있어 남겨둔다. */
+function decryptPhone(payload: string): string {
+  try {
+    return decryptSecret(payload, PHONE_ENC_KEY.value());
+  } catch {
+    return decryptSecret(payload, BANK_ACCOUNT_ENC_KEY.value());
+  }
+}
+
 /** 학생이 마이페이지에서 휴대전화번호를 등록/수정한다. 계좌번호와 같은 방식으로
- * 여기서만 암호화되고(키도 BANK_ACCOUNT_ENC_KEY를 함께 쓴다), Firestore에는
- * 암호문과 마스킹된 표시값만 저장된다. students 문서는 로그인 없이 단건 조회가
- * 가능하므로(get: if true) 전화번호를 거기에 두지 않고 studentContacts에 분리한다. */
-export const savePhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
-  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+ * 여기서만 암호화되고(전화번호 전용 키 PHONE_ENC_KEY), Firestore에는 암호문과
+ * 마스킹된 표시값만 저장된다. 전화번호는 students 문서가 아니라 studentContacts에 분리한다. */
+export const savePhoneNumber = onCall({ secrets: [PHONE_ENC_KEY] }, async (request) => {
+  const studentId = await requireActiveStudent(request.auth?.token.email as string | undefined);
   const { phone } = request.data as { phone?: string };
   const digitsOnly = (phone ?? "").replace(/[^0-9]/g, "");
 
@@ -576,7 +669,7 @@ export const savePhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async
     .set({
       studentId,
       phoneMasked,
-      phoneEnc: encryptSecret(digitsOnly, BANK_ACCOUNT_ENC_KEY.value()),
+      phoneEnc: encryptSecret(digitsOnly, PHONE_ENC_KEY.value()),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -585,11 +678,11 @@ export const savePhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async
 
 /** 로그인한 학생 본인의 휴대전화번호를 복호화해 돌려준다 — 프로그램 신청 창의 연락처
  * 자동 입력용. 학번은 요청 값이 아니라 로그인 토큰에서만 꺼내므로 남의 번호는 조회할 수 없다. */
-export const getMyPhoneNumber = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
-  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+export const getMyPhoneNumber = onCall({ secrets: [PHONE_ENC_KEY, BANK_ACCOUNT_ENC_KEY] }, async (request) => {
+  const studentId = await requireActiveStudent(request.auth?.token.email as string | undefined);
   const snap = await admin.firestore().collection("studentContacts").doc(studentId).get();
   if (!snap.exists) return { phone: null };
-  return { phone: decryptSecret(snap.data()!.phoneEnc, BANK_ACCOUNT_ENC_KEY.value()) };
+  return { phone: decryptPhone(snap.data()!.phoneEnc) };
 });
 
 /** 학생 관리 화면에서 "전화번호 등록 여부"만 표시하기 위한 조회 — 문서 ID만 내려간다. */
@@ -604,7 +697,7 @@ type StudentPrivateField = "phone" | "bank";
 /** 관리자가 학생 관리에서 학생정보 엑셀을 내려받을 때, 개인정보 항목(휴대전화번호·
  * 계좌정보)을 고른 경우에만 그 순간 서버에서 복호화해 반환한다. 어떤 항목을 어떤
  * 학번들에 대해 조회했는지 studentInfoExportLogs에 감사 기록을 남긴다. */
-export const exportStudentPrivateInfo = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
+export const exportStudentPrivateInfo = onCall({ secrets: [PHONE_ENC_KEY, BANK_ACCOUNT_ENC_KEY] }, async (request) => {
   await requireAdminAuth(request.auth?.uid);
   const { studentIds, fields } = request.data as { studentIds?: string[]; fields?: StudentPrivateField[] };
 
@@ -634,7 +727,7 @@ export const exportStudentPrivateInfo = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY]
     const snaps = await db.getAll(...studentIds.map((id) => db.collection("studentContacts").doc(id)));
     for (const snap of snaps) {
       if (!snap.exists) continue;
-      phones[snap.id] = decryptSecret(snap.data()!.phoneEnc, key);
+      phones[snap.id] = decryptPhone(snap.data()!.phoneEnc);
     }
   }
   if (fields.includes("bank")) {
@@ -675,6 +768,7 @@ export const hasPendingStudentRegistration = onCall(async (request) => {
   if (!studentId || typeof studentId !== "string" || !studentId.trim()) {
     throw new HttpsError("invalid-argument", "studentId가 필요합니다.");
   }
+  await enforceRateLimit(request, "hasPendingStudentRegistration", 60, 10 * 60);
   const snap = await admin
     .firestore()
     .collection("studentRegistrationRequests")
@@ -700,6 +794,8 @@ export const checkPrivacyConsent = onCall(async (request) => {
   if (!name || typeof name !== "string" || !name.trim()) {
     throw new HttpsError("invalid-argument", "이름이 필요합니다.");
   }
+  // 학번+이름이 맞는지 확인하는 데 쓰일 수 있어 대입 시도를 막는다.
+  await enforceRateLimit(request, "checkPrivacyConsent", 30, 10 * 60);
 
   const snap = await admin.firestore().collection("privacyConsents").doc(studentId.trim()).get();
   const data = snap.data();

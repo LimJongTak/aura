@@ -12,6 +12,24 @@ service firebase.storage {
         request.auth.token.email == studentId + "@s.scnu.ac.kr";
     }
 
+    // firestore.rules의 isActiveSelf와 같다 — 초기 비밀번호(00000000)를 바꾸기 전 계정은
+    // 누구나 로그인할 수 있으므로 본인 파일 업로드·열람을 막는다.
+    function isActiveSelf(studentId) {
+      return isSelf(studentId) &&
+        firestore.exists(/databases/(default)/documents/students/$(studentId)) &&
+        firestore.get(/databases/(default)/documents/students/$(studentId)).data.get("mustChangePassword", false) != true;
+    }
+
+    // 브라우저가 이 사이트와 같은 문서처럼 실행할 수 있는 형식(HTML·SVG·XML·스크립트).
+    // 신청서·첨부 파일로 받을 이유가 없고, 링크를 연 사람에게 피싱 페이지를 띄우는 데 쓰일 수 있다.
+    function isActiveContent(contentType) {
+      // 워드·엑셀(application/vnd.openxmlformats-...)은 "xml"을 포함하므로 형식 이름 전체로 비교한다.
+      return contentType.lower().matches(
+        "^(text/html|application/xhtml[+]xml|image/svg[+]xml|text/xml|application/xml|" +
+        "text/javascript|application/javascript|application/x-javascript|text/ecmascript|application/ecmascript)( *;.*)?$"
+      );
+    }
+
     // 증빙서류/성적증명서: 예전에는 로그인 없이 아무나 임의의 studentId 경로에
     // 업로드·열람할 수 있었다(read/write 모두 if true) — 이러면 제3자가 다른
     // 학생 이름으로 파일을 끼워 넣거나(스팸/저장소 남용), 경로만 알면 누구나
@@ -23,8 +41,8 @@ service firebase.storage {
     // 이미 발급된 URL은 이 규칙과 무관하게 계속 열람 가능하다(Firebase Storage의
     // 알려진 동작). 이 규칙은 새 무단 업로드/추측 경로 접근을 막는 용도다.
     match /evidence/{studentId}/{fileName} {
-      allow read: if isSelf(studentId) || isAdmin();
-      allow write: if (isSelf(studentId) || isAdmin()) &&
+      allow read: if isActiveSelf(studentId) || isAdmin();
+      allow write: if (isActiveSelf(studentId) || isAdmin()) &&
         request.resource.size < 10 * 1024 * 1024 &&
         request.resource.contentType == "application/pdf";
       allow delete: if false;
@@ -33,14 +51,19 @@ service firebase.storage {
     // 프로그램 게시글 이미지·첨부파일: 공개 안내물이라 누구나 읽고, 관리자만 올리고 지운다.
     match /programs/{programId}/{fileName} {
       allow read: if true;
-      allow write: if isAdmin() && request.resource.size < 20 * 1024 * 1024;
+      allow create, update: if isAdmin() &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        !isActiveContent(request.resource.contentType);
       allow delete: if isAdmin();
     }
 
-    // 프로그램 신청 시 학생이 첨부하는 신청서: 본인·관리자만.
+    // 프로그램 신청 시 학생이 첨부하는 신청서: 본인·관리자만. 허용 형식(PDF·한글·워드·엑셀·
+    // 이미지)은 화면에서 고르게 하고, 서버에서는 실행 가능한 문서 형식을 막는다.
     match /programApplications/{studentId}/{fileName} {
-      allow read: if isSelf(studentId) || isAdmin();
-      allow write: if (isSelf(studentId) || isAdmin()) && request.resource.size < 20 * 1024 * 1024;
+      allow read: if isActiveSelf(studentId) || isAdmin();
+      allow write: if (isActiveSelf(studentId) || isAdmin()) &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        !isActiveContent(request.resource.contentType);
       allow delete: if false;
     }
   }

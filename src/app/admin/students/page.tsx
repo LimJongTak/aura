@@ -319,7 +319,6 @@ function EditStudentModal({
         name: student.name,
         department: department.trim(),
         isParticipating,
-        phone: student.phone,
         isTestAccount,
       });
       onSaved();

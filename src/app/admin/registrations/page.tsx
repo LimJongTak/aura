@@ -39,7 +39,7 @@ function describe(log: StudentRegistrationLog): string {
   const who = `${log.name} 학생이 학번 ${log.studentId}(으)로 등록을 시도했습니다.`;
   switch (log.result) {
     case "created":
-      return `${who} → 신규 등록 완료 (초기 비밀번호 000000 발급)`;
+      return `${who} → 신규 등록 완료 (초기 비밀번호 00000000 발급)`;
     case "existing":
       return `${who} → 이미 같은 학번·이름으로 등록된 기존 회원이라 로그인 안내만 했습니다.`;
     case "id-taken":

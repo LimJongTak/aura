@@ -1,5 +1,5 @@
 // students 컬렉션에 있는 모든 학생에게 Firebase Auth 계정({학번}@s.scnu.ac.kr,
-// 초기 비밀번호 0000)을 만들고 mustChangePassword: true를 설정한다.
+// 초기 비밀번호 00000000)을 만들고 mustChangePassword: true를 설정한다.
 //
 // 이미 계정이 있는 학번은 건너뛴다 — 여러 번 실행해도 안전하다.
 //
@@ -54,7 +54,7 @@ async function main() {
     }
 
     try {
-      await admin.auth().createUser({ email, password: "000000", displayName: student.name || studentId });
+      await admin.auth().createUser({ email, password: "00000000", displayName: student.name || studentId });
       await doc.ref.set({ mustChangePassword: true }, { merge: true });
       created++;
       if (created % 25 === 0) console.log(`  ...${created}명 생성`);

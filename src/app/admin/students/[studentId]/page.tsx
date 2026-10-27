@@ -36,6 +36,7 @@ import { uploadEvidenceFile } from "@/lib/storage/evidence";
 import { formatDate, listMyProgramApplications } from "@/lib/firestore/programs";
 import { ProgramApplicationStatusBadge } from "@/components/programs/shared";
 import type { ProgramApplication } from "@/types/models";
+import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
 import {
   ACTIVITY_GROUPS,
   MAX_ADMIN_MILEAGE_GRANT,
@@ -474,6 +475,7 @@ export default function AdminStudentDetailPage() {
                           className="text-primary hover:underline"
                         >
                           보기
+                          <ExternalUrlNotice url={a.evidenceFileUrl} />
                         </a>
                       ) : (
                         "-"
@@ -555,6 +557,7 @@ export default function AdminStudentDetailPage() {
                           className="text-primary hover:underline"
                         >
                           보기
+                          <ExternalUrlNotice url={a.transcriptFileUrl} />
                         </a>
                       ) : (
                         "-"
@@ -622,6 +625,7 @@ export default function AdminStudentDetailPage() {
                           className="text-primary hover:underline"
                         >
                           보기
+                          <ExternalUrlNotice url={e.transcriptFileUrl} />
                         </a>
                       ) : (
                         "-"

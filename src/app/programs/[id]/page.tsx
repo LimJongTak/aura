@@ -338,7 +338,7 @@ function ApplyModal({
   onClose: () => void;
   onApplied: (app: ProgramApplication) => void;
 }) {
-  const [phone, setPhone] = useState(student.phone ?? "");
+  const [phone, setPhone] = useState("");
   const fileTypes = program.applicationFileTypes;
 
   // 마이페이지에 등록한 휴대전화번호가 있으면 연락처를 미리 채운다 (학생이 이미 입력하기 시작했으면 덮어쓰지 않는다).

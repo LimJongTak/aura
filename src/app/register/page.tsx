@@ -71,7 +71,7 @@ export default function RegisterPage() {
         ) : (
           <div className="mt-4 rounded-lg border border-border bg-surface p-4 text-left text-sm text-foreground">
             <p>
-              초기 비밀번호: <span className="font-bold">000000</span>
+              초기 비밀번호: <span className="font-bold">00000000</span> (0 여덟 개)
             </p>
             <p className="mt-2 text-muted">
               학번과 초기 비밀번호로 로그인하면 비밀번호 변경 화면으로 이동합니다. 학교 메일(

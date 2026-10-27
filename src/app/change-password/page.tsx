@@ -16,6 +16,7 @@ import {
   CodeInput,
   ErrorMessage,
   FieldLabel,
+  INITIAL_PASSWORD,
   NewPasswordFields,
   OUTLOOK_MAIL_URL,
   StepIndicator,
@@ -55,8 +56,9 @@ export default function ChangePasswordPage() {
       setSentTo((result.data as { sentTo: string }).sentTo);
       setCodeSent(true);
       cooldown.start(RESEND_COOLDOWN_SECONDS);
-    } catch {
-      setSendError("인증번호 발송에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    } catch (err) {
+      // 재발송 간격·시간당 횟수 제한에 걸리면 서버가 남은 시간을 알려준다.
+      setSendError(callableErrorMessage(err, "인증번호 발송에 실패했습니다. 잠시 후 다시 시도해주세요."));
     } finally {
       setSendingCode(false);
     }
@@ -130,7 +132,7 @@ export default function ChangePasswordPage() {
       description={
         student.mustChangePassword ? (
           <>
-            {student.name}님, 초기 비밀번호(000000)는 계속 사용할 수 없습니다.
+            {student.name}님, 초기 비밀번호({INITIAL_PASSWORD})는 계속 사용할 수 없습니다.
             <br />
             학교 이메일 인증 후 새 비밀번호로 변경해주세요.
           </>

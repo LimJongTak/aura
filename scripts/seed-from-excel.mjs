@@ -83,7 +83,7 @@ async function seedStudents(wb) {
         name: String(r["이름"]).trim(),
         department: String(r["학과"]).trim(),
         isParticipating: String(r["참여학과여부(Y/N)"]).trim().toUpperCase() === "Y",
-        phone: String(r["전화번호"] || "").trim(),
+        // 전화번호는 students에 평문으로 두지 않는다 (암호화된 studentContacts로 관리).
       },
     };
   });

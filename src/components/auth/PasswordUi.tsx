@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils/cn";
 export const OUTLOOK_MAIL_URL = "https://outlook.office.com/mail/";
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 64;
-export const INITIAL_PASSWORD = "000000";
+export const INITIAL_PASSWORD = "00000000";
 
 /** 비밀번호 찾기 / 변경 화면이 함께 쓰는 상단 아이콘 + 제목 + 설명 레이아웃. */
 export function AuthPageShell({

@@ -49,7 +49,7 @@ export default function LoginPage() {
     <div className="mx-auto max-w-sm px-4 py-16 sm:px-6">
       <h1 className="text-xl font-extrabold text-foreground">로그인</h1>
       <p className="mt-1.5 text-sm text-muted">
-        학번과 비밀번호로 로그인해주세요. 처음이시면 초기 비밀번호는 <strong>000000</strong>(0 여섯 개)입니다.
+        학번과 비밀번호로 로그인해주세요. 처음이시면 초기 비밀번호는 <strong>00000000</strong>(0 여덟 개)입니다.
       </p>
       <Card className="mt-6">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

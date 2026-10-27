@@ -17,6 +17,7 @@ import {
 import { listProcessedEligibilityChecks } from "@/lib/firestore/eligibilityChecks";
 import { listSemesters } from "@/lib/firestore/semesters";
 import { exportEligibilityChecksExcel } from "@/lib/excel/eligibilityChecksExport";
+import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
 import type {
   AdvancedApplication,
   ApplicationStatus,
@@ -377,6 +378,7 @@ export default function AdminHistoryPage() {
                             className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
                           >
                             <FileText size={12} /> 증빙 보기
+                            <ExternalUrlNotice url={a.evidenceFileUrl} />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">
@@ -453,6 +455,7 @@ export default function AdminHistoryPage() {
                             className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-primary transition hover:border-primary hover:bg-primary-light"
                           >
                             <FileText size={12} /> 성적증명서
+                            <ExternalUrlNotice url={a.transcriptFileUrl} />
                           </a>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-xs font-semibold text-muted">

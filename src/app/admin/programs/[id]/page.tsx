@@ -35,6 +35,7 @@ import {
 import { deleteProgramFile } from "@/lib/storage/programFiles";
 import type { Program, ProgramApplication, ProgramApplicationStatus, Semester } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
+import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
 
 const STATUS_FILTERS: ("전체" | ProgramApplicationStatus)[] = ["전체", "신청", "확정", "지급완료", "미지급", "반려"];
 
@@ -382,8 +383,9 @@ export default function AdminProgramDetailPage() {
                     )}
                     <td className="max-w-40 px-2 py-3 text-xs">
                       {a.applicationFileUrl ? (
-                        <a href={a.applicationFileUrl} target="_blank" rel="noreferrer" className="block truncate text-primary hover:underline">
+                        <a href={a.applicationFileUrl} target="_blank" rel="noopener noreferrer" className="block truncate text-primary hover:underline">
                           {a.applicationFileName || "파일"}
+                          <ExternalUrlNotice url={a.applicationFileUrl} />
                         </a>
                       ) : (
                         <span className="text-muted">-</span>
