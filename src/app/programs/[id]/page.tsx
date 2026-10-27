@@ -21,6 +21,7 @@ import {
   listMyProgramApplications,
   ProgramFullError,
   sessionPhase,
+  seatsTaken,
   subscribeProgramCounts,
 } from "@/lib/firestore/programs";
 import { PROGRAM_FILE_MAX_BYTES, uploadProgramApplicationFile } from "@/lib/storage/programFiles";
@@ -297,7 +298,7 @@ function SessionTable({
                   {formatDateTime(s.runEnd)}
                 </td>
                 <td className="px-2 py-3">
-                  {count}명 / {s.capacity === null ? "제한없음" : `${s.capacity}명`}
+                  {seatsTaken(s, count)}명 / {s.capacity === null ? "제한없음" : `${s.capacity}명`}
                 </td>
                 <td className="px-2 py-3">{s.mileage}점</td>
                 <td className="px-2 py-3">

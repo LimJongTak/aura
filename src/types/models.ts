@@ -543,6 +543,8 @@ export interface ProgramSession {
   runEnd: number;
   /** null이면 정원 제한 없음 */
   capacity: number | null;
+  /** 홈페이지 밖(현장·전화 등)에서 따로 받은 신청 인원 — 신청 인원에 더해 정원을 차지한다 */
+  externalCount: number;
   /** 프로그램 종료 후 지급 요건 충족자에게 지급할 마일리지 (0이면 지급 없음) */
   mileage: number;
 }

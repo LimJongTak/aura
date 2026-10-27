@@ -19,6 +19,7 @@ import {
   grantProgramMileage,
   markProgramNonPayment,
   ProgramNotEndedError,
+  seatsTaken,
   sessionEnded,
   sessionPhase,
   setProgramApplicationsStatus,
@@ -186,9 +187,14 @@ export default function AdminProgramDetailPage() {
                 <PhaseBadge phase={sessionPhase(s, count)} />
               </div>
               <p className="mt-2 text-2xl font-extrabold text-primary-dark">
-                {count}
+                {seatsTaken(s, count)}
                 <span className="text-sm font-semibold text-muted"> / {s.capacity === null ? "제한없음" : `${s.capacity}명`}</span>
               </p>
+              {s.externalCount > 0 && (
+                <p className="text-[11px] font-semibold text-muted">
+                  홈페이지 {count}명 + 외부 {s.externalCount}명
+                </p>
+              )}
               <p className="mt-1 text-[11px] leading-relaxed text-muted">
                 신청 {formatDateTime(s.applyStart)} ~ {formatDateTime(s.applyEnd)}
                 <br />

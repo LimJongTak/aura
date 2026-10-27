@@ -376,7 +376,7 @@ service cloud.firestore {
 
       // 회차별 신청 인원 카운터 — 정원 초과 신청을 규칙으로 막기 위해 둔다. 학생은
       // 본인 신청 문서가 같은 요청(트랜잭션)에서 새로 생길 때만 +1, 지워질 때만 -1 할 수 있고,
-      // +1 결과가 정원을 넘으면 거부된다.
+      // +1 결과에 관리자가 입력한 외부 신청 인원(externalCount)을 더해 정원을 넘으면 거부된다.
       match /counters/{sessionId} {
         allow read: if true;
         allow create, delete: if isAdmin();
@@ -390,7 +390,8 @@ service cloud.firestore {
               existsAfter(programApplicationPath(programId, sessionId, myStudentId())) &&
               (
                 get(/databases/$(database)/documents/programs/$(programId)).data.sessions[sessionId].capacity == null ||
-                request.resource.data.count <= get(/databases/$(database)/documents/programs/$(programId)).data.sessions[sessionId].capacity
+                request.resource.data.count + get(/databases/$(database)/documents/programs/$(programId)).data.sessions[sessionId].get("externalCount", 0) <=
+                  get(/databases/$(database)/documents/programs/$(programId)).data.sessions[sessionId].capacity
               )
             ) ||
             (

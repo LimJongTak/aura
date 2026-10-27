@@ -46,6 +46,7 @@ interface SessionDraft {
   runStart: string;
   runEnd: string;
   capacity: string;
+  externalCount: string;
   mileage: string;
 }
 
@@ -70,6 +71,7 @@ function emptySession(round: number): SessionDraft {
     runStart: "",
     runEnd: "",
     capacity: "",
+    externalCount: "",
     mileage: "",
   };
 }
@@ -119,6 +121,7 @@ export function ProgramForm({
           runStart: toLocalInput(s.runStart),
           runEnd: toLocalInput(s.runEnd),
           capacity: s.capacity === null ? "" : String(s.capacity),
+          externalCount: s.externalCount === 0 ? "" : String(s.externalCount),
           mileage: String(s.mileage),
         }))
       : [emptySession(1)]
@@ -205,6 +208,8 @@ export function ProgramForm({
       if (runStart > runEnd) return `${label}: 진행 종료가 시작보다 늦어야 해요.`;
       const capacity = s.capacity.trim() === "" ? null : Number(s.capacity);
       if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1)) return `${label}: 정원은 1 이상의 정수(또는 빈칸=제한없음)로 입력해주세요.`;
+      const externalCount = s.externalCount.trim() === "" ? 0 : Number(s.externalCount);
+      if (!Number.isInteger(externalCount) || externalCount < 0) return `${label}: 외부 신청 인원은 0 이상의 정수로 입력해주세요.`;
       const mileage = s.mileage.trim() === "" ? 0 : Number(s.mileage);
       if (!Number.isFinite(mileage) || mileage < 0 || mileage > MAX_ADMIN_MILEAGE_GRANT)
         return `${label}: 마일리지는 0~${MAX_ADMIN_MILEAGE_GRANT}점으로 입력해주세요.`;
@@ -218,6 +223,7 @@ export function ProgramForm({
         runStart,
         runEnd,
         capacity,
+        externalCount,
         mileage,
       });
     }
@@ -549,6 +555,9 @@ export function ProgramForm({
               </div>
               <Field label="정원" hint="빈칸이면 제한없음">
                 <Input type="number" min={1} value={s.capacity} onChange={(e) => updateSession(s.id, { capacity: e.target.value })} placeholder="제한없음" />
+              </Field>
+              <Field label="외부 신청 인원" hint="홈페이지 밖에서 받은 인원, 정원에 포함">
+                <Input type="number" min={0} value={s.externalCount} onChange={(e) => updateSession(s.id, { externalCount: e.target.value })} placeholder="0" />
               </Field>
               <Field label="지급 마일리지" hint="종료 후 요건 충족자에게 지급">
                 <Input type="number" min={0} max={MAX_ADMIN_MILEAGE_GRANT} value={s.mileage} onChange={(e) => updateSession(s.id, { mileage: e.target.value })} placeholder="0" />

@@ -52,6 +52,7 @@ function programFromSnap(id: string, data: Record<string, unknown>): Program {
       runStart: toMillis(s.runStart),
       runEnd: toMillis(s.runEnd),
       capacity: typeof s.capacity === "number" ? s.capacity : null,
+      externalCount: Number(s.externalCount ?? 0),
       mileage: Number(s.mileage ?? 0),
     }))
     .sort((a, b) => a.round - b.round);
@@ -188,6 +189,7 @@ function sessionsToFirestore(sessions: ProgramSession[]) {
         runStart: Timestamp.fromMillis(s.runStart),
         runEnd: Timestamp.fromMillis(s.runEnd),
         capacity: s.capacity,
+        externalCount: s.externalCount,
         mileage: s.mileage,
       },
     ])
@@ -279,7 +281,7 @@ export async function applyToProgram(input: ProgramApplyInput): Promise<void> {
   await runTransaction(db, async (tx) => {
     const counter = await tx.get(cRef);
     const count = Number(counter.data()?.count ?? 0);
-    if (session.capacity !== null && count >= session.capacity) throw new ProgramFullError();
+    if (session.capacity !== null && seatsTaken(session, count) >= session.capacity) throw new ProgramFullError();
     tx.update(cRef, { count: count + 1 });
     tx.set(aRef, {
       programId: program.id,
@@ -458,10 +460,15 @@ export function formatAnswer(answer: ProgramAnswer | undefined): string {
 
 export type SessionPhase = "모집예정" | "신청가능" | "정원마감" | "신청마감";
 
+/** 회차 정원을 차지한 인원 — 홈페이지 신청(카운터)에 관리자가 입력한 외부 신청 인원을 더한다. */
+export function seatsTaken(session: ProgramSession, count: number): number {
+  return count + session.externalCount;
+}
+
 export function sessionPhase(session: ProgramSession, count: number, now = Date.now()): SessionPhase {
   if (now < session.applyStart) return "모집예정";
   if (now > session.applyEnd) return "신청마감";
-  if (session.capacity !== null && count >= session.capacity) return "정원마감";
+  if (session.capacity !== null && seatsTaken(session, count) >= session.capacity) return "정원마감";
   return "신청가능";
 }
 

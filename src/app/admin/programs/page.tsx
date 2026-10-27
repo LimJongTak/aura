@@ -99,7 +99,10 @@ export default function AdminProgramsPage() {
                       {range ? `${formatDateTime(range.start)} ~ ${formatDateTime(range.end)}` : "-"}
                     </td>
                     <td className="px-3 py-3 text-center text-xs">
-                      <span className="font-bold text-foreground">{counts[p.id] ?? "-"}명</span> / {totalCapacity}
+                      <span className="font-bold text-foreground">
+                        {counts[p.id] === undefined ? "-" : counts[p.id] + p.sessions.reduce((a, s) => a + s.externalCount, 0)}명
+                      </span>{" "}
+                      / {totalCapacity}
                     </td>
                     <td className="px-3 py-3 text-center">
                       <PhaseBadge phase={programPhase(p)} />
