@@ -6,6 +6,7 @@ import { CalendarClock, Check, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { visiblePages } from "@/components/admin/Pagination";
 import { NonCurricularBadge, PhaseBadge, ProgramTabs } from "@/components/programs/shared";
 import {
   formatDateTime,
@@ -244,7 +245,7 @@ export default function ProgramsPage() {
 
           {totalPages > 1 && (
             <div className="mt-6 flex items-center justify-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+              {visiblePages(currentPage, totalPages).map((n) => (
                 <button
                   key={n}
                   type="button"
