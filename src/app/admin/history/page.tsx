@@ -21,6 +21,7 @@ import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
 import type {
   AdvancedApplication,
   ApplicationStatus,
+  CompletedSubjectEntry,
   EligibilityCheck,
   EligibilityCheckStatus,
   MileageApplication,
@@ -38,6 +39,34 @@ const PAGE_SIZE = 10;
 function sameYear(yearSemester: string, targetSemester: string): boolean {
   const year = yearSemester.match(/\d{4}/)?.[0];
   return year ? targetSemester.match(/\d{4}/)?.[0] === year : yearSemester === targetSemester;
+}
+
+/** 검색어가 이름·학번 또는 내용 항목 중 하나에 들어있는지 — 띄어쓰기·대소문자는 무시한다
+ *  (예: "국내" → 활동명 "국내 경진대회/공모전 수상"). */
+const normalize = (s: string) => s.replace(/\s+/g, "").toLowerCase();
+
+function matchesSearch(q: string, fields: (string | undefined)[]): boolean {
+  const needle = normalize(q);
+  return !needle || fields.some((f) => typeof f === "string" && normalize(f).includes(needle));
+}
+
+// 엑셀에서 옮겨온 예전 신청 문서는 교과목 항목이 비어 있을 수 있다.
+const subjectFields = (s: CompletedSubjectEntry | undefined) => (s ? [s.program, s.subjectName] : []);
+
+function mileageSearchFields(a: MileageApplication) {
+  return [a.studentName, a.studentId, a.activityName, a.category, a.note, a.recallReason];
+}
+
+function advancedSearchFields(a: AdvancedApplication | EligibilityCheck) {
+  return [
+    a.studentName,
+    a.studentId,
+    a.department,
+    ...(a.subjects ?? []).flatMap(subjectFields),
+    ...subjectFields(a.immersive),
+    a.nonCurricularProgram,
+    a.note,
+  ];
 }
 
 type Category = "mileage" | "advanced" | "eligibility";
@@ -186,7 +215,7 @@ export default function AdminHistoryPage() {
     const q = search.trim();
     return mileageApps.filter((a) => {
       if (mileageStatus !== "전체" && a.status !== mileageStatus) return false;
-      if (q && !a.studentName.includes(q) && !a.studentId.includes(q)) return false;
+      if (!matchesSearch(q, mileageSearchFields(a))) return false;
       if (semesterFilter !== ALL_SEMESTERS && a.semester !== semesterFilter) return false;
       if (!inDateRange(a.processedAt, dateFrom, dateTo)) return false;
       return true;
@@ -197,7 +226,7 @@ export default function AdminHistoryPage() {
     const q = search.trim();
     return advancedApps.filter((a) => {
       if (advancedStatus !== "전체" && a.status !== advancedStatus) return false;
-      if (q && !a.studentName.includes(q) && !a.studentId.includes(q)) return false;
+      if (!matchesSearch(q, advancedSearchFields(a))) return false;
       if (semesterFilter !== ALL_SEMESTERS && !sameYear(semesterFilter, a.targetSemester)) return false;
       if (!inDateRange(a.processedAt, dateFrom, dateTo)) return false;
       return true;
@@ -208,7 +237,7 @@ export default function AdminHistoryPage() {
     const q = search.trim();
     return eligibilityChecks.filter((e) => {
       if (eligibilityStatus !== "전체" && e.status !== eligibilityStatus) return false;
-      if (q && !e.studentName.includes(q) && !e.studentId.includes(q)) return false;
+      if (!matchesSearch(q, advancedSearchFields(e))) return false;
       if (semesterFilter !== ALL_SEMESTERS && !sameYear(semesterFilter, e.targetSemester)) return false;
       if (!inDateRange(e.processedAt, dateFrom, dateTo)) return false;
       return true;
@@ -293,12 +322,12 @@ export default function AdminHistoryPage() {
 
       <Card className="mt-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <div className="relative sm:w-44">
+          <div className="relative sm:w-64">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="이름 또는 학번 검색"
+              placeholder="이름·학번·활동명 등 내용 검색"
               className="pl-9"
             />
           </div>
