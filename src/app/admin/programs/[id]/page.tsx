@@ -32,6 +32,7 @@ import {
   programExportColumns,
   type ExportColumnGroup,
 } from "@/lib/excel/programApplicationsExport";
+import { downloadSignatureSheet } from "@/lib/hwpx/signatureSheet";
 import { deleteProgramFile } from "@/lib/storage/programFiles";
 import type { Program, ProgramApplication, ProgramApplicationStatus, Semester } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
@@ -699,7 +700,7 @@ function ExportModal({
   const columns = useMemo(() => programExportColumns(program), [program]);
   const [checked, setChecked] = useState<Set<string>>(() => new Set(columns.map((c) => c.key)));
   const [scope, setScope] = useState<"filtered" | "selected">(selected.length > 0 ? "selected" : "filtered");
-  const [format, setFormat] = useState<"xlsx" | "csv">("xlsx");
+  const [format, setFormat] = useState<"xlsx" | "csv" | "hwpx">("xlsx");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const allChecked = columns.every((c) => checked.has(c.key));
@@ -719,7 +720,8 @@ function ExportModal({
     setBusy(true);
     setError(null);
     try {
-      await exportProgramApplications(program, apps, cols, format);
+      if (format === "hwpx") await downloadSignatureSheet(program, apps);
+      else await exportProgramApplications(program, apps, cols, format);
       onClose();
     } catch {
       setError("파일을 만들지 못했어요. 다시 시도해주세요.");
@@ -748,65 +750,78 @@ function ExportModal({
         <ChoiceChip active={format === "csv"} onClick={() => setFormat("csv")}>
           CSV (.csv)
         </ChoiceChip>
+        <ChoiceChip active={format === "hwpx"} onClick={() => setFormat("hwpx")}>
+          서명부 (.hwpx)
+        </ChoiceChip>
       </div>
 
-      <div className="mb-1.5 mt-4 flex items-center justify-between">
-        <p className="text-xs font-semibold text-muted">
-          내려받을 항목 <span className="text-primary">{checked.size}</span> / {columns.length}
+      {format === "hwpx" ? (
+        <p className="mt-4 rounded-xl bg-surface px-3 py-2.5 text-xs leading-relaxed text-muted">
+          서명부 양식에 프로그램명과 신청자의 <b className="text-foreground">소속(학과)·학번·성명</b>만 채워 내려받아요.
+          반려된 신청은 빠지고 학과·학번 순으로 정렬돼요. 한 쪽에 20명씩 들어가고, 넘치면 같은 양식의 쪽이 이어서
+          붙어요(연번은 이어서 매기고 마지막 쪽 남는 줄은 연번만 적혀요). 일시·장소·서명은 한글에서 직접 적어주세요. 회차가 여러 개면 회차 필터를 먼저 고르세요.
         </p>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-foreground">
-          <input
-            type="checkbox"
-            checked={allChecked}
-            onChange={() => setMany(columns.map((c) => c.key), !allChecked)}
-            className="h-4 w-4 accent-primary"
-          />
-          전체 선택
-        </label>
-      </div>
-      <div className="flex flex-col gap-3">
-        {EXPORT_GROUPS.map((g) => {
-          const cols = columns.filter((c) => c.group === g.id);
-          if (cols.length === 0) return null;
-          const groupChecked = cols.every((c) => checked.has(c.key));
-          return (
-            <div key={g.id} className="rounded-xl border border-border p-3">
-              <label className="flex cursor-pointer items-center gap-2 border-b border-border pb-2 text-sm font-bold text-foreground">
-                <input
-                  type="checkbox"
-                  checked={groupChecked}
-                  onChange={() => setMany(cols.map((c) => c.key), !groupChecked)}
-                  className="h-4 w-4 accent-primary"
-                />
-                {g.label}
-                <span className="text-xs font-normal text-muted">({cols.length})</span>
-              </label>
-              <div className={cn("mt-2 grid gap-x-3 gap-y-1.5", g.id === "basic" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1")}>
-                {cols.map((c) => (
-                  <label key={c.key} className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-foreground">
+      ) : (
+        <>
+          <div className="mb-1.5 mt-4 flex items-center justify-between">
+            <p className="text-xs font-semibold text-muted">
+              내려받을 항목 <span className="text-primary">{checked.size}</span> / {columns.length}
+            </p>
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-foreground">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={() => setMany(columns.map((c) => c.key), !allChecked)}
+                className="h-4 w-4 accent-primary"
+              />
+              전체 선택
+            </label>
+          </div>
+          <div className="flex flex-col gap-3">
+            {EXPORT_GROUPS.map((g) => {
+              const cols = columns.filter((c) => c.group === g.id);
+              if (cols.length === 0) return null;
+              const groupChecked = cols.every((c) => checked.has(c.key));
+              return (
+                <div key={g.id} className="rounded-xl border border-border p-3">
+                  <label className="flex cursor-pointer items-center gap-2 border-b border-border pb-2 text-sm font-bold text-foreground">
                     <input
                       type="checkbox"
-                      checked={checked.has(c.key)}
-                      onChange={(e) => setMany([c.key], e.target.checked)}
-                      className="h-4 w-4 shrink-0 accent-primary"
+                      checked={groupChecked}
+                      onChange={() => setMany(cols.map((c) => c.key), !groupChecked)}
+                      className="h-4 w-4 accent-primary"
                     />
-                    <span className="truncate" title={c.label}>
-                      {c.label}
-                    </span>
+                    {g.label}
+                    <span className="text-xs font-normal text-muted">({cols.length})</span>
                   </label>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                  <div className={cn("mt-2 grid gap-x-3 gap-y-1.5", g.id === "basic" ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-1")}>
+                    {cols.map((c) => (
+                      <label key={c.key} className="flex min-w-0 cursor-pointer items-center gap-2 text-xs text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={checked.has(c.key)}
+                          onChange={(e) => setMany([c.key], e.target.checked)}
+                          className="h-4 w-4 shrink-0 accent-primary"
+                        />
+                        <span className="truncate" title={c.label}>
+                          {c.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="outline" size="sm" onClick={onClose}>
           취소
         </Button>
-        <Button size="sm" loading={busy} disabled={checked.size === 0} onClick={handleDownload}>
+        <Button size="sm" loading={busy} disabled={format !== "hwpx" && checked.size === 0} onClick={handleDownload}>
           <Download size={14} /> 내려받기
         </Button>
       </div>
