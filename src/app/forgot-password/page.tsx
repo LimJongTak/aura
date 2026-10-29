@@ -196,6 +196,13 @@ export default function ForgotPasswordPage() {
               <p>
                 <strong className="font-bold">{sentTo}</strong> 로 인증번호를 보냈습니다. ({expiresInMinutes}분간 유효)
               </p>
+              <p className="mt-1">
+                등록된 학번일 때만 메일이 발송됩니다. 메일이 오지 않으면 학번을 확인하시거나{" "}
+                <Link href="/register" className="font-semibold underline">
+                  학생 등록
+                </Link>
+                을 먼저 해주세요.
+              </p>
               <a
                 href={OUTLOOK_MAIL_URL}
                 target="_blank"

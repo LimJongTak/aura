@@ -116,7 +116,7 @@ export default function ChangePasswordPage() {
       <AuthPageShell
         icon={CheckCircle2}
         title="비밀번호가 변경되었습니다"
-        description="새 비밀번호로 다시 로그인해주세요. 잠시 후 로그인 화면으로 이동합니다."
+        description="보안을 위해 모든 기기에서 로그아웃됩니다. 새 비밀번호로 다시 로그인해주세요. 잠시 후 로그인 화면으로 이동합니다."
       >
         <div className="mx-auto h-1.5 w-40 overflow-hidden rounded-full bg-surface">
           <div className="h-full w-full animate-pulse rounded-full bg-primary" />
@@ -132,12 +132,12 @@ export default function ChangePasswordPage() {
       description={
         student.mustChangePassword ? (
           <>
-            {student.name}님, 초기 비밀번호({INITIAL_PASSWORD})는 계속 사용할 수 없습니다.
+            {student.name || student.studentId}님, 초기 비밀번호({INITIAL_PASSWORD})는 계속 사용할 수 없습니다.
             <br />
             학교 이메일 인증 후 새 비밀번호로 변경해주세요.
           </>
         ) : (
-          <>{student.name}님, 학교 이메일 인증 후 새 비밀번호로 변경할 수 있습니다.</>
+          <>{student.name || student.studentId}님, 학교 이메일 인증 후 새 비밀번호로 변경할 수 있습니다.</>
         )
       }
       footer={

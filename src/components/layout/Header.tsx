@@ -196,7 +196,7 @@ export function Header() {
           <div className="hidden items-center gap-2 sm:flex">
             {user && student ? (
               <>
-                <span className="text-xs font-semibold text-muted">{student.name}님</span>
+                <span className="text-xs font-semibold text-muted">{student.name || student.studentId}님</span>
                 <Link
                   href="/mypage"
                   className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
@@ -339,7 +339,7 @@ export function Header() {
             {!sessionLoading &&
               (user && student ? (
                 <div className="flex items-center justify-between gap-2 px-3">
-                  <span className="text-sm font-semibold text-muted">{student.name}님</span>
+                  <span className="text-sm font-semibold text-muted">{student.name || student.studentId}님</span>
                   <div className="flex items-center gap-2">
                     <Link
                       href="/mypage"

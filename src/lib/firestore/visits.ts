@@ -1,8 +1,12 @@
-import { collection, doc, documentId, getDocs, increment, orderBy, query, serverTimestamp, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { collection, documentId, getDocs, orderBy, query } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase/client";
 import type { VisitStat } from "@/types/models";
 
 const visitStatsRef = () => collection(db, "visitStats");
+
+/** 방문·조회수 집계 — 규칙상 클라이언트가 직접 쓸 수 없고 Cloud Function이 IP별 한도 안에서 올린다. */
+export const recordView = httpsCallable<{ programId?: string }, { counted: boolean }>(functions, "recordView");
 
 function todayKey(): string {
   const d = new Date();
@@ -11,11 +15,10 @@ function todayKey(): string {
 
 /** 브라우저 세션당 하루 한 번만 카운트 — 새로고침·페이지 이동을 반복해도 중복 집계되지 않는다. */
 export async function recordVisitOncePerSession(): Promise<void> {
-  const date = todayKey();
-  const sessionKey = `aura_visited_${date}`;
+  const sessionKey = `aura_visited_${todayKey()}`;
   if (sessionStorage.getItem(sessionKey)) return;
   sessionStorage.setItem(sessionKey, "1");
-  await setDoc(doc(visitStatsRef(), date), { count: increment(1), updatedAt: serverTimestamp() }, { merge: true });
+  await recordView({});
 }
 
 export async function listAllVisitStats(): Promise<VisitStat[]> {

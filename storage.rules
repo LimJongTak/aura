@@ -13,11 +13,14 @@ service firebase.storage {
     }
 
     // firestore.rules의 isActiveSelf와 같다 — 초기 비밀번호(00000000)를 바꾸기 전 계정은
-    // 누구나 로그인할 수 있으므로 본인 파일 업로드·열람을 막는다.
+    // 누구나 로그인할 수 있으므로 본인 파일 업로드·열람을 막는다. 학생 문서에 묶인 Auth 계정
+    // (authUid)인지, 비밀번호를 바꾼 뒤(passwordChangedAt 이후)에 로그인한 세션인지도 확인한다.
     function isActiveSelf(studentId) {
       return isSelf(studentId) &&
         firestore.exists(/databases/(default)/documents/students/$(studentId)) &&
-        firestore.get(/databases/(default)/documents/students/$(studentId)).data.get("mustChangePassword", false) != true;
+        firestore.get(/databases/(default)/documents/students/$(studentId)).data.get("mustChangePassword", false) != true &&
+        firestore.get(/databases/(default)/documents/students/$(studentId)).data.get("authUid", request.auth.uid) == request.auth.uid &&
+        request.auth.token.auth_time >= firestore.get(/databases/(default)/documents/students/$(studentId)).data.get("passwordChangedAt", 0);
     }
 
     // 브라우저가 이 사이트와 같은 문서처럼 실행할 수 있는 형식(HTML·SVG·XML·스크립트).

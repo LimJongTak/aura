@@ -28,7 +28,8 @@ const RESULT_INFO: Record<
   "id-taken": {
     label: "이름 불일치",
     tone: "warning",
-    guide: "학번이 다른 이름으로 이미 등록되어 있어 등록을 막았습니다. 학생이 문의하면 본인 여부를 확인해주세요.",
+    guide:
+      "학번이 다른 이름으로 이미 등록되어 있어 등록을 막았습니다(학교 메일 인증은 통과한 시도입니다). 학생이 문의하면 본인 여부를 확인해주세요.",
   },
   failed: { label: "오류", tone: "danger", guide: "시스템 오류로 등록하지 못했습니다. 학생이 다시 시도하면 대부분 해결됩니다." },
 };
@@ -39,7 +40,10 @@ function describe(log: StudentRegistrationLog): string {
   const who = `${log.name} 학생이 학번 ${log.studentId}(으)로 등록을 시도했습니다.`;
   switch (log.result) {
     case "created":
-      return `${who} → 신규 등록 완료 (초기 비밀번호 00000000 발급)`;
+      // registeredName이 있으면 인증 없이 다른 이름으로 선점돼 있던 학번을 메일 인증한 본인이 바로잡은 경우다.
+      return log.registeredName
+        ? `${who} → 학교 메일 인증 후 등록 완료 (인증 없이 "${log.registeredName}" 이름으로 등록돼 있던 정보를 바로잡음)`
+        : `${who} → 학교 메일 인증 후 등록 완료 (학생이 직접 비밀번호 설정)`;
     case "existing":
       return `${who} → 이미 같은 학번·이름으로 등록된 기존 회원이라 로그인 안내만 했습니다.`;
     case "id-taken":

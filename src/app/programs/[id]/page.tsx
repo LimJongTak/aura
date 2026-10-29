@@ -94,6 +94,10 @@ export default function ProgramDetailPage() {
       setNotice(`선택한 회차는 ${phase} 상태라 신청할 수 없어요.`);
       return;
     }
+    if (student?.mustChangePassword) {
+      setNotice("초기 비밀번호를 먼저 변경해야 신청할 수 있어요. 마이페이지에서 비밀번호를 변경해주세요.");
+      return;
+    }
     setApplyOpen(true);
   }
 

@@ -9,11 +9,11 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { recordView } from "@/lib/firestore/visits";
 import { nanoid } from "@/lib/utils/nanoid";
 import {
   PROGRAM_SEAT_STATUSES,
@@ -139,7 +139,7 @@ export async function getProgramCounts(programId: string): Promise<Record<string
 }
 
 export async function incrementProgramView(programId: string): Promise<void> {
-  await updateDoc(doc(db, "programs", programId), { viewCount: increment(1) });
+  await recordView({ programId });
 }
 
 // ─── 관리자: 게시글 작성/수정/삭제 ────────────────────────────────────────────

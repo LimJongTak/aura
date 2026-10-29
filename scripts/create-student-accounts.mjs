@@ -42,7 +42,9 @@ async function main() {
     const student = doc.data();
     const email = `${studentId}@${STUDENT_EMAIL_DOMAIN}`;
     try {
-      await admin.auth().getUserByEmail(email);
+      const existing = await admin.auth().getUserByEmail(email);
+      // 규칙(isActiveSelf)이 이 uid의 계정만 본인으로 인정하도록 묶어둔다.
+      if (!student.authUid) await doc.ref.set({ authUid: existing.uid }, { merge: true });
       skipped++;
       continue;
     } catch (err) {
@@ -54,8 +56,12 @@ async function main() {
     }
 
     try {
-      await admin.auth().createUser({ email, password: "00000000", displayName: student.name || studentId });
-      await doc.ref.set({ mustChangePassword: true }, { merge: true });
+      const created = await admin.auth().createUser({
+        email,
+        password: "00000000",
+        displayName: student.name || studentId,
+      });
+      await doc.ref.set({ mustChangePassword: true, authUid: created.uid }, { merge: true });
       created++;
       if (created % 25 === 0) console.log(`  ...${created}명 생성`);
     } catch (err) {

@@ -25,19 +25,31 @@ export interface RegisterStudentInput {
   studentId: string;
   name: string;
   department: string;
+  /** 학교 메일로 받은 6자리 인증번호 */
+  code: string;
+  /** 학생이 정한 비밀번호 — 공용 초기 비밀번호를 거치지 않고 바로 이 비밀번호로 계정을 만든다. */
+  newPassword: string;
 }
 
 export type RegisterStudentResult = Exclude<StudentRegistrationResult, "failed">;
 
+/** 학생 등록 1단계: 학번의 학교 메일로 인증번호를 보낸다. */
+export const requestRegistrationCode = httpsCallable<
+  { studentId: string },
+  { sentTo: string; expiresInMinutes: number; resendCooldownSeconds: number }
+>(functions, "requestRegistrationCode");
+
 const registerStudentFn = httpsCallable(functions, "registerStudent");
 
-/** 학생 등록 — 관리자 승인 없이 Cloud Function이 바로 계정(초기 비밀번호 00000000)과
- *  students 문서를 만든다. 이미 있는 학번이면 아무것도 바꾸지 않는다. */
+/** 학생 등록 2단계 — 메일 인증번호가 맞으면 Cloud Function이 관리자 승인 없이 바로 계정과
+ *  students 문서를 만든다. 이미 쓰던 학번이면 아무것도 바꾸지 않는다. */
 export async function registerStudent(input: RegisterStudentInput): Promise<RegisterStudentResult> {
   const res = await registerStudentFn({
     studentId: input.studentId.trim(),
     name: input.name.trim(),
     department: input.department.trim(),
+    code: input.code,
+    newPassword: input.newPassword,
   });
   return (res.data as { status: RegisterStudentResult }).status;
 }

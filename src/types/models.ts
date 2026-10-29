@@ -32,6 +32,12 @@ export interface Student {
   isParticipating: boolean;
   /** 최초 비밀번호(00000000) 그대로 쓰고 있어 강제 변경이 필요한 상태인지 */
   mustChangePassword?: boolean;
+  /** 이 학번의 본인으로 인정하는 Firebase Auth 계정 uid — Cloud Function·스크립트만 기록한다. */
+  authUid?: string;
+  /** 마지막 비밀번호 변경 시각(초). 이보다 먼저 로그인한 세션은 규칙·함수에서 거부된다. */
+  passwordChangedAt?: number;
+  /** 학생이 등록 화면에서 직접 등록한 문서인지(관리자 명단과 구분) */
+  selfRegistered?: boolean;
   /** 실제 학생이 아니라 화면 확인용으로 만든 테스트 계정 — true면 학생 관리
    *  목록·마일리지 순위, 일괄지급 대상, 지급 관리 목록에서 기본적으로
    *  제외된다({@link listAllStudents}의 includeTestAccounts 옵션 참고). */

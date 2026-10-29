@@ -1,5 +1,5 @@
 import { setGlobalOptions } from "firebase-functions/v2";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import { Resend } from "resend";
@@ -57,15 +57,51 @@ function requireStudentAuth(authEmail: string | undefined): string {
   return studentIdFromEmail(authEmail);
 }
 
+type StudentAuth = CallableRequest["auth"];
+
+/** 현재 시각(초) — ID 토큰의 auth_time과 같은 단위. students.passwordChangedAt에 저장해,
+ *  firestore.rules·storage.rules·requireActiveStudent가 이 시각 이전에 로그인한 세션을 거부하는 기준으로 쓴다. */
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 /** 학생 본인이면서 초기 비밀번호를 이미 바꾼 계정인지 확인한다. 초기 비밀번호는
- *  모두가 아는 값이라, 바꾸기 전 계정으로는 계좌·전화번호 같은 개인정보를 다루지 못하게 한다. */
-async function requireActiveStudent(authEmail: string | undefined): Promise<string> {
-  const studentId = requireStudentAuth(authEmail);
+ *  모두가 아는 값이라, 바꾸기 전 계정으로는 계좌·전화번호 같은 개인정보를 다루지 못하게 한다.
+ *  같은 이메일로 따로 만들어진 Auth 계정(authUid 불일치)과, 비밀번호를 바꾸기 전에 로그인해 둔
+ *  세션(auth_time < passwordChangedAt — 초기 비밀번호로 미리 로그인해 둔 제3자 등)도 거부한다. */
+async function requireActiveStudent(auth: StudentAuth): Promise<string> {
+  const studentId = requireStudentAuth(auth?.token.email as string | undefined);
   const snap = await admin.firestore().collection("students").doc(studentId).get();
-  if (!snap.exists || snap.data()?.mustChangePassword === true) {
+  const data = snap.data();
+  if (!snap.exists || data?.mustChangePassword === true) {
     throw new HttpsError("failed-precondition", "초기 비밀번호를 먼저 변경해주세요.");
   }
+  if (data?.authUid && data.authUid !== auth!.uid) {
+    throw new HttpsError("permission-denied", "학생 계정으로 로그인해주세요.");
+  }
+  if (auth!.token.auth_time < ((data?.passwordChangedAt as number | undefined) ?? 0)) {
+    throw new HttpsError("unauthenticated", "비밀번호가 변경되었습니다. 다시 로그인해주세요.");
+  }
   return studentId;
+}
+
+/** 학생 비밀번호를 바꾸고, 그 전에 로그인해 둔 모든 세션을 끊는다 — refresh token은 폐기하고,
+ *  아직 남아 있는 ID 토큰(최대 1시간)은 passwordChangedAt 이전 auth_time이라 규칙·함수에서 거부된다.
+ *  authUid도 함께 기록해 이 Auth 계정만 학생 본인으로 인정되게 한다. */
+async function setStudentPassword(uid: string, studentId: string, newPassword: string): Promise<void> {
+  await admin.auth().updateUser(uid, { password: newPassword });
+  await admin.auth().revokeRefreshTokens(uid);
+  await admin
+    .firestore()
+    .collection("students")
+    .doc(studentId)
+    .set({ mustChangePassword: false, authUid: uid, passwordChangedAt: nowSeconds() }, { merge: true });
+}
+
+function clientIpHash(request: { rawRequest?: { ip?: string; headers?: Record<string, unknown> } }): string {
+  const forwarded = String(request.rawRequest?.headers?.["x-forwarded-for"] ?? "").split(",")[0].trim();
+  const ip = request.rawRequest?.ip || forwarded || "unknown";
+  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
 }
 
 /** 로그인 없이 부르는 함수의 남용(대량 등록·이름 대조 등)을 막기 위한 IP별 호출 횟수 제한.
@@ -76,14 +112,21 @@ async function enforceRateLimit(
   limit: number,
   windowSeconds: number
 ): Promise<void> {
-  const forwarded = String(request.rawRequest?.headers?.["x-forwarded-for"] ?? "").split(",")[0].trim();
-  const ip = request.rawRequest?.ip || forwarded || "unknown";
-  const ref = admin
-    .firestore()
-    .collection("rateLimits")
-    .doc(`${name}_${crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32)}`);
+  if (!(await consumeRateLimit(request, name, limit, windowSeconds))) {
+    throw new HttpsError("resource-exhausted", "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
+  }
+}
+
+/** enforceRateLimit와 같지만 한도를 넘으면 오류 대신 false를 돌려준다 (조회수처럼 조용히 무시할 호출용). */
+async function consumeRateLimit(
+  request: { rawRequest?: { ip?: string; headers?: Record<string, unknown> } },
+  name: string,
+  limit: number,
+  windowSeconds: number
+): Promise<boolean> {
+  const ref = admin.firestore().collection("rateLimits").doc(`${name}_${clientIpHash(request)}`);
   const now = Date.now();
-  const allowed = await admin.firestore().runTransaction(async (tx) => {
+  return admin.firestore().runTransaction(async (tx) => {
     const data = (await tx.get(ref)).data();
     const windowStart = (data?.windowStart as number | undefined) ?? 0;
     const inWindow = now - windowStart < windowSeconds * 1000;
@@ -96,9 +139,6 @@ async function enforceRateLimit(
     });
     return true;
   });
-  if (!allowed) {
-    throw new HttpsError("resource-exhausted", "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.");
-  }
 }
 
 async function requireAdminAuth(uid: string | undefined): Promise<void> {
@@ -112,52 +152,11 @@ export const requestPasswordChangeCode = onCall({ secrets: [RESEND_API_KEY] }, a
   const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
 
   // 비밀번호 찾기와 같은 방식: 안전한 난수로 만들고 해시로만 저장하며, 재발송 간격·시간당 횟수를 제한한다.
-  const code = String(crypto.randomInt(100000, 1000000));
-  const ref = admin.firestore().collection("passwordResets").doc(studentId);
-  const now = Date.now();
-
-  await admin.firestore().runTransaction(async (tx) => {
-    const prev = (await tx.get(ref)).data();
-    const lastSentAt = (prev?.lastSentAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
-    const windowStart = (prev?.windowStart as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
-    const inWindow = now - windowStart < 60 * 60 * 1000;
-    const sendCount = inWindow ? ((prev?.sendCount as number | undefined) ?? 0) : 0;
-
-    const waitSeconds = Math.ceil((lastSentAt + RESET_RESEND_COOLDOWN_SECONDS * 1000 - now) / 1000);
-    if (waitSeconds > 0) {
-      throw new HttpsError("resource-exhausted", `${waitSeconds}초 후에 다시 요청해주세요.`);
-    }
-    if (sendCount >= RESET_MAX_SENDS_PER_HOUR) {
-      throw new HttpsError("resource-exhausted", "인증번호 요청 횟수를 초과했습니다. 1시간 후에 다시 시도해주세요.");
-    }
-
-    tx.set(ref, {
-      codeHash: sha256(code),
-      expiresAt: admin.firestore.Timestamp.fromMillis(now + CODE_TTL_MINUTES * 60 * 1000),
-      attempts: 0,
-      lastSentAt: admin.firestore.Timestamp.fromMillis(now),
-      windowStart: admin.firestore.Timestamp.fromMillis(inWindow ? windowStart : now),
-      sendCount: sendCount + 1,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+  const code = await issueEmailCode(admin.firestore().collection("passwordResets").doc(studentId), {
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-
-  const resend = new Resend(RESEND_API_KEY.value());
   const to = toStudentEmail(studentId);
-  await resend.emails.send({
-    from: "A.U.R.A 마일리지 <aura@axlab.scnuai.com>",
-    to,
-    subject: `[A.U.R.A 마일리지] 비밀번호 변경 인증번호: ${code}`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
-        <p style="color:#1a56a8; font-weight:700; font-size:14px;">국립순천대학교 AI인재양성부트캠프사업단</p>
-        <h1 style="font-size:20px;">A.U.R.A 마일리지 비밀번호 변경 인증번호</h1>
-        <p style="color:#555;">아래 인증번호를 비밀번호 변경 화면에 입력해주세요. (${CODE_TTL_MINUTES}분간 유효)</p>
-        <p style="font-size:32px; font-weight:800; letter-spacing:6px; color:#1a56a8; margin:24px 0;">${code}</p>
-        <p style="color:#999; font-size:12px;">본인이 요청하지 않았다면 이 메일을 무시해주세요.</p>
-      </div>
-    `,
-  });
+  await sendCodeEmail(to, code, { title: "비밀번호 변경", note: "본인이 요청하지 않았다면 이 메일을 무시해주세요." });
 
   return { sentTo: to };
 });
@@ -201,9 +200,9 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
   }
 
-  const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
-  await admin.auth().updateUser(userRecord.uid, { password: newPassword });
-  await admin.firestore().collection("students").doc(studentId).set({ mustChangePassword: false }, { merge: true });
+  // 예전에는 비밀번호만 바꾸고 기존 세션을 그대로 둬서, 초기 비밀번호로 미리 로그인해 둔 제3자가
+  // 학생이 비밀번호를 바꾸는 순간 "활성 본인"이 되어 계좌를 덮어쓸 수 있었다 — 모든 세션을 끊는다.
+  await setStudentPassword(request.auth!.uid, studentId, newPassword);
   // 인증번호만 지우고 재발송 제한 기록(lastSentAt·sendCount)은 남긴다.
   await ref.update({ codeHash: null, expiresAt: null });
 
@@ -231,37 +230,16 @@ function hashesMatch(a: string, b: string): boolean {
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 }
 
-function parseStudentId(raw: unknown): string {
-  const studentId = typeof raw === "string" ? raw.trim() : "";
-  if (!STUDENT_ID_PATTERN.test(studentId)) {
-    throw new HttpsError("invalid-argument", "학번을 정확히 입력해주세요.");
-  }
-  return studentId;
-}
-
-/** 비밀번호 찾기 1단계: 학번으로 계정을 확인하고 학교 메일로 인증번호를 보낸다. */
-export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
-  const studentId = parseStudentId((request.data as { studentId?: unknown })?.studentId);
-  // 학번별 재발송 제한과 별개로, 한 IP가 여러 학번에 메일을 뿌리지 못하게 막는다.
-  await enforceRateLimit(request, "requestPasswordResetCode", 20, 10 * 60);
-  const email = toStudentEmail(studentId);
-
-  try {
-    await admin.auth().getUserByEmail(email);
-  } catch (err) {
-    if ((err as { code?: string }).code === "auth/user-not-found") {
-      throw new HttpsError("not-found", "등록된 계정이 없습니다. 학번을 확인하거나 학생 등록 신청을 해주세요.");
-    }
-    throw err;
-  }
-
-  const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
-  const now = Date.now();
+/** 6자리 인증번호를 새로 만들어 ref 문서에 해시로 저장하고 평문을 돌려준다. 학번별 재발송
+ *  간격(60초)·시간당 횟수(5회)를 넘으면 거부한다. extra는 문서에 함께 기록할 필드. */
+async function issueEmailCode(
+  ref: FirebaseFirestore.DocumentReference,
+  extra: Record<string, unknown> = {}
+): Promise<string> {
   const code = String(crypto.randomInt(100000, 1000000));
-
+  const now = Date.now();
   await admin.firestore().runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const prev = snap.data();
+    const prev = (await tx.get(ref)).data();
     const lastSentAt = (prev?.lastSentAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
     const windowStart = (prev?.windowStart as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0;
     const inWindow = now - windowStart < 60 * 60 * 1000;
@@ -279,31 +257,100 @@ export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, as
       codeHash: sha256(code),
       expiresAt: admin.firestore.Timestamp.fromMillis(now + CODE_TTL_MINUTES * 60 * 1000),
       attempts: 0,
-      tokenHash: null,
-      tokenExpiresAt: null,
       lastSentAt: admin.firestore.Timestamp.fromMillis(now),
       windowStart: admin.firestore.Timestamp.fromMillis(inWindow ? windowStart : now),
       sendCount: sendCount + 1,
+      ...extra,
     });
   });
+  return code;
+}
 
+/** 인증번호 메일을 학교 메일로 보낸다. title은 "비밀번호 찾기"처럼 용도를 나타내는 말. */
+async function sendCodeEmail(to: string, code: string, opts: { title: string; note: string }): Promise<void> {
   const resend = new Resend(RESEND_API_KEY.value());
   await resend.emails.send({
     from: "A.U.R.A 마일리지 <aura@axlab.scnuai.com>",
-    to: email,
-    subject: `[A.U.R.A 마일리지] 비밀번호 찾기 인증번호: ${code}`,
+    to,
+    subject: `[A.U.R.A 마일리지] ${opts.title} 인증번호: ${code}`,
     html: `
       <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
         <p style="color:#1a56a8; font-weight:700; font-size:14px;">국립순천대학교 AI인재양성부트캠프사업단</p>
-        <h1 style="font-size:20px;">A.U.R.A 마일리지 비밀번호 찾기 인증번호</h1>
-        <p style="color:#555;">아래 인증번호를 비밀번호 찾기 화면에 입력해주세요. (${CODE_TTL_MINUTES}분간 유효)</p>
+        <h1 style="font-size:20px;">A.U.R.A 마일리지 ${opts.title} 인증번호</h1>
+        <p style="color:#555;">아래 인증번호를 ${opts.title} 화면에 입력해주세요. (${CODE_TTL_MINUTES}분간 유효)</p>
         <p style="font-size:32px; font-weight:800; letter-spacing:6px; color:#1a56a8; margin:24px 0;">${code}</p>
-        <p style="color:#999; font-size:12px;">본인이 요청하지 않았다면 이 메일을 무시해주세요. 비밀번호는 변경되지 않습니다.</p>
+        <p style="color:#999; font-size:12px;">${opts.note}</p>
       </div>
     `,
   });
+}
 
-  return { sentTo: email, expiresInMinutes: CODE_TTL_MINUTES, resendCooldownSeconds: RESET_RESEND_COOLDOWN_SECONDS };
+/** ref 문서에 저장된 인증번호와 대조한다. 틀리면 시도 횟수를 올리고 오류를 던진다(5회 초과 시 잠금).
+ *  consume이면 맞았을 때 인증번호를 지워 다시 쓸 수 없게 한다. */
+async function checkEmailCode(ref: FirebaseFirestore.DocumentReference, code: string, consume: boolean): Promise<void> {
+  // 실패 시 시도 횟수 증가는 트랜잭션 밖에서 처리해야 롤백되지 않는다.
+  const outcome = await admin.firestore().runTransaction(async (tx) => {
+    const data = (await tx.get(ref)).data();
+    if (!data?.codeHash) return "missing" as const;
+    if ((data.attempts as number) >= MAX_ATTEMPTS) return "exhausted" as const;
+    if ((data.expiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) return "expired" as const;
+    if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) return "mismatch" as const;
+    if (consume) tx.update(ref, { codeHash: null, expiresAt: null });
+    return "ok" as const;
+  });
+  switch (outcome) {
+    case "missing":
+      throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
+    case "exhausted":
+      throw new HttpsError("resource-exhausted", "시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.");
+    case "expired":
+      throw new HttpsError("deadline-exceeded", "인증번호가 만료되었습니다. 다시 요청해주세요.");
+    case "mismatch":
+      await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
+      throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
+  }
+}
+
+function parseStudentId(raw: unknown): string {
+  const studentId = typeof raw === "string" ? raw.trim() : "";
+  if (!STUDENT_ID_PATTERN.test(studentId)) {
+    throw new HttpsError("invalid-argument", "학번을 정확히 입력해주세요.");
+  }
+  return studentId;
+}
+
+/** 비밀번호 찾기 1단계: 학번으로 계정을 확인하고 학교 메일로 인증번호를 보낸다. */
+export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  const studentId = parseStudentId((request.data as { studentId?: unknown })?.studentId);
+  // 학번별 재발송 제한과 별개로, 한 IP가 여러 학번에 메일을 뿌리지 못하게 막는다.
+  await enforceRateLimit(request, "requestPasswordResetCode", 20, 10 * 60);
+  const email = toStudentEmail(studentId);
+
+  const response = {
+    sentTo: email,
+    expiresInMinutes: CODE_TTL_MINUTES,
+    resendCooldownSeconds: RESET_RESEND_COOLDOWN_SECONDS,
+  };
+
+  // 예전에는 계정이 없으면 not-found를 돌려줘서 학번을 대입해 가입 여부를 알아낼 수 있었다 —
+  // 계정 유무와 상관없이 같은 응답을 주고, 실제 메일은 계정이 있을 때만 보낸다.
+  try {
+    await admin.auth().getUserByEmail(email);
+  } catch (err) {
+    if ((err as { code?: string }).code === "auth/user-not-found") return response;
+    throw err;
+  }
+
+  const code = await issueEmailCode(admin.firestore().collection("passwordResetRequests").doc(studentId), {
+    tokenHash: null,
+    tokenExpiresAt: null,
+  });
+  await sendCodeEmail(email, code, {
+    title: "비밀번호 찾기",
+    note: "본인이 요청하지 않았다면 이 메일을 무시해주세요. 비밀번호는 변경되지 않습니다.",
+  });
+
+  return response;
 });
 
 /** 비밀번호 찾기 2단계: 인증번호를 확인하고, 맞으면 비밀번호 재설정용 1회성 토큰을 발급한다. */
@@ -388,9 +435,7 @@ export const resetPasswordWithToken = onCall(async (request) => {
   }
 
   const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
-  await admin.auth().updateUser(userRecord.uid, { password: newPassword });
-  await admin.auth().revokeRefreshTokens(userRecord.uid);
-  await admin.firestore().collection("students").doc(studentId).set({ mustChangePassword: false }, { merge: true });
+  await setStudentPassword(userRecord.uid, studentId, newPassword);
 
   return { success: true };
 });
@@ -408,11 +453,13 @@ export const approveStudentRegistration = onCall(async (request) => {
   const reg = reqSnap.data()!;
 
   const email = toStudentEmail(reg.studentId);
+  let uid: string;
   try {
-    await admin.auth().createUser({ email, password: INITIAL_PASSWORD, displayName: reg.name });
+    uid = (await admin.auth().createUser({ email, password: INITIAL_PASSWORD, displayName: reg.name })).uid;
   } catch (err) {
     const code = (err as { code?: string }).code;
     if (code !== "auth/email-already-exists") throw err;
+    uid = (await admin.auth().getUserByEmail(email)).uid;
   }
 
   await admin.firestore().collection("students").doc(reg.studentId).set({
@@ -421,6 +468,7 @@ export const approveStudentRegistration = onCall(async (request) => {
     department: reg.department,
     isParticipating: reg.isParticipating,
     mustChangePassword: true,
+    authUid: uid,
   });
 
   await reqRef.update({ status: "승인", processedAt: admin.firestore.FieldValue.serverTimestamp() });
@@ -431,29 +479,76 @@ export const approveStudentRegistration = onCall(async (request) => {
 // src/types/models.ts의 PARTICIPATING_DEPARTMENTS와 동일하게 유지한다.
 const PARTICIPATING_DEPARTMENTS = ["인공지능공학전공", "전기공학전공", "전자공학전공"];
 
-/** 학생 등록 신청 — 관리자 승인 없이 바로 학번@s.scnu.ac.kr 계정(초기 비밀번호
- * INITIAL_PASSWORD)과 students 문서를 만든다. 이미 있는 학번이면 아무것도 바꾸지 않고
- * 이름 일치 여부만 알려준다(기존 회원 안내용). 기존 이름 등 원본 데이터는 돌려주지 않는다.
- * 모든 시도는 studentRegistrationLogs에 결과와 함께 남겨 관리자 화면에서 볼 수 있다. */
+const REGISTER_ID_PATTERN = /^\d{6,10}$/;
+
+/** 학생 등록 1단계: 입력한 학번의 학교 메일로 인증번호를 보낸다. 가입 여부와 상관없이 같은
+ *  응답을 줘서, 이 함수로는 학번이 등록돼 있는지 알아낼 수 없다. */
+export const requestRegistrationCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  const raw = (request.data as { studentId?: unknown })?.studentId;
+  const id = typeof raw === "string" ? raw.trim() : "";
+  if (!REGISTER_ID_PATTERN.test(id)) throw new HttpsError("invalid-argument", "학번은 숫자 6~10자리로 입력해주세요.");
+  // 학번별 재발송 제한과 별개로, 한 IP가 여러 학번에 메일을 뿌리지 못하게 막는다.
+  await enforceRateLimit(request, "requestRegistrationCode", 20, 10 * 60);
+
+  const email = toStudentEmail(id);
+  const code = await issueEmailCode(admin.firestore().collection("registrationVerifications").doc(id));
+  await sendCodeEmail(email, code, {
+    title: "학생 등록",
+    note: "본인이 요청하지 않았다면 이 메일을 무시해주세요. 인증번호 없이는 등록되지 않습니다.",
+  });
+  return { sentTo: email, expiresInMinutes: CODE_TTL_MINUTES, resendCooldownSeconds: RESET_RESEND_COOLDOWN_SECONDS };
+});
+
+/** 학생 등록 2단계 — 학교 메일 인증번호로 본인임을 확인한 뒤 바로 학번@s.scnu.ac.kr 계정을
+ * 학생이 정한 비밀번호로 만든다(공용 초기 비밀번호를 거치지 않는다). 예전에는 인증 없이
+ * 등록돼서 남의 학번을 엉뚱한 이름으로 선점하거나, existing/id-taken 응답 차이로 학번+이름
+ * 일치 여부를 알아낼 수 있었다 — 이제 두 응답 모두 메일 인증을 통과해야만 받을 수 있다.
+ *
+ * - 새 학번: students 문서와 계정을 만든다 → created
+ * - 이름이 같은 기존 학번: 아직 본인 인증 전(mustChangePassword)이면 이 비밀번호로 활성화
+ *   → created, 이미 쓰던 계정이면 아무것도 바꾸지 않는다 → existing
+ * - 이름이 다른 기존 학번: 인증 없이 자가 등록된 채 한 번도 활성화되지 않은 문서(예전 방식의
+ *   선점 등)면 메일 인증한 본인의 정보로 바로잡는다 → created, 그 외(관리자 명단·활성 계정)는
+ *   바꾸지 않는다 → id-taken
+ *
+ * 기존 이름 등 원본 데이터는 돌려주지 않는다. 모든 시도는 studentRegistrationLogs에 결과와 함께
+ * 남겨 관리자 화면에서 볼 수 있다. */
 export const registerStudent = onCall(async (request) => {
-  const { studentId, name, department } = request.data as {
+  const { studentId, name, department, code, newPassword } = request.data as {
     studentId?: string;
     name?: string;
     department?: string;
+    code?: unknown;
+    newPassword?: unknown;
   };
   const id = typeof studentId === "string" ? studentId.trim() : "";
   const trimmedName = typeof name === "string" ? name.trim() : "";
   const trimmedDept = typeof department === "string" ? department.trim() : "";
-  if (!/^\d{6,10}$/.test(id)) throw new HttpsError("invalid-argument", "학번은 숫자 6~10자리로 입력해주세요.");
+  if (!REGISTER_ID_PATTERN.test(id)) throw new HttpsError("invalid-argument", "학번은 숫자 6~10자리로 입력해주세요.");
   if (!trimmedName || trimmedName.length > 30) throw new HttpsError("invalid-argument", "이름을 올바르게 입력해주세요.");
   if (!trimmedDept || trimmedDept.length > 50) throw new HttpsError("invalid-argument", "학과를 올바르게 입력해주세요.");
-  // 로그인 없이 계정을 만드는 함수라 대량 등록(학번 선점)을 막는다. 남이 먼저 등록해도 초기
-  // 비밀번호 상태에서는 아무것도 할 수 없고, 비밀번호 변경은 학교 메일 인증이 있어야 한다.
+  if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
+    throw new HttpsError("invalid-argument", "6자리 인증번호를 입력해주세요.");
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    throw new HttpsError("invalid-argument", "비밀번호는 8자 이상이어야 합니다.");
+  }
+  if (newPassword.length > 64) {
+    throw new HttpsError("invalid-argument", "비밀번호는 64자 이하여야 합니다.");
+  }
+  if (newPassword === INITIAL_PASSWORD) {
+    throw new HttpsError("invalid-argument", `초기 비밀번호(${INITIAL_PASSWORD})는 새 비밀번호로 쓸 수 없습니다.`);
+  }
   await enforceRateLimit(request, "registerStudent", 30, 10 * 60);
 
   const db = admin.firestore();
+  const verificationRef = db.collection("registrationVerifications").doc(id);
+  // 결과가 id-taken·existing이면 인증번호를 남겨둬서, 이름 오타를 고쳐 바로 다시 시도할 수 있게 한다.
+  await checkEmailCode(verificationRef, code, false);
+
   const studentRef = db.collection("students").doc(id);
   const isParticipating = PARTICIPATING_DEPARTMENTS.includes(trimmedDept);
+  const email = toStudentEmail(id);
 
   // 관리자 "학생 등록 신청" 화면의 등록 시도 기록 — 결과와 상관없이 매번 남긴다.
   // registeredName은 이름 불일치일 때만, 관리자가 누구 이름으로 등록돼 있는지 비교할 수 있게 저장한다.
@@ -469,23 +564,27 @@ export const registerStudent = onCall(async (request) => {
     });
   }
 
+  let replacedName: string | undefined;
   try {
     const result = await db.runTransaction(async (tx) => {
       const snap = await tx.get(studentRef);
-      if (snap.exists) {
-        const registeredName = String(snap.data()?.name ?? "").trim();
-        return registeredName === trimmedName
-          ? ({ status: "existing" } as const)
-          : ({ status: "id-taken", registeredName } as const);
+      const data = snap.data();
+      const profile = { studentId: id, name: trimmedName, department: trimmedDept, isParticipating };
+      if (!snap.exists) {
+        // 비밀번호는 아래에서 계정을 만든 뒤 setStudentPassword가 활성화한다 — 그 전에 실패하면 지운다.
+        tx.set(studentRef, { ...profile, mustChangePassword: true, selfRegistered: true });
+        return { status: "created", isNew: true } as const;
       }
-      tx.set(studentRef, {
-        studentId: id,
-        name: trimmedName,
-        department: trimmedDept,
-        isParticipating,
-        mustChangePassword: true,
-      });
-      return { status: "created" } as const;
+      const registeredName = String(data?.name ?? "").trim();
+      const unverified = data?.mustChangePassword === true;
+      if (registeredName === trimmedName) {
+        return unverified ? ({ status: "created", isNew: false } as const) : ({ status: "existing" } as const);
+      }
+      if (unverified && data?.selfRegistered === true) {
+        tx.set(studentRef, { ...profile, selfRegistered: true }, { merge: true });
+        return { status: "created", isNew: false, registeredName } as const;
+      }
+      return { status: "id-taken", registeredName } as const;
     });
     if (result.status === "existing") {
       await writeLog("existing");
@@ -497,20 +596,28 @@ export const registerStudent = onCall(async (request) => {
     }
 
     try {
-      await admin.auth().createUser({ email: toStudentEmail(id), password: INITIAL_PASSWORD, displayName: trimmedName });
-    } catch (err) {
-      const code = (err as { code?: string }).code;
-      if (code !== "auth/email-already-exists") {
-        await studentRef.delete();
-        throw err;
+      let uid: string;
+      try {
+        uid = (await admin.auth().createUser({ email, password: newPassword, displayName: trimmedName })).uid;
+      } catch (err) {
+        if ((err as { code?: string }).code !== "auth/email-already-exists") throw err;
+        uid = (await admin.auth().getUserByEmail(email)).uid;
       }
+      // 이미 있던 계정(초기 비밀번호 상태)이면 비밀번호를 바꾸면서 그 계정의 기존 세션을 모두 끊는다.
+      await setStudentPassword(uid, id, newPassword);
+    } catch (err) {
+      if (result.isNew) await studentRef.delete();
+      throw err;
     }
+    await verificationRef.update({ codeHash: null, expiresAt: null });
+    // 선점된 이름을 바로잡은 경우 관리자가 알 수 있게 예전 이름을 함께 남긴다.
+    replacedName = "registeredName" in result ? result.registeredName : undefined;
   } catch (err) {
     await writeLog("failed").catch(() => undefined);
     throw err;
   }
 
-  await writeLog("created");
+  await writeLog("created", replacedName);
   return { status: "created" as const };
 });
 
@@ -536,9 +643,10 @@ export const deleteStudent = onCall(async (request) => {
 
 /** 학생이 장학금 수령용 계좌를 등록/수정한다. 계좌번호는 여기서만 암호화되고
  * (Firestore에는 암호문과 마지막 4자리만 저장), 이후 이 값이 평문으로 다시
- * 클라이언트에 내려가는 일은 없다 — 바꾸려면 처음부터 다시 입력해야 한다. */
-export const saveBankAccount = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async (request) => {
-  const studentId = await requireActiveStudent(request.auth?.token.email as string | undefined);
+ * 클라이언트에 내려가는 일은 없다 — 바꾸려면 처음부터 다시 입력해야 한다.
+ * 저장할 때마다 학교 메일로 알림을 보내, 본인이 하지 않은 계좌 변경을 바로 알아챌 수 있게 한다. */
+export const saveBankAccount = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY, RESEND_API_KEY] }, async (request) => {
+  const studentId = await requireActiveStudent(request.auth);
   const { bankName, accountHolder, accountNumber } = request.data as {
     bankName?: string;
     accountHolder?: string;
@@ -574,6 +682,31 @@ export const saveBankAccount = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY] }, async
     accountNumberEnc,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+
+  // 알림 메일 실패가 계좌 저장 자체를 실패로 만들지는 않는다. 메일에는 학생이 입력한 문자열 없이
+  // 계좌 끝 4자리만 넣는다.
+  try {
+    const savedAt = new Intl.DateTimeFormat("ko-KR", {
+      timeZone: "Asia/Seoul",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date());
+    await new Resend(RESEND_API_KEY.value()).emails.send({
+      from: "A.U.R.A 마일리지 <aura@axlab.scnuai.com>",
+      to: toStudentEmail(studentId),
+      subject: "[A.U.R.A 마일리지] 장학금 수령 계좌가 등록·변경되었습니다",
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
+          <p style="color:#1a56a8; font-weight:700; font-size:14px;">국립순천대학교 AI인재양성부트캠프사업단</p>
+          <h1 style="font-size:20px;">장학금 수령 계좌 등록·변경 알림</h1>
+          <p style="color:#555;">${savedAt}에 끝자리 <strong>${accountNumberLast4}</strong> 계좌가 장학금 수령 계좌로 저장되었습니다.</p>
+          <p style="color:#999; font-size:12px;">본인이 변경하지 않았다면 즉시 비밀번호를 변경하고 061-750-5396으로 문의해주세요.</p>
+        </div>
+      `,
+    });
+  } catch (err) {
+    console.error("bank account notification failed", err);
+  }
 
   return { success: true, last4: accountNumberLast4 };
 });
@@ -653,7 +786,7 @@ function decryptPhone(payload: string): string {
  * 여기서만 암호화되고(전화번호 전용 키 PHONE_ENC_KEY), Firestore에는 암호문과
  * 마스킹된 표시값만 저장된다. 전화번호는 students 문서가 아니라 studentContacts에 분리한다. */
 export const savePhoneNumber = onCall({ secrets: [PHONE_ENC_KEY] }, async (request) => {
-  const studentId = await requireActiveStudent(request.auth?.token.email as string | undefined);
+  const studentId = await requireActiveStudent(request.auth);
   const { phone } = request.data as { phone?: string };
   const digitsOnly = (phone ?? "").replace(/[^0-9]/g, "");
 
@@ -679,7 +812,7 @@ export const savePhoneNumber = onCall({ secrets: [PHONE_ENC_KEY] }, async (reque
 /** 로그인한 학생 본인의 휴대전화번호를 복호화해 돌려준다 — 프로그램 신청 창의 연락처
  * 자동 입력용. 학번은 요청 값이 아니라 로그인 토큰에서만 꺼내므로 남의 번호는 조회할 수 없다. */
 export const getMyPhoneNumber = onCall({ secrets: [PHONE_ENC_KEY, BANK_ACCOUNT_ENC_KEY] }, async (request) => {
-  const studentId = await requireActiveStudent(request.auth?.token.email as string | undefined);
+  const studentId = await requireActiveStudent(request.auth);
   const snap = await admin.firestore().collection("studentContacts").doc(studentId).get();
   if (!snap.exists) return { phone: null };
   return { phone: decryptPhone(snap.data()!.phoneEnc) };
@@ -814,4 +947,52 @@ export const checkPrivacyConsent = onCall(async (request) => {
     student.isParticipating === false
   );
   return { consented: false, consentedAt: null, required };
+});
+
+/** 로그인한 학생의 계정 상태. students 문서는 이제 비밀번호를 바꾼(활성) 본인만 읽을 수 있어서 —
+ *  예전에는 공용 초기 비밀번호로 로그인만 하면 남의 이름·학과를 볼 수 있었다 — 그 전 단계의
+ *  학생 화면(비밀번호 변경 안내)은 이 함수로 상태만 받아간다. 이름 등 원본 데이터는 내려주지 않는다.
+ *  - missing: 학생 문서가 없거나 다른 Auth 계정에 묶인 학번
+ *  - stale: 비밀번호가 바뀌기 전에 로그인한 세션 — 다시 로그인해야 한다
+ *  - mustChangePassword: 초기 비밀번호 상태
+ *  - active: 정상 (students 문서를 직접 읽으면 된다) */
+export const getMyAccountStatus = onCall(async (request) => {
+  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const data = (await admin.firestore().collection("students").doc(studentId).get()).data();
+  if (!data || (data.authUid && data.authUid !== request.auth!.uid)) return { status: "missing" as const };
+  if (request.auth!.token.auth_time < ((data.passwordChangedAt as number | undefined) ?? 0)) {
+    return { status: "stale" as const };
+  }
+  if (data.mustChangePassword === true) return { status: "mustChangePassword" as const, studentId };
+  return { status: "active" as const };
+});
+
+/** 사이트 방문(programId 없음)·프로그램 게시글 조회수를 1 올린다. 예전에는 규칙상 누구나 Firestore에
+ *  직접 +1을 무제한으로 쓸 수 있어 통계를 부풀릴 수 있었다 — 이제 클라이언트는 쓰지 못하고 이 함수만
+ *  IP별 한도 안에서 올린다. 학교 와이파이처럼 여러 명이 한 IP를 쓰는 경우를 고려해 넉넉히 잡고,
+ *  한도를 넘거나 비공개 글이면 오류 없이 무시한다(통계일 뿐이라 화면을 막지 않는다). */
+export const recordView = onCall(async (request) => {
+  const { programId } = (request.data ?? {}) as { programId?: unknown };
+  if (programId !== undefined && (typeof programId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(programId))) {
+    throw new HttpsError("invalid-argument", "programId 형식이 올바르지 않습니다.");
+  }
+  const db = admin.firestore();
+
+  if (typeof programId === "string") {
+    if (!(await consumeRateLimit(request, "recordProgramView", 300, 10 * 60))) return { counted: false };
+    const ref = db.collection("programs").doc(programId);
+    const snap = await ref.get();
+    if (snap.data()?.isPublished !== true) return { counted: false };
+    await ref.update({ viewCount: admin.firestore.FieldValue.increment(1) });
+    return { counted: true };
+  }
+
+  if (!(await consumeRateLimit(request, "recordVisit", 200, 10 * 60))) return { counted: false };
+  // 방문 통계 문서 ID는 한국 날짜("YYYY-MM-DD") — en-CA 형식이 정확히 이 모양이다.
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+  await db
+    .collection("visitStats")
+    .doc(date)
+    .set({ count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+  return { counted: true };
 });
