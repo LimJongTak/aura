@@ -215,14 +215,14 @@ function replaceZipEntry(zip: Uint8Array, target: string, content: Uint8Array): 
   return out;
 }
 
-/** 신청자(반려 제외)를 학과·학번 순으로 정렬해 서명부를 만들고 내려받는다. */
+/** 신청자(반려 제외)를 소속(학과) 가나다순, 같은 학과 안에서는 이름 가나다순(동명이인은 학번순)으로 정렬해 서명부를 만들고 내려받는다. */
 export async function downloadSignatureSheet(program: Program, apps: ProgramApplication[]): Promise<void> {
   const res = await fetch(TEMPLATE_URL);
   if (!res.ok) throw new Error("서명부 서식을 불러오지 못했습니다.");
   const rows = apps
     .filter((a) => a.status !== "반려")
     .map((a) => ({ department: a.department, studentId: a.studentId, name: a.studentName }))
-    .sort((a, b) => a.department.localeCompare(b.department, "ko") || a.studentId.localeCompare(b.studentId));
+    .sort((a, b) => a.department.localeCompare(b.department, "ko") || a.name.localeCompare(b.name, "ko") || a.studentId.localeCompare(b.studentId));
   const bytes = fillSignatureSheet(new Uint8Array(await res.arrayBuffer()), program.title, rows);
 
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/hwp+zip" }));
