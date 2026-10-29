@@ -5,7 +5,7 @@ import Link from "next/link";
 import { httpsCallable } from "firebase/functions";
 import { ArrowLeft, CheckCircle2, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { functions } from "@/lib/firebase/client";
-import { toStudentEmail } from "@/lib/auth/studentAuth";
+import { toLoginEmail } from "@/lib/auth/studentAuth";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -22,20 +22,22 @@ import {
   useCooldown,
 } from "@/components/auth/PasswordUi";
 
+// loginId: 학번 또는 학교 메일 아이디(tetelong, tetelong@s.scnu.ac.kr) — 로그인 화면에 입력하는 값과 같다.
 const requestPasswordResetCode = httpsCallable<
-  { studentId: string },
+  { loginId: string },
   { sentTo: string; expiresInMinutes: number; resendCooldownSeconds: number }
 >(functions, "requestPasswordResetCode");
-const verifyPasswordResetCode = httpsCallable<{ studentId: string; code: string }, { resetToken: string }>(
+const verifyPasswordResetCode = httpsCallable<{ loginId: string; code: string }, { resetToken: string }>(
   functions,
   "verifyPasswordResetCode"
 );
 const resetPasswordWithToken = httpsCallable<
-  { studentId: string; resetToken: string; newPassword: string },
+  { loginId: string; resetToken: string; newPassword: string },
   { success: boolean }
 >(functions, "resetPasswordWithToken");
 
-const STEPS = ["학번 입력", "메일 인증", "새 비밀번호"];
+const STEPS = ["아이디 입력", "메일 인증", "새 비밀번호"];
+const LOGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}(@s\.scnu\.ac\.kr)?$/;
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
@@ -52,14 +54,14 @@ export default function ForgotPasswordPage() {
 
   async function sendCode() {
     setError(null);
-    const id = studentId.trim();
-    if (!/^\d{6,12}$/.test(id)) {
-      setError("학번을 정확히 입력해주세요.");
+    const id = studentId.trim().toLowerCase();
+    if (!LOGIN_ID_PATTERN.test(id)) {
+      setError("학번 또는 학교 메일 아이디를 정확히 입력해주세요.");
       return;
     }
     setBusy(true);
     try {
-      const { data } = await requestPasswordResetCode({ studentId: id });
+      const { data } = await requestPasswordResetCode({ loginId: id });
       setSentTo(data.sentTo);
       setExpiresInMinutes(data.expiresInMinutes);
       cooldown.start(data.resendCooldownSeconds);
@@ -86,7 +88,7 @@ export default function ForgotPasswordPage() {
     }
     setBusy(true);
     try {
-      const { data } = await verifyPasswordResetCode({ studentId: studentId.trim(), code });
+      const { data } = await verifyPasswordResetCode({ loginId: studentId.trim().toLowerCase(), code });
       setResetToken(data.resetToken);
       setStep(2);
     } catch (err) {
@@ -105,7 +107,7 @@ export default function ForgotPasswordPage() {
     }
     setBusy(true);
     try {
-      await resetPasswordWithToken({ studentId: studentId.trim(), resetToken, newPassword });
+      await resetPasswordWithToken({ loginId: studentId.trim().toLowerCase(), resetToken, newPassword });
       setStep(3);
     } catch (err) {
       setError(callableErrorMessage(err, "비밀번호 변경에 실패했습니다. 잠시 후 다시 시도해주세요."));
@@ -143,7 +145,7 @@ export default function ForgotPasswordPage() {
   }
 
   const shell = {
-    0: { icon: KeyRound, desc: "학번을 입력하면 학교 이메일로 인증번호를 보내드립니다." },
+    0: { icon: KeyRound, desc: "학번(또는 학교 메일 아이디)을 입력하면 학교 이메일로 인증번호를 보내드립니다." },
     1: { icon: Mail, desc: "학교 메일함에서 인증번호를 확인해 입력해주세요." },
     2: { icon: ShieldCheck, desc: "본인 인증이 완료되었습니다. 새로 사용할 비밀번호를 설정해주세요." },
   }[step];
@@ -167,19 +169,19 @@ export default function ForgotPasswordPage() {
         {step === 0 && (
           <form onSubmit={handleRequest} className="flex flex-col gap-4">
             <div>
-              <FieldLabel htmlFor="student-id">학번</FieldLabel>
+              <FieldLabel htmlFor="student-id">학번 (또는 학교 메일 아이디)</FieldLabel>
               <Input
                 id="student-id"
                 value={studentId}
-                onChange={(e) => setStudentId(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) => setStudentId(e.target.value.replace(/\s/g, ""))}
                 placeholder="예: 20261234"
-                inputMode="numeric"
                 autoComplete="username"
+                autoCapitalize="none"
                 autoFocus
               />
               {studentId.trim() && (
                 <p className="mt-2 flex items-center gap-1.5 text-xs text-muted">
-                  <Mail size={13} /> {toStudentEmail(studentId)} 로 발송됩니다
+                  <Mail size={13} /> {toLoginEmail(studentId)} 로 발송됩니다
                 </p>
               )}
             </div>
@@ -197,7 +199,7 @@ export default function ForgotPasswordPage() {
                 <strong className="font-bold">{sentTo}</strong> 로 인증번호를 보냈습니다. ({expiresInMinutes}분간 유효)
               </p>
               <p className="mt-1">
-                등록된 학번일 때만 메일이 발송됩니다. 메일이 오지 않으면 학번을 확인하시거나{" "}
+                가입된 아이디일 때만 메일이 발송됩니다. 메일이 오지 않으면 아이디를 확인하시거나{" "}
                 <Link href="/register" className="font-semibold underline">
                   학생 등록
                 </Link>
@@ -222,7 +224,7 @@ export default function ForgotPasswordPage() {
             </Button>
             <div className="flex items-center justify-between text-xs">
               <button type="button" onClick={restart} className="font-semibold text-muted hover:text-primary">
-                학번 다시 입력
+                아이디 다시 입력
               </button>
               <button
                 type="button"

@@ -38,6 +38,8 @@ export interface Student {
   passwordChangedAt?: number;
   /** 학생이 등록 화면에서 직접 등록한 문서인지(관리자 명단과 구분) */
   selfRegistered?: boolean;
+  /** 학번@s.scnu.ac.kr 대신 쓰는 학교 메일 로그인 아이디(예: tetelong@s.scnu.ac.kr). 없으면 학번 메일. */
+  loginEmail?: string;
   /** 실제 학생이 아니라 화면 확인용으로 만든 테스트 계정 — true면 학생 관리
    *  목록·마일리지 순위, 일괄지급 대상, 지급 관리 목록에서 기본적으로
    *  제외된다({@link listAllStudents}의 includeTestAccounts 옵션 참고). */
@@ -436,6 +438,25 @@ export interface StudentRegistrationRequest {
   department: string;
   isParticipating: boolean;
   status: ApplicationStatus;
+  processedAt?: number;
+  note?: string;
+}
+
+/**
+ * 학번 메일(학번@s.scnu.ac.kr)을 쓰지 않는 학생의 가입 신청 → emailAccountRequests/{uid}.
+ * 신청할 때 학교 메일 인증과 비밀번호 설정을 마치고, 계정은 비활성 상태로 만들어진다 —
+ * 관리자가 승인해야 로그인할 수 있다. Cloud Function만 쓰고 관리자만 읽는다.
+ */
+export interface EmailAccountRequest {
+  id: string;
+  uid: string;
+  email: string;
+  studentId: string;
+  name: string;
+  department: string;
+  isParticipating: boolean;
+  status: ApplicationStatus;
+  requestedAt: number;
   processedAt?: number;
   note?: string;
 }

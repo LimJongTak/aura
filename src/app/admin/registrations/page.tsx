@@ -3,12 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import {
+  approveEmailAccountRequest,
   approveStudentRegistration,
+  listPendingEmailAccountRequests,
   listPendingStudentRegistrations,
   listStudentRegistrationLogs,
+  rejectEmailAccountRequest,
   rejectStudentRegistration,
 } from "@/lib/firestore/studentRegistrations";
-import type { StudentRegistrationLog, StudentRegistrationRequest, StudentRegistrationResult } from "@/types/models";
+import { getStudent } from "@/lib/firestore/students";
+import type {
+  EmailAccountRequest,
+  Student,
+  StudentRegistrationLog,
+  StudentRegistrationRequest,
+  StudentRegistrationResult,
+} from "@/types/models";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -64,6 +74,30 @@ function formatDateTime(ms: number): string {
   });
 }
 
+/** 메일 가입 신청의 학번이 학생명단에 어떤 상태로 있는지 — 승인하면 무엇이 바뀌는지 관리자에게 알려준다. */
+function rosterStatus(req: EmailAccountRequest, roster: Student | null | undefined): {
+  text: string;
+  warn: boolean;
+} {
+  if (roster === undefined) return { text: "확인 중...", warn: false };
+  if (!roster) return { text: "명단에 없는 학번 — 승인하면 신청 정보로 학생명단에 추가됩니다.", warn: false };
+  const nameMatches = roster.name.trim() === req.name.trim();
+  const nameText = nameMatches ? `명단 이름 "${roster.name}" 일치` : `명단 이름은 "${roster.name}" — 신청 이름과 다릅니다`;
+  if (roster.loginEmail) {
+    return {
+      text: `${nameText}. 이미 ${roster.loginEmail} 계정에 연결된 학번이라, 승인하면 그 계정은 사용 중지됩니다.`,
+      warn: true,
+    };
+  }
+  if (roster.mustChangePassword) {
+    return { text: `${nameText}. 학번 계정은 한 번도 쓰지 않은 상태(초기 비밀번호)라 승인해도 문제없습니다.`, warn: !nameMatches };
+  }
+  return {
+    text: `${nameText}. 학번 메일 계정을 이미 쓰고 있는 학번이라, 승인하면 그 계정은 사용 중지됩니다.`,
+    warn: true,
+  };
+}
+
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -80,6 +114,9 @@ function FilterButton({ active, onClick, children }: { active: boolean; onClick:
 
 export default function AdminRegistrationsPage() {
   const [requests, setRequests] = useState<StudentRegistrationRequest[]>([]);
+  const [emailRequests, setEmailRequests] = useState<EmailAccountRequest[]>([]);
+  // 신청 학번별 학생명단 문서 (undefined: 불러오는 중, null: 명단에 없음)
+  const [rosters, setRosters] = useState<Record<string, Student | null>>({});
   const [logs, setLogs] = useState<StudentRegistrationLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -91,9 +128,17 @@ export default function AdminRegistrationsPage() {
   const refresh = useCallback(async () => {
     setLoadError(false);
     try {
-      const [pending, logList] = await Promise.all([listPendingStudentRegistrations(), listStudentRegistrationLogs()]);
+      const [pending, emailPending, logList] = await Promise.all([
+        listPendingStudentRegistrations(),
+        listPendingEmailAccountRequests(),
+        listStudentRegistrationLogs(),
+      ]);
       setRequests(pending);
+      setEmailRequests(emailPending);
       setLogs(logList);
+      const ids = [...new Set(emailPending.map((r) => r.studentId))];
+      const students = await Promise.all(ids.map((id) => getStudent(id)));
+      setRosters(Object.fromEntries(ids.map((id, i) => [id, students[i]])));
     } catch {
       setLoadError(true);
     } finally {
@@ -137,6 +182,34 @@ export default function AdminRegistrationsPage() {
     }
   }
 
+  async function handleApproveEmail(req: EmailAccountRequest) {
+    const status = rosterStatus(req, rosters[req.studentId]);
+    const message = `${req.name}(${req.studentId}) 학생을 ${req.email} 아이디로 승인할까요?\n\n${status.text}`;
+    if (!confirm(message)) return;
+    setBusyId(req.id);
+    try {
+      await approveEmailAccountRequest(req.id);
+      await refresh();
+    } catch {
+      alert("승인 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRejectEmail(req: EmailAccountRequest) {
+    if (!confirm(`${req.name}(${req.studentId}) 학생의 가입 신청을 반려할까요? 신청한 계정은 삭제됩니다.`)) return;
+    setBusyId(req.id);
+    try {
+      await rejectEmailAccountRequest(req.id);
+      await refresh();
+    } catch {
+      alert("반려 처리에 실패했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function handleReject(id: string) {
     setBusyId(id);
     try {
@@ -164,6 +237,60 @@ export default function AdminRegistrationsPage() {
       {loadError && (
         <p className="mt-4 text-sm font-medium text-danger">기록을 불러오지 못했습니다. 새로고침해서 다시 시도해주세요.</p>
       )}
+
+      <div className="mt-6">
+        <h2 className="font-bold text-foreground">학교 메일 가입 신청 · 승인 대기 ({emailRequests.length}건)</h2>
+        <p className="mt-1 text-xs text-muted">
+          학번 메일(학번@s.scnu.ac.kr)을 쓰지 않는 학생이 실제 학교 메일로 인증하고 비밀번호까지 정해 신청한
+          건입니다. 학번·이름이 본인이 맞는지 확인하고 승인하면, 그 메일 아이디로 바로 로그인할 수 있습니다.
+        </p>
+        <Card className="mt-3 overflow-x-auto p-0">
+          {emailRequests.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted">승인 대기 중인 신청이 없습니다.</p>
+          ) : (
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">신청 일시</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">학번</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">이름</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">학과</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">학교 메일(로그인 아이디)</th>
+                  <th className="px-4 py-3 font-semibold">학생명단 확인</th>
+                  <th className="whitespace-nowrap px-4 py-3 font-semibold">처리</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emailRequests.map((r) => {
+                  const status = rosterStatus(r, rosters[r.studentId]);
+                  return (
+                    <tr key={r.id} className="border-b border-border align-top last:border-0">
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatDateTime(r.requestedAt)}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5">{r.studentId}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 font-semibold">{r.name}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5">{r.department}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5">{r.email}</td>
+                      <td className={`min-w-64 px-4 py-2.5 ${status.warn ? "font-medium text-danger" : "text-muted"}`}>
+                        {status.text}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex gap-1.5">
+                          <Button size="sm" loading={busyId === r.id} onClick={() => handleApproveEmail(r)}>
+                            승인
+                          </Button>
+                          <Button size="sm" variant="danger" loading={busyId === r.id} onClick={() => handleRejectEmail(r)}>
+                            반려
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      </div>
 
       {requests.length > 0 && (
         <div className="mt-6">

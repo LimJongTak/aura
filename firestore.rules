@@ -11,11 +11,20 @@ service cloud.firestore {
       return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // 신청서에 적힌 studentId 본인이 로그인한 상태에서 쓰는 요청인지 확인한다
-    // (Firebase Auth 이메일이 항상 {학번}@s.scnu.ac.kr 형태이므로 문자열로
-    // 대조할 수 있다). 이름+학번만으로 아무나 쓸 수 있던 예전 모델을 대체한다.
+    // 신청서에 적힌 studentId 본인이 로그인한 상태에서 쓰는 요청인지 확인한다. 학생 계정은 대부분
+    // {학번}@s.scnu.ac.kr 이메일이라 문자열로 대조하고, 학번 메일을 쓰지 않는 학생(tetelong@s.scnu.ac.kr
+    // 같은 로그인 메일)은 관리자 승인·전환 때 Admin SDK가 심은 커스텀 클레임 studentId로 대조한다 —
+    // 클레임은 클라이언트가 바꿀 수 없고, 클레임이 있으면 이메일은 보지 않는다.
     function isSelf(studentId) {
-      return isSignedIn() && request.auth.token.email == (studentId + "@s.scnu.ac.kr");
+      return isSignedIn() && (
+        (("studentId" in request.auth.token) && request.auth.token.studentId == studentId) ||
+        (!("studentId" in request.auth.token) && request.auth.token.get("email", "") == (studentId + "@s.scnu.ac.kr"))
+      );
+    }
+
+    // 로그인한 학생 계정의 학번 (관리자 계정에는 의미 없음). isSelf와 같은 규칙으로 정한다.
+    function myStudentId() {
+      return request.auth.token.get("studentId", request.auth.token.get("email", "").split("@")[0]);
     }
 
     function studentPath(studentId) {
@@ -201,9 +210,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 학생 등록 메일 인증번호 해시: Cloud Functions만 접근한다.
+    // 학생 등록·메일 가입 신청 인증번호 해시: Cloud Functions만 접근한다.
     match /registrationVerifications/{id} {
       allow read, write: if false;
+    }
+
+    match /emailAccountVerifications/{id} {
+      allow read, write: if false;
+    }
+
+    // 학번 메일을 쓰지 않는 학생의 가입 신청 — submitEmailAccountRequest Cloud Function만 만들고,
+    // 승인·반려도 Cloud Function(계정 활성화·삭제와 함께)으로만 한다. 개인정보라 관리자만 조회.
+    match /emailAccountRequests/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // 로그인 없이 부르는 Cloud Function의 IP별 호출 횟수 기록: Cloud Functions만 접근한다.
@@ -230,7 +250,7 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // 마일리지 신청: 학번@s.scnu.ac.kr 계정으로 로그인한 본인만 자신의 신청을
+    // 마일리지 신청: 본인 학생 계정(isActiveSelf)으로 로그인한 본인만 자신의 신청을
     // 생성할 수 있다. 상태 변경은 관리자만 가능하다. mileage는 점수표
     // 최댓값(50점)을 넘지 못하도록 서버 측에서도 한 번 더 막아, 클라이언트를
     // 우회한 임의 값 주입을 막는다.
@@ -413,11 +433,6 @@ service cloud.firestore {
     }
 
     // ─── 마일리지 프로그램 (게시글 · 회차별 신청 인원 · 신청) ─────────────────────
-
-    // 로그인한 학생 계정의 학번 (관리자 계정에는 의미 없음).
-    function myStudentId() {
-      return request.auth.token.email.split("@")[0];
-    }
 
     function programApplicationPath(programId, sessionId, studentId) {
       return /databases/$(database)/documents/programApplications/$(programId + "_" + sessionId + "_" + studentId);

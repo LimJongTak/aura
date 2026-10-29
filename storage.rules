@@ -7,9 +7,12 @@ service firebase.storage {
         firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
     }
 
+    // firestore.rules의 isSelf와 같다 — 학번 메일을 쓰지 않는 학생은 커스텀 클레임 studentId로 대조한다.
     function isSelf(studentId) {
-      return request.auth != null &&
-        request.auth.token.email == studentId + "@s.scnu.ac.kr";
+      return request.auth != null && (
+        (("studentId" in request.auth.token) && request.auth.token.studentId == studentId) ||
+        (!("studentId" in request.auth.token) && request.auth.token.get("email", "") == studentId + "@s.scnu.ac.kr")
+      );
     }
 
     // firestore.rules의 isActiveSelf와 같다 — 초기 비밀번호(00000000)를 바꾸기 전 계정은

@@ -7,7 +7,6 @@ import { httpsCallable } from "firebase/functions";
 import { signOut } from "firebase/auth";
 import { CheckCircle2, KeyRound, Mail } from "lucide-react";
 import { auth, functions } from "@/lib/firebase/client";
-import { toStudentEmail } from "@/lib/auth/studentAuth";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -159,7 +158,7 @@ export default function ChangePasswordPage() {
               </span>
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold text-muted">인증번호 받을 이메일</p>
-                <p className="truncate text-sm font-bold text-foreground">{toStudentEmail(student.studentId)}</p>
+                <p className="truncate text-sm font-bold text-foreground">{user.email}</p>
               </div>
             </div>
             <ErrorMessage>{sendError}</ErrorMessage>

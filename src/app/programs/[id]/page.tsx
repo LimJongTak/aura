@@ -357,7 +357,7 @@ function ApplyModal({
       cancelled = true;
     };
   }, []);
-  const [email, setEmail] = useState(toStudentEmail(student.studentId));
+  const [email, setEmail] = useState(student.loginEmail ?? toStudentEmail(student.studentId));
   const [teamName, setTeamName] = useState("");
   const [teamMembers, setTeamMembers] = useState("");
   const [file, setFile] = useState<File | null>(null);

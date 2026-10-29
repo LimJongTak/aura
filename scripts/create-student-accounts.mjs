@@ -41,6 +41,12 @@ async function main() {
     const studentId = doc.id;
     const student = doc.data();
     const email = `${studentId}@${STUDENT_EMAIL_DOMAIN}`;
+    // 학교 메일 아이디로 전환·승인된 학생은 그 계정(authUid)만 쓴다 — 학번 메일 계정을 새로 만들어
+    // authUid를 덮어쓰면 그 학생이 로그인하지 못하게 된다.
+    if (student.loginEmail) {
+      skipped++;
+      continue;
+    }
     try {
       const existing = await admin.auth().getUserByEmail(email);
       // 규칙(isActiveSelf)이 이 uid의 계정만 본인으로 인정하도록 묶어둔다.

@@ -5,7 +5,7 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, firebaseConfigured, functions } from "@/lib/firebase/client";
-import { studentIdFromEmail } from "@/lib/auth/studentAuth";
+import { studentIdOf } from "@/lib/auth/studentAuth";
 import type { Student } from "@/types/models";
 
 export interface StudentSessionState {
@@ -31,7 +31,7 @@ const getMyAccountStatus = httpsCallable<
 /** students 문서는 비밀번호를 바꾼(활성) 본인만 읽을 수 있다. 읽기가 거부되면 초기 비밀번호
  *  상태이거나 오래된 세션이라는 뜻이라, Cloud Function에 상태만 물어본다 — 초기 비밀번호
  *  상태면 이름 등 없이 비밀번호 변경 화면으로 보내는 데 필요한 값만 채운다. */
-async function loadStudent(studentId: string): Promise<Student | null | "stale"> {
+export async function loadStudent(studentId: string): Promise<Student | null | "stale"> {
   try {
     const snap = await getDoc(doc(db, "students", studentId));
     return snap.exists() ? (snap.data() as Student) : null;
@@ -49,7 +49,7 @@ async function loadStudent(studentId: string): Promise<Student | null | "stale">
   }
 }
 
-/** 학번@s.scnu.ac.kr 계정으로 로그인한 학생의 세션 + Firestore 학생 정보. */
+/** 학생 계정(학번@s.scnu.ac.kr 또는 승인된 학교 메일 아이디)으로 로그인한 학생의 세션 + Firestore 학생 정보. */
 export function useStudentSession(): StudentSessionState {
   const [state, setState] = useState<StudentSessionState>(() => {
     if (cachedSession && auth.currentUser?.uid === cachedSession.uid) {
@@ -69,7 +69,7 @@ export function useStudentSession(): StudentSessionState {
         setState({ loading: false, user: null, student: null });
         return;
       }
-      const student = await loadStudent(studentIdFromEmail(user.email));
+      const student = await loadStudent(await studentIdOf(user));
       if (student === "stale") {
         // 다른 곳에서 비밀번호가 바뀌기 전에 로그인한 세션 — 서버가 거부하므로 로그아웃시킨다.
         await signOut(auth);

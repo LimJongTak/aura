@@ -149,6 +149,13 @@ export default function RegisterPage() {
         &quot;마이페이지&quot;에서 본인 정보를 찾을 수 없는 경우, 아래 정보를 입력하고 학교 메일 인증을 마치면 바로
         등록됩니다.
       </p>
+      <p className="mt-1.5 text-sm text-muted">
+        학교 메일이 학번 메일(학번@s.scnu.ac.kr)이 아니라면{" "}
+        <Link href="/register/email" className="font-semibold text-primary hover:underline">
+          학교 메일로 가입 신청
+        </Link>
+        을 이용해주세요(관리자 승인 후 이용).
+      </p>
 
       <Card className="mt-6">
         <StepIndicator steps={STEPS} current={step} />

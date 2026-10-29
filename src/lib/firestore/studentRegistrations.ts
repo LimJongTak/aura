@@ -14,6 +14,7 @@ import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase/client";
 import type {
   ApplicationStatus,
+  EmailAccountRequest,
   StudentRegistrationLog,
   StudentRegistrationRequest,
   StudentRegistrationResult,
@@ -103,6 +104,55 @@ const approveStudentRegistrationFn = httpsCallable(functions, "approveStudentReg
  * 함께 만들고, 신청 상태를 승인으로 바꾼다. */
 export async function approveStudentRegistration(request: StudentRegistrationRequest): Promise<void> {
   await approveStudentRegistrationFn({ requestId: request.id });
+}
+
+// ─── 학번 메일을 쓰지 않는 학생의 가입 신청 (학교 메일 인증 → 관리자 승인) ───────────────
+
+/** 메일 가입 신청 1단계: 입력한 학교 메일(@s.scnu.ac.kr)로 인증번호를 보낸다. */
+export const requestEmailAccountCode = httpsCallable<
+  { email: string },
+  { sentTo: string; expiresInMinutes: number; resendCooldownSeconds: number }
+>(functions, "requestEmailAccountCode");
+
+/** 메일 가입 신청 2단계: 인증번호가 맞으면 승인 대기(로그인 불가) 계정과 신청 문서를 만든다. */
+export const submitEmailAccountRequest = httpsCallable<
+  { email: string; studentId: string; name: string; department: string; code: string; newPassword: string },
+  { status: "pending" }
+>(functions, "submitEmailAccountRequest");
+
+const approveEmailAccountRequestFn = httpsCallable<{ requestId: string }, { success: boolean }>(
+  functions,
+  "approveEmailAccountRequest"
+);
+const rejectEmailAccountRequestFn = httpsCallable<{ requestId: string; note?: string }, { success: boolean }>(
+  functions,
+  "rejectEmailAccountRequest"
+);
+
+/** 관리자 화면용 승인 대기 중인 메일 가입 신청(최신순). */
+export async function listPendingEmailAccountRequests(): Promise<EmailAccountRequest[]> {
+  const snap = await getDocs(query(collection(db, "emailAccountRequests"), where("status", "==", "검토중")));
+  return snap.docs
+    .map((d) => {
+      const data = d.data();
+      return {
+        id: d.id,
+        ...data,
+        requestedAt: toMillis(data.requestedAt),
+        processedAt: toMillis(data.processedAt),
+      } as EmailAccountRequest;
+    })
+    .sort((a, b) => b.requestedAt - a.requestedAt);
+}
+
+/** 승인: 계정을 활성화하고 학생명단의 학번에 이 메일 계정을 본인으로 묶는다(Cloud Function). */
+export async function approveEmailAccountRequest(id: string): Promise<void> {
+  await approveEmailAccountRequestFn({ requestId: id });
+}
+
+/** 반려: 승인 대기 계정을 지우고 신청을 반려로 표시한다(Cloud Function). */
+export async function rejectEmailAccountRequest(id: string, note?: string): Promise<void> {
+  await rejectEmailAccountRequestFn({ requestId: id, note });
 }
 
 export async function rejectStudentRegistration(id: string, note?: string): Promise<void> {

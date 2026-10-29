@@ -38,9 +38,10 @@
 
 | 기능 | 경로 | 설명 |
 | --- | --- | --- |
-| 학번 로그인 | `/login` | `{학번}@s.scnu.ac.kr` 계정입니다. 초기 비밀번호 `00000000`(0 여덟 개)으로 처음 로그인하면 비밀번호를 반드시 바꿔야 합니다 |
-| 비밀번호 변경·찾기 | `/change-password` `/forgot-password` | 학교 메일로 받은 6자리 인증번호로 본인을 확인합니다 |
-| 학생 등록 신청 | `/register` | 학생명단에 없는 학생이 이름·학번·학과를 제출하면 관리자 승인 후 계정이 생성됩니다 |
+| 학번 로그인 | `/login` | `{학번}@s.scnu.ac.kr` 계정입니다. 초기 비밀번호 `00000000`(0 여덟 개)으로 처음 로그인하면 비밀번호를 반드시 바꿔야 합니다. 학번 메일을 쓰지 않는 학생은 학교 메일 아이디(예: `tetelong`)로 로그인합니다 |
+| 비밀번호 변경·찾기 | `/change-password` `/forgot-password` | 로그인 계정의 학교 메일로 받은 6자리 인증번호로 본인을 확인합니다 |
+| 학생 등록 | `/register` | 학생명단에 없는 학생이 이름·학번·학과를 입력하고 학번 메일 인증을 마치면 바로 계정이 생성됩니다 |
+| 학교 메일로 가입 신청 | `/register/email` | 학번 메일을 쓰지 않는 학생이 실제 학교 메일로 인증하고 비밀번호를 정해 신청합니다. 관리자 승인 후 그 메일 아이디로 로그인합니다 |
 | 마일리지 조회 | `/lookup` | 누적 승인 마일리지, 신청 내역, 중고급 신청 현황을 확인합니다 |
 | 마일리지 신청 | `/apply` | 활동을 고르면 마일리지와 필요 증빙이 자동으로 표시되고, 증빙파일을 첨부해 신청합니다 |
 | 비교과 프로그램 | `/programs` `/programs/my` | 회차별로 신청하고 신청 내역을 확인합니다. 정원이 차거나 신청기간이 끝나면 신청 버튼이 사라집니다 |
@@ -172,13 +173,14 @@ aura/
 | --- | --- |
 | 데이터 접근 | 학생 정보와 신청서는 본인(`isActiveSelf`)과 관리자(`isAdmin`)만 읽을 수 있습니다. `students` 문서는 초기 비밀번호 상태에서는 본인도 읽을 수 없고, 그 단계 화면은 `getMyAccountStatus` 함수로 상태만 받습니다 |
 | 초기 비밀번호 계정 | `mustChangePassword: true`인 계정은 규칙(`isActiveSelf`)과 함수(`requireActiveStudent`) 양쪽에서 본인 데이터 읽기, 신청, 업로드, 계좌·전화번호 등록이 막힙니다 |
+| 학번 메일이 아닌 계정 | 학번은 Auth 커스텀 클레임 `studentId`로 판단합니다(Admin SDK만 쓸 수 있음). 클레임이 있으면 이메일은 보지 않습니다. 가입 신청 계정은 메일 인증 후 사용 중지 상태로 만들어지고, 관리자 승인(`approveEmailAccountRequest`) 때 클레임을 심고 활성화합니다. 그 학번에 묶여 있던 예전 계정은 사용 중지됩니다 |
 | 계정 묶기·세션 | `students.authUid`에 기록된 Auth 계정만 본인으로 인정합니다. 비밀번호를 바꾸면 모든 세션을 끊고(`revokeRefreshTokens`), `passwordChangedAt`(초) 이전에 로그인한 토큰(`auth_time`)은 규칙·함수에서 거부합니다 |
 | 신청서 검증 | 이름·학과가 학생명단과 같아야 하고, 첨부 파일은 본인 Storage 경로의 URL만 받습니다. 신청서 생성 시 허용된 필드만 쓸 수 있습니다(`keys().hasOnly`). 관리자 화면은 외부 링크를 경고로 표시합니다 |
 | 파일 업로드 | 크기 제한과 함께 HTML·SVG·XML·스크립트 형식을 차단합니다 |
 | 인증 | 비밀번호 8~64자 정책, 클라이언트 회원가입 차단. 학생 등록(`registerStudent`)은 학교 메일 인증번호를 확인한 뒤에만 계정을 만들고, 학생이 직접 비밀번호를 정합니다 |
 | 인증번호 | 안전한 난수로 만들고 해시로 저장합니다. 10분 유효, 5회 시도, 60초 재발송 간격, 시간당 5회. 비밀번호 찾기·학생 등록은 학번 등록 여부와 상관없이 같은 응답을 줍니다 |
 | 계좌 변경 알림 | `saveBankAccount`가 저장할 때마다 학교 메일로 알림(계좌 끝 4자리)을 보냅니다 |
-| 남용 방지 | 로그인 없이 부르는 함수(`requestRegistrationCode`, `registerStudent`, `checkPrivacyConsent`, `hasPendingStudentRegistration`, `requestPasswordResetCode`, `recordView`)에 IP별 호출 제한을 둡니다. 방문 통계·조회수는 클라이언트가 직접 쓸 수 없습니다 |
+| 남용 방지 | 로그인 없이 부르는 함수(`requestRegistrationCode`, `registerStudent`, `requestEmailAccountCode`, `submitEmailAccountRequest`, `checkPrivacyConsent`, `hasPendingStudentRegistration`, `requestPasswordResetCode`, `recordView`)에 IP별 호출 제한을 둡니다. 방문 통계·조회수는 클라이언트가 직접 쓸 수 없습니다 |
 | 개인정보 암호화 | 계좌번호와 전화번호는 AES-256-GCM 암호문으로만 저장하고, 각각 **다른 키**를 씁니다 |
 | 보안 헤더 | CSP(`script-src 'self' 'unsafe-inline'`, `object-src 'none'`, `frame-ancestors 'none'` 등), HSTS, `X-Frame-Options`, `nosniff`. `x-powered-by`는 숨깁니다 |
 
@@ -194,6 +196,7 @@ aura/
 > - **초기 비밀번호를 8자 미만으로 바꾸지 마세요.** Firebase Auth 비밀번호 정책은 관리자 SDK의 계정 생성에도 적용되어, 학생 등록이 실패합니다.
 > - **클라이언트 회원가입을 다시 켜지 마세요.** 켜면 누구나 다른 학생의 학번으로 가입할 수 있습니다(`authUid`가 기록된 학생은 규칙이 막아주지만, 이중 방어선입니다).
 > - **학생 계정을 만드는 새 경로를 추가하면 `students.authUid`도 함께 기록하세요.** 빠지면 `npm run backfill-student-auth-uid -- --apply`로 채웁니다.
+> - **학번 메일이 아닌 계정에는 반드시 `studentId` 커스텀 클레임과 `students.loginEmail`을 함께 기록하세요.** 관리자가 대신 바꿀 때는 `npm run set-student-login-email -- <학번> <메일> --apply`를 씁니다. 클레임이 없으면 규칙이 그 계정을 본인으로 인정하지 않습니다.
 > - 외부 스크립트(애널리틱스 등)를 추가하려면 `next.config.ts`의 CSP `script-src`에 그 호스트를 넣어야 합니다.
 > - **암호화 키를 함부로 다시 만들지 마세요.** 이전 키로 저장한 값은 새 키로 풀 수 없습니다. 키를 바꿀 때는 `scripts/migrate-phone-encryption-key.mjs`처럼 재암호화 스크립트를 먼저 실행해야 합니다.
 > - Storage 다운로드 URL에는 토큰이 들어 있어서 규칙과 상관없이 열립니다. 민감한 파일 URL을 다른 곳에 공유하지 마세요.
@@ -293,6 +296,7 @@ npx firebase deploy --only functions
 | `npm run seed` | 엑셀 DB를 Firestore에 반영 |
 | `npm run create-student-accounts` | 학생 계정 일괄 생성 |
 | `npm run backfill-student-auth-uid` | 학생 문서에 Auth 계정 uid(`authUid`) 기록 (`-- --apply`로 반영) |
+| `npm run set-student-login-email -- <학번> <메일>` | 학번 메일을 쓰지 않는 학생의 로그인 아이디를 학교 메일로 바꾸고 초기 비밀번호로 되돌림 (`--apply`로 반영) |
 | `npm run seed-advanced-tracks` | 중고급 트랙·교과목 시딩 |
 | `npm run seed-immersive-subjects` | 몰입형 교과목 시딩 |
 | `npm run seed-nav-menus` | 헤더 메뉴 시딩 |

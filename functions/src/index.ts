@@ -50,14 +50,20 @@ function toStudentEmail(studentId: string): string {
   return `${studentId}@${STUDENT_EMAIL_DOMAIN}`;
 }
 
-function requireStudentAuth(authEmail: string | undefined): string {
+type StudentAuth = CallableRequest["auth"];
+
+/** 로그인한 학생의 학번. 학번 메일을 쓰지 않는 학생(로그인 아이디가 tetelong@s.scnu.ac.kr 같은
+ *  계정)은 관리자 승인·전환 스크립트가 Auth 커스텀 클레임 studentId를 심어두므로 그 값을 쓰고,
+ *  나머지는 {학번}@s.scnu.ac.kr 이메일에서 꺼낸다. 커스텀 클레임은 Admin SDK로만 쓸 수 있다. */
+function requireStudentAuth(auth: StudentAuth): string {
+  const claim = auth?.token.studentId;
+  if (typeof claim === "string" && claim) return claim;
+  const authEmail = auth?.token.email as string | undefined;
   if (!authEmail || !authEmail.endsWith(`@${STUDENT_EMAIL_DOMAIN}`)) {
     throw new HttpsError("permission-denied", "학생 계정으로 로그인해주세요.");
   }
   return studentIdFromEmail(authEmail);
 }
-
-type StudentAuth = CallableRequest["auth"];
 
 /** 현재 시각(초) — ID 토큰의 auth_time과 같은 단위. students.passwordChangedAt에 저장해,
  *  firestore.rules·storage.rules·requireActiveStudent가 이 시각 이전에 로그인한 세션을 거부하는 기준으로 쓴다. */
@@ -70,7 +76,7 @@ function nowSeconds(): number {
  *  같은 이메일로 따로 만들어진 Auth 계정(authUid 불일치)과, 비밀번호를 바꾸기 전에 로그인해 둔
  *  세션(auth_time < passwordChangedAt — 초기 비밀번호로 미리 로그인해 둔 제3자 등)도 거부한다. */
 async function requireActiveStudent(auth: StudentAuth): Promise<string> {
-  const studentId = requireStudentAuth(auth?.token.email as string | undefined);
+  const studentId = requireStudentAuth(auth);
   const snap = await admin.firestore().collection("students").doc(studentId).get();
   const data = snap.data();
   if (!snap.exists || data?.mustChangePassword === true) {
@@ -149,13 +155,14 @@ async function requireAdminAuth(uid: string | undefined): Promise<void> {
 
 /** 6자리 인증번호를 생성해 Firestore에 저장하고 학생의 학교 이메일로 발송한다. */
 export const requestPasswordChangeCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
-  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const studentId = requireStudentAuth(request.auth);
 
   // 비밀번호 찾기와 같은 방식: 안전한 난수로 만들고 해시로만 저장하며, 재발송 간격·시간당 횟수를 제한한다.
   const code = await issueEmailCode(admin.firestore().collection("passwordResets").doc(studentId), {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
-  const to = toStudentEmail(studentId);
+  // 로그인한 계정의 이메일로 보낸다 — 학번 메일을 쓰지 않는 학생은 그 학생의 로그인 메일이다.
+  const to = request.auth!.token.email as string;
   await sendCodeEmail(to, code, { title: "비밀번호 변경", note: "본인이 요청하지 않았다면 이 메일을 무시해주세요." });
 
   return { sentTo: to };
@@ -163,7 +170,7 @@ export const requestPasswordChangeCode = onCall({ secrets: [RESEND_API_KEY] }, a
 
 /** 인증번호를 검증하고 통과하면 새 비밀번호로 변경한다. */
 export const verifyCodeAndChangePassword = onCall(async (request) => {
-  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const studentId = requireStudentAuth(request.auth);
   const { code, newPassword } = request.data as { code?: string; newPassword?: string };
 
   if (!code || typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
@@ -200,6 +207,13 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
   }
 
+  // 학생명단에 없는 학번이거나 이 학번에 묶인 다른 Auth 계정이면, 메일 인증을 통과했더라도 바꾸지 않는다
+  // (setStudentPassword가 authUid를 이 계정으로 묶어버리기 때문).
+  const student = (await admin.firestore().collection("students").doc(studentId).get()).data();
+  if (!student || (student.authUid && student.authUid !== request.auth!.uid)) {
+    throw new HttpsError("permission-denied", "학생명단에 연결된 계정이 아닙니다. 061-750-5396으로 문의해주세요.");
+  }
+
   // 예전에는 비밀번호만 바꾸고 기존 세션을 그대로 둬서, 초기 비밀번호로 미리 로그인해 둔 제3자가
   // 학생이 비밀번호를 바꾸는 순간 "활성 본인"이 되어 계좌를 덮어쓸 수 있었다 — 모든 세션을 끊는다.
   await setStudentPassword(request.auth!.uid, studentId, newPassword);
@@ -218,7 +232,6 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
 const RESET_RESEND_COOLDOWN_SECONDS = 60;
 const RESET_MAX_SENDS_PER_HOUR = 5;
 const RESET_TOKEN_TTL_MINUTES = 15;
-const STUDENT_ID_PATTERN = /^\d{6,12}$/;
 
 function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -311,21 +324,53 @@ async function checkEmailCode(ref: FirebaseFirestore.DocumentReference, code: st
   }
 }
 
-function parseStudentId(raw: unknown): string {
-  const studentId = typeof raw === "string" ? raw.trim() : "";
-  if (!STUDENT_ID_PATTERN.test(studentId)) {
-    throw new HttpsError("invalid-argument", "학번을 정확히 입력해주세요.");
+// 학교 메일 아이디(@ 앞부분) — 학번이거나 tetelong 같은 영문 아이디.
+const LOGIN_LOCAL_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/;
+
+/** 로그인 화면에 입력하는 아이디(학번, tetelong, tetelong@s.scnu.ac.kr 모두 가능)를 로그인 이메일로
+ *  바꾼다. 학생 계정은 모두 학교 메일 도메인이다. src/lib/auth/studentAuth.ts의 toLoginEmail과 같게 유지한다. */
+function parseLoginEmail(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  const email = value.includes("@") ? value : `${value}@${STUDENT_EMAIL_DOMAIN}`;
+  const [local, domain, ...rest] = email.split("@");
+  if (rest.length > 0 || domain !== STUDENT_EMAIL_DOMAIN || !LOGIN_LOCAL_PATTERN.test(local)) {
+    throw new HttpsError("invalid-argument", "학번 또는 학교 메일 아이디를 정확히 입력해주세요.");
   }
-  return studentId;
+  return email;
 }
 
-/** 비밀번호 찾기 1단계: 학번으로 계정을 확인하고 학교 메일로 인증번호를 보낸다. */
+/** 로그인 이메일의 Auth 계정이 학생명단의 학번에 정상적으로 묶여 있으면 {uid, studentId}를, 아니면
+ *  null을 돌려준다(계정 없음·사용 중지·승인 대기·다른 계정에 묶인 학번). 학번은 커스텀 클레임이 있으면
+ *  그 값, 없으면 이메일 앞부분이다 — requireStudentAuth와 같은 규칙. */
+async function findStudentAccount(email: string): Promise<{ uid: string; studentId: string } | null> {
+  let user: admin.auth.UserRecord;
+  try {
+    user = await admin.auth().getUserByEmail(email);
+  } catch (err) {
+    if ((err as { code?: string }).code === "auth/user-not-found") return null;
+    throw err;
+  }
+  if (user.disabled) return null;
+  const claim = user.customClaims?.studentId;
+  const studentId = typeof claim === "string" && claim ? claim : studentIdFromEmail(email);
+  const data = (await admin.firestore().collection("students").doc(studentId).get()).data();
+  if (!data || (data.authUid && data.authUid !== user.uid)) return null;
+  return { uid: user.uid, studentId };
+}
+
+/** 비밀번호 찾기 요청의 아이디 — 예전 화면은 studentId로 보낸다. */
+function loginIdFrom(data: unknown): unknown {
+  const d = (data ?? {}) as { loginId?: unknown; studentId?: unknown };
+  return d.loginId ?? d.studentId;
+}
+
+/** 비밀번호 찾기 1단계: 로그인 아이디로 계정을 확인하고 그 학교 메일로 인증번호를 보낸다. */
 export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
-  const studentId = parseStudentId((request.data as { studentId?: unknown })?.studentId);
+  const email = parseLoginEmail(loginIdFrom(request.data));
   // 학번별 재발송 제한과 별개로, 한 IP가 여러 학번에 메일을 뿌리지 못하게 막는다.
   await enforceRateLimit(request, "requestPasswordResetCode", 20, 10 * 60);
-  const email = toStudentEmail(studentId);
 
+  // 응답의 메일 주소는 입력한 아이디에서 만든 것이라 계정에 대해 아무것도 알려주지 않는다.
   const response = {
     sentTo: email,
     expiresInMinutes: CODE_TTL_MINUTES,
@@ -334,14 +379,10 @@ export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, as
 
   // 예전에는 계정이 없으면 not-found를 돌려줘서 학번을 대입해 가입 여부를 알아낼 수 있었다 —
   // 계정 유무와 상관없이 같은 응답을 주고, 실제 메일은 계정이 있을 때만 보낸다.
-  try {
-    await admin.auth().getUserByEmail(email);
-  } catch (err) {
-    if ((err as { code?: string }).code === "auth/user-not-found") return response;
-    throw err;
-  }
+  const account = await findStudentAccount(email);
+  if (!account) return response;
 
-  const code = await issueEmailCode(admin.firestore().collection("passwordResetRequests").doc(studentId), {
+  const code = await issueEmailCode(admin.firestore().collection("passwordResetRequests").doc(account.studentId), {
     tokenHash: null,
     tokenExpiresAt: null,
   });
@@ -355,13 +396,15 @@ export const requestPasswordResetCode = onCall({ secrets: [RESEND_API_KEY] }, as
 
 /** 비밀번호 찾기 2단계: 인증번호를 확인하고, 맞으면 비밀번호 재설정용 1회성 토큰을 발급한다. */
 export const verifyPasswordResetCode = onCall(async (request) => {
-  const { studentId: rawId, code } = request.data as { studentId?: unknown; code?: unknown };
-  const studentId = parseStudentId(rawId);
+  const { code } = request.data as { code?: unknown };
+  const email = parseLoginEmail(loginIdFrom(request.data));
   if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
     throw new HttpsError("invalid-argument", "6자리 인증번호를 입력해주세요.");
   }
+  const account = await findStudentAccount(email);
+  if (!account) throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
 
-  const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
+  const ref = admin.firestore().collection("passwordResetRequests").doc(account.studentId);
   const resetToken = crypto.randomBytes(32).toString("hex");
 
   // 실패 시 시도 횟수 증가는 트랜잭션 밖에서 처리해야 롤백되지 않는다.
@@ -400,12 +443,8 @@ export const verifyPasswordResetCode = onCall(async (request) => {
 /** 비밀번호 찾기 3단계: 인증 완료 토큰으로 새 비밀번호를 설정한다. 기존 로그인
  * 세션은 모두 만료시킨다. */
 export const resetPasswordWithToken = onCall(async (request) => {
-  const { studentId: rawId, resetToken, newPassword } = request.data as {
-    studentId?: unknown;
-    resetToken?: unknown;
-    newPassword?: unknown;
-  };
-  const studentId = parseStudentId(rawId);
+  const { resetToken, newPassword } = request.data as { resetToken?: unknown; newPassword?: unknown };
+  const email = parseLoginEmail(loginIdFrom(request.data));
   if (typeof resetToken !== "string" || !/^[0-9a-f]{64}$/.test(resetToken)) {
     throw new HttpsError("invalid-argument", "인증 정보가 올바르지 않습니다. 처음부터 다시 진행해주세요.");
   }
@@ -419,7 +458,12 @@ export const resetPasswordWithToken = onCall(async (request) => {
     throw new HttpsError("invalid-argument", `초기 비밀번호(${INITIAL_PASSWORD})는 새 비밀번호로 쓸 수 없습니다.`);
   }
 
-  const ref = admin.firestore().collection("passwordResetRequests").doc(studentId);
+  const account = await findStudentAccount(email);
+  if (!account) {
+    throw new HttpsError("failed-precondition", "인증 시간이 만료되었습니다. 처음부터 다시 진행해주세요.");
+  }
+
+  const ref = admin.firestore().collection("passwordResetRequests").doc(account.studentId);
   const valid = await admin.firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.data();
@@ -434,8 +478,7 @@ export const resetPasswordWithToken = onCall(async (request) => {
     throw new HttpsError("failed-precondition", "인증 시간이 만료되었습니다. 처음부터 다시 진행해주세요.");
   }
 
-  const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
-  await setStudentPassword(userRecord.uid, studentId, newPassword);
+  await setStudentPassword(account.uid, account.studentId, newPassword);
 
   return { success: true };
 });
@@ -576,6 +619,11 @@ export const registerStudent = onCall(async (request) => {
         return { status: "created", isNew: true } as const;
       }
       const registeredName = String(data?.name ?? "").trim();
+      // 학번 메일이 아닌 학교 메일 아이디로 전환된 학번은 그 계정만 쓴다 — 학번 메일 인증으로 다시
+      // 활성화하면 authUid가 학번 메일 계정으로 바뀌어 그 학생의 계정을 빼앗게 된다.
+      if (data?.loginEmail) {
+        return registeredName === trimmedName ? ({ status: "existing" } as const) : ({ status: "id-taken", registeredName } as const);
+      }
       const unverified = data?.mustChangePassword === true;
       if (registeredName === trimmedName) {
         return unverified ? ({ status: "created", isNew: false } as const) : ({ status: "existing" } as const);
@@ -621,6 +669,215 @@ export const registerStudent = onCall(async (request) => {
   return { status: "created" as const };
 });
 
+// ---------------------------------------------------------------------------
+// 학번 메일을 쓰지 않는 학생의 가입 신청 — 학교 메일(예: tetelong@s.scnu.ac.kr) 인증 → 이름·학번·
+// 학과·비밀번호 입력 → 관리자 승인 후 로그인. 계정은 신청할 때 사용 중지(disabled) 상태로 만들어서
+// 비밀번호를 따로 보관하지 않고, 승인할 때 학번 커스텀 클레임을 심고 활성화한다. 메일 인증으로
+// 학교 메일 주인임을, 관리자 승인으로 그 사람이 그 학번의 학생임을 확인한다.
+// ---------------------------------------------------------------------------
+
+/** 학번 메일이 아닌 학교 메일 주소인지 확인해 소문자로 돌려준다. 숫자로만 된 아이디는 학번 메일이라
+ *  일반 학생 등록으로 보낸다 — 클레임 없는 계정의 학번을 이메일 앞부분으로 판단하는 규칙과 겹치지 않게 한다. */
+function parseAltSchoolEmail(raw: unknown): string {
+  const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  const [local, domain, ...rest] = value.split("@");
+  if (rest.length > 0 || domain !== STUDENT_EMAIL_DOMAIN || !LOGIN_LOCAL_PATTERN.test(local ?? "")) {
+    throw new HttpsError("invalid-argument", `학교 메일 주소(@${STUDENT_EMAIL_DOMAIN})를 정확히 입력해주세요.`);
+  }
+  if (/^\d+$/.test(local)) {
+    throw new HttpsError("invalid-argument", "학번 메일을 쓰는 학생은 일반 학생 등록을 이용해주세요.");
+  }
+  return value;
+}
+
+/** 메일 가입 신청 1단계: 입력한 학교 메일로 인증번호를 보낸다. 가입 여부와 상관없이 같은 응답을 준다. */
+export const requestEmailAccountCode = onCall({ secrets: [RESEND_API_KEY] }, async (request) => {
+  const email = parseAltSchoolEmail((request.data as { email?: unknown })?.email);
+  // 메일별 재발송 제한과 별개로, 한 IP가 여러 주소에 메일을 뿌리지 못하게 막는다.
+  await enforceRateLimit(request, "requestEmailAccountCode", 20, 10 * 60);
+
+  const code = await issueEmailCode(admin.firestore().collection("emailAccountVerifications").doc(email));
+  await sendCodeEmail(email, code, {
+    title: "가입 신청",
+    note: "본인이 요청하지 않았다면 이 메일을 무시해주세요. 인증번호 없이는 신청되지 않습니다.",
+  });
+  return { sentTo: email, expiresInMinutes: CODE_TTL_MINUTES, resendCooldownSeconds: RESET_RESEND_COOLDOWN_SECONDS };
+});
+
+/** 메일 가입 신청 2단계: 인증번호가 맞으면 사용 중지 상태의 계정(학생이 정한 비밀번호)과
+ *  emailAccountRequests/{uid} 신청 문서를 만든다. 승인 전까지는 로그인되지 않는다. 학생명단은
+ *  승인할 때만 바뀐다. 승인 전에 다시 신청하면 신청 내용과 비밀번호를 새로 바꾼다. */
+export const submitEmailAccountRequest = onCall(async (request) => {
+  const { studentId, name, department, code, newPassword } = request.data as {
+    studentId?: unknown;
+    name?: unknown;
+    department?: unknown;
+    code?: unknown;
+    newPassword?: unknown;
+  };
+  const email = parseAltSchoolEmail((request.data as { email?: unknown })?.email);
+  const id = typeof studentId === "string" ? studentId.trim() : "";
+  const trimmedName = typeof name === "string" ? name.trim() : "";
+  const trimmedDept = typeof department === "string" ? department.trim() : "";
+  if (!REGISTER_ID_PATTERN.test(id)) throw new HttpsError("invalid-argument", "학번은 숫자 6~10자리로 입력해주세요.");
+  if (!trimmedName || trimmedName.length > 30) throw new HttpsError("invalid-argument", "이름을 올바르게 입력해주세요.");
+  if (!trimmedDept || trimmedDept.length > 50) throw new HttpsError("invalid-argument", "학과를 올바르게 입력해주세요.");
+  if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
+    throw new HttpsError("invalid-argument", "6자리 인증번호를 입력해주세요.");
+  }
+  if (typeof newPassword !== "string" || newPassword.length < 8) {
+    throw new HttpsError("invalid-argument", "비밀번호는 8자 이상이어야 합니다.");
+  }
+  if (newPassword.length > 64) {
+    throw new HttpsError("invalid-argument", "비밀번호는 64자 이하여야 합니다.");
+  }
+  if (newPassword === INITIAL_PASSWORD) {
+    throw new HttpsError("invalid-argument", `초기 비밀번호(${INITIAL_PASSWORD})는 새 비밀번호로 쓸 수 없습니다.`);
+  }
+  await enforceRateLimit(request, "submitEmailAccountRequest", 30, 10 * 60);
+
+  const db = admin.firestore();
+  const verificationRef = db.collection("emailAccountVerifications").doc(email);
+  // 계정 상태(이미 가입됨 등)는 메일 인증을 통과한 사람에게만 알려준다.
+  await checkEmailCode(verificationRef, code, false);
+
+  let existing: admin.auth.UserRecord | null = null;
+  try {
+    existing = await admin.auth().getUserByEmail(email);
+  } catch (err) {
+    if ((err as { code?: string }).code !== "auth/user-not-found") throw err;
+  }
+
+  let uid: string;
+  if (existing) {
+    if (!existing.disabled) {
+      throw new HttpsError("already-exists", "이미 가입된 메일입니다. 로그인하거나 비밀번호 찾기를 이용해주세요.");
+    }
+    const prev = (await db.collection("emailAccountRequests").doc(existing.uid).get()).data();
+    if (prev?.status !== "검토중") {
+      throw new HttpsError("failed-precondition", "사용이 중지된 계정입니다. 061-750-5396으로 문의해주세요.");
+    }
+    await admin.auth().updateUser(existing.uid, { password: newPassword, displayName: trimmedName });
+    uid = existing.uid;
+  } else {
+    uid = (
+      await admin.auth().createUser({
+        email,
+        emailVerified: true,
+        password: newPassword,
+        displayName: trimmedName,
+        disabled: true,
+      })
+    ).uid;
+  }
+
+  await db.collection("emailAccountRequests").doc(uid).set({
+    uid,
+    email,
+    studentId: id,
+    name: trimmedName,
+    department: trimmedDept,
+    isParticipating: PARTICIPATING_DEPARTMENTS.includes(trimmedDept),
+    status: "검토중",
+    requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  await verificationRef.update({ codeHash: null, expiresAt: null });
+  return { status: "pending" as const };
+});
+
+function parseRequestId(raw: unknown): string {
+  if (typeof raw !== "string" || !/^[A-Za-z0-9]{1,128}$/.test(raw)) {
+    throw new HttpsError("invalid-argument", "requestId가 필요합니다.");
+  }
+  return raw;
+}
+
+/** 관리자가 메일 가입 신청을 승인한다: 계정에 학번 클레임을 심고, 학생명단에 이 계정을 본인으로
+ *  묶은 뒤(없는 학번이면 신청 정보로 새로 추가 — 있으면 명단의 이름·학과는 그대로 둔다) 계정을
+ *  활성화한다. 학생이 신청 때 직접 정한 비밀번호라 바로 이용할 수 있다. 이 학번에 묶여 있던 예전
+ *  계정(학번 메일 계정 등)은 사용 중지하고 세션을 끊는다. */
+export const approveEmailAccountRequest = onCall(async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const requestId = parseRequestId((request.data as { requestId?: unknown })?.requestId);
+  const db = admin.firestore();
+  const reqRef = db.collection("emailAccountRequests").doc(requestId);
+  const req = (await reqRef.get()).data();
+  if (!req) throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
+  if (req.status !== "검토중") throw new HttpsError("failed-precondition", "이미 처리된 신청입니다.");
+
+  const uid = req.uid as string;
+  const studentId = req.studentId as string;
+  const user = await admin.auth().getUser(uid);
+  if (user.email?.toLowerCase() !== req.email) {
+    throw new HttpsError("failed-precondition", "신청한 메일과 계정 정보가 다릅니다.");
+  }
+
+  // 규칙·함수가 본인 학번을 이 클레임으로 판단하므로, 계정을 켜기 전에 먼저 심는다.
+  await admin.auth().setCustomUserClaims(uid, { ...(user.customClaims ?? {}), studentId });
+
+  const studentRef = db.collection("students").doc(studentId);
+  const prevUid = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(studentRef);
+    const binding = { authUid: uid, loginEmail: req.email, mustChangePassword: false, passwordChangedAt: nowSeconds() };
+    if (snap.exists) {
+      tx.set(studentRef, binding, { merge: true });
+      return snap.data()?.authUid as string | undefined;
+    }
+    tx.set(studentRef, {
+      studentId,
+      name: req.name,
+      department: req.department,
+      isParticipating: req.isParticipating,
+      selfRegistered: true,
+      ...binding,
+    });
+    return undefined;
+  });
+
+  await admin.auth().updateUser(uid, { disabled: false });
+  if (prevUid && prevUid !== uid) {
+    try {
+      await admin.auth().updateUser(prevUid, { disabled: true });
+      await admin.auth().revokeRefreshTokens(prevUid);
+    } catch (err) {
+      if ((err as { code?: string }).code !== "auth/user-not-found") throw err;
+    }
+  }
+
+  await reqRef.update({
+    status: "승인",
+    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    processedBy: request.auth!.uid,
+  });
+  return { success: true };
+});
+
+/** 관리자가 메일 가입 신청을 반려한다. 승인 전(사용 중지) 계정은 지워서 같은 메일로 다시 신청할 수 있게 한다. */
+export const rejectEmailAccountRequest = onCall(async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const { requestId: rawId, note } = request.data as { requestId?: unknown; note?: unknown };
+  const requestId = parseRequestId(rawId);
+  const reqRef = admin.firestore().collection("emailAccountRequests").doc(requestId);
+  const req = (await reqRef.get()).data();
+  if (!req) throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
+  if (req.status !== "검토중") throw new HttpsError("failed-precondition", "이미 처리된 신청입니다.");
+
+  try {
+    const user = await admin.auth().getUser(req.uid as string);
+    if (user.disabled) await admin.auth().deleteUser(user.uid);
+  } catch (err) {
+    if ((err as { code?: string }).code !== "auth/user-not-found") throw err;
+  }
+
+  await reqRef.update({
+    status: "반려",
+    note: typeof note === "string" ? note.trim().slice(0, 200) : "",
+    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    processedBy: request.auth!.uid,
+  });
+  return { success: true };
+});
+
 /** 관리자가 학생을 탈퇴시키면 Firebase Auth 계정과 Firestore 학생 문서를 삭제한다.
  * 신청 이력(mileageApplications 등)은 감사 기록으로 남기기 위해 그대로 둔다. */
 export const deleteStudent = onCall(async (request) => {
@@ -628,15 +885,24 @@ export const deleteStudent = onCall(async (request) => {
   const { studentId } = request.data as { studentId?: string };
   if (!studentId) throw new HttpsError("invalid-argument", "studentId가 필요합니다.");
 
+  // 학번 메일 계정과, 학교 메일 아이디로 전환·승인된 경우 학생 문서에 묶인 계정(authUid)을 함께 지운다.
+  const studentRef = admin.firestore().collection("students").doc(studentId);
+  const authUid = (await studentRef.get()).data()?.authUid as string | undefined;
+  const uids = new Set<string>(authUid ? [authUid] : []);
   try {
-    const userRecord = await admin.auth().getUserByEmail(toStudentEmail(studentId));
-    await admin.auth().deleteUser(userRecord.uid);
+    uids.add((await admin.auth().getUserByEmail(toStudentEmail(studentId))).uid);
   } catch (err) {
-    const code = (err as { code?: string }).code;
-    if (code !== "auth/user-not-found") throw err;
+    if ((err as { code?: string }).code !== "auth/user-not-found") throw err;
+  }
+  for (const uid of uids) {
+    try {
+      await admin.auth().deleteUser(uid);
+    } catch (err) {
+      if ((err as { code?: string }).code !== "auth/user-not-found") throw err;
+    }
   }
 
-  await admin.firestore().collection("students").doc(studentId).delete();
+  await studentRef.delete();
 
   return { success: true };
 });
@@ -693,7 +959,7 @@ export const saveBankAccount = onCall({ secrets: [BANK_ACCOUNT_ENC_KEY, RESEND_A
     }).format(new Date());
     await new Resend(RESEND_API_KEY.value()).emails.send({
       from: "A.U.R.A 마일리지 <aura@axlab.scnuai.com>",
-      to: toStudentEmail(studentId),
+      to: request.auth!.token.email as string,
       subject: "[A.U.R.A 마일리지] 장학금 수령 계좌가 등록·변경되었습니다",
       html: `
         <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
@@ -957,7 +1223,7 @@ export const checkPrivacyConsent = onCall(async (request) => {
  *  - mustChangePassword: 초기 비밀번호 상태
  *  - active: 정상 (students 문서를 직접 읽으면 된다) */
 export const getMyAccountStatus = onCall(async (request) => {
-  const studentId = requireStudentAuth(request.auth?.token.email as string | undefined);
+  const studentId = requireStudentAuth(request.auth);
   const data = (await admin.firestore().collection("students").doc(studentId).get()).data();
   if (!data || (data.authUid && data.authUid !== request.auth!.uid)) return { status: "missing" as const };
   if (request.auth!.token.auth_time < ((data.passwordChangedAt as number | undefined) ?? 0)) {
