@@ -376,6 +376,11 @@ export default function AdminPage() {
                         <DuplicateBadge matches={findDuplicates(a)} />
                       </div>
                       <p className="mt-1.5 text-sm text-foreground">{a.activityName}</p>
+                      {a.details && (
+                        <p className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-surface px-3 py-2 text-sm text-foreground">
+                          {a.details}
+                        </p>
+                      )}
                       <div className="mt-2">
                         {a.evidenceFileUrl ? (
                           <a

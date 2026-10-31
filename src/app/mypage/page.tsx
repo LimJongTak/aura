@@ -251,7 +251,12 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
                     <td className="px-4 py-2.5 text-muted">{new Date(a.appliedAt).toLocaleDateString("ko-KR")}</td>
                     <td className="px-4 py-2.5 text-muted">{a.semester ?? "-"}</td>
                     <td className="px-4 py-2.5">{a.category}</td>
-                    <td className="px-4 py-2.5">{a.activityName}</td>
+                    <td className="px-4 py-2.5">
+                      {a.activityName}
+                      {a.details && (
+                        <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-muted">{a.details}</p>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right font-semibold">{a.mileage}점</td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-col gap-1">

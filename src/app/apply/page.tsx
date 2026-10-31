@@ -10,7 +10,13 @@ import { listActivityStandards } from "@/lib/firestore/activityStandards";
 import { submitMileageApplication } from "@/lib/firestore/mileageApplications";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
-import { ACTIVITY_GROUPS, type ActivityStandard, type Semester, type Student } from "@/types/models";
+import {
+  ACTIVITY_GROUPS,
+  MILEAGE_DETAILS_MAX_LENGTH,
+  type ActivityStandard,
+  type Semester,
+  type Student,
+} from "@/types/models";
 
 export default function ApplyPage() {
   return (
@@ -30,6 +36,7 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
   const [category, setCategory] = useState(ACTIVITY_GROUPS[0]);
   const [activityId, setActivityId] = useState("");
   const [activityDate, setActivityDate] = useState("");
+  const [details, setDetails] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -69,6 +76,10 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
       setSubmitError("활동과 활동 일자를 선택해주세요.");
       return;
     }
+    if (!details.trim()) {
+      setSubmitError("세부 내용을 입력해주세요.");
+      return;
+    }
     if (!ackConfirmed) {
       setSubmitError("중복 수혜 관련 유의사항을 확인해주세요.");
       return;
@@ -90,6 +101,7 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
         activityName: selectedActivity.activityName,
         mileage: selectedActivity.mileage,
         evidenceFileUrl,
+        details: details.trim(),
         activityDate: new Date(activityDate),
         semester: semester.name,
       });
@@ -117,6 +129,7 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
             setSubmitted(false);
             setActivityId("");
             setActivityDate("");
+            setDetails("");
             setFile(null);
             setAckConfirmed(false);
           }}
@@ -200,6 +213,21 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
           </div>
 
           <div>
+            <label className="mb-1.5 block text-xs font-semibold text-muted">세부 내용</label>
+            <textarea
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              rows={4}
+              maxLength={MILEAGE_DETAILS_MAX_LENGTH}
+              className="w-full rounded-xl border border-border bg-white px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
+              placeholder="어떤 활동에 대한 신청인지 구체적으로 적어주세요. (예: 프로그램·대회명, 주최 기관, 참여 내용, 수상 내역 등)"
+            />
+            <p className="mt-1 text-right text-xs text-muted">
+              {details.length}/{MILEAGE_DETAILS_MAX_LENGTH}
+            </p>
+          </div>
+
+          <div>
             <label className="mb-1.5 block text-xs font-semibold text-muted">
               증빙서류 첨부 (PDF 파일만 가능, 본인 학번·이름 기재 필수)
             </label>
@@ -243,7 +271,7 @@ function ApplyForm({ student, isPreview }: { student: Student; isPreview: boolea
             type="submit"
             size="lg"
             loading={submitting}
-            disabled={!selectedActivity || !activityDate || !withinWindow || !ackConfirmed || isPreview}
+            disabled={!selectedActivity || !activityDate || !details.trim() || !withinWindow || !ackConfirmed || isPreview}
           >
             {isPreview ? "미리보기 모드 (제출 불가)" : "마일리지 신청하기"}
           </Button>

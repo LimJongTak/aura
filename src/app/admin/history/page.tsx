@@ -54,7 +54,7 @@ function matchesSearch(q: string, fields: (string | undefined)[]): boolean {
 const subjectFields = (s: CompletedSubjectEntry | undefined) => (s ? [s.program, s.subjectName] : []);
 
 function mileageSearchFields(a: MileageApplication) {
-  return [a.studentName, a.studentId, a.activityName, a.category, a.note, a.recallReason];
+  return [a.studentName, a.studentId, a.activityName, a.details, a.category, a.note, a.recallReason];
 }
 
 function advancedSearchFields(a: AdvancedApplication | EligibilityCheck) {
@@ -398,6 +398,11 @@ export default function AdminHistoryPage() {
                         <PaidRecalledTags app={a} />
                       </div>
                       <p className="mt-1.5 text-sm text-foreground">{a.activityName}</p>
+                      {a.details && (
+                        <p className="mt-1.5 whitespace-pre-wrap break-words rounded-lg bg-surface px-3 py-2 text-sm text-foreground">
+                          {a.details}
+                        </p>
+                      )}
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {a.evidenceFileUrl ? (
                           <a

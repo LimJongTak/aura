@@ -77,6 +77,8 @@ export interface MileageApplication {
   activityName: string;
   mileage: number;
   evidenceFileUrl?: string;
+  /** 학생이 신청 시 적는 세부 내용(어떤 활동에 대한 신청인지) — 이 필드 도입 전 신청 건에는 없다. */
+  details?: string;
   status: ApplicationStatus;
   processedAt?: number;
   note?: string;
@@ -320,6 +322,9 @@ export const SEMESTER_CAP_NON_PARTICIPATING = 1_000_000;
  *  보다 넉넉히 잡되, 자릿수 오타(예: 500)로 인한 과다 지급 사고를 막기 위한
  *  화면단 안전장치다. */
 export const MAX_ADMIN_MILEAGE_GRANT = 300;
+
+/** 마일리지 신청 세부 내용 최대 글자 수 — firestore.rules의 상한과 맞춰둔다. */
+export const MILEAGE_DETAILS_MAX_LENGTH = 500;
 
 /** 중고급 이수 장학금은 등급·트랙과 무관하게 학기당 정액이다. */
 export const ADVANCED_SCHOLARSHIP_AMOUNT = 1_500_000;

@@ -276,8 +276,19 @@ service cloud.firestore {
             // 신청 화면이 실제로 쓰는 필드만 허용한다.
             request.resource.data.keys().hasOnly([
               "studentId", "studentName", "category", "activityName", "mileage", "evidenceFileUrl",
-              "status", "source", "semester", "appliedAt", "createdAt"
+              "details", "status", "source", "semester", "appliedAt", "createdAt"
             ]) &&
+            // 세부 내용: 화면단 MILEAGE_DETAILS_MAX_LENGTH(src/types/models.ts)와 같은 상한.
+            // 필수 입력은 신청 화면이 강제한다 — 규칙에서는 빠진 경우도 허용해, 규칙과
+            // 프론트엔드 배포 시점이 어긋나도 신청이 막히지 않게 한다.
+            (
+              !("details" in request.resource.data) ||
+              (
+                request.resource.data.details is string &&
+                request.resource.data.details.size() > 0 &&
+                request.resource.data.details.size() <= 500
+              )
+            ) &&
             request.resource.data.mileage <= 50 &&
             // 관리자가 설정한 현재 학기의 마일리지 신청 기간 내에만 접수한다.
             request.resource.data.semester == currentSemester().semesterName &&

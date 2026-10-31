@@ -34,6 +34,8 @@ export interface SubmitMileageApplicationInput {
   activityName: string;
   mileage: number;
   evidenceFileUrl?: string;
+  /** 세부 내용 — 최대 MILEAGE_DETAILS_MAX_LENGTH자 (Firestore 규칙에서도 검증) */
+  details: string;
   activityDate: Date;
   /** 관리자가 지정한 "현재 학기" 이름 — Firestore 규칙이 신청 기간을 검증할 때 이 값과 대조한다. */
   semester: string;
@@ -47,6 +49,7 @@ export async function submitMileageApplication(input: SubmitMileageApplicationIn
     activityName: input.activityName,
     mileage: input.mileage,
     evidenceFileUrl: input.evidenceFileUrl ?? "",
+    details: input.details,
     status: "검토중" satisfies ApplicationStatus,
     source: "self",
     semester: input.semester,
