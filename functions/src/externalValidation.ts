@@ -88,6 +88,19 @@ export function parseExternalRoute(raw: unknown, options: string[]): string {
   return route;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** 재학생이 올린 신청서 URL이 이 프로젝트 Storage의 본인 경로(programApplications/{학번}/...)를 가리키는지 —
+ *  firestore.rules의 isOwnStorageUrl과 같은 기준. 임의 URL을 받으면 관리자 화면 링크로 외부(피싱) 주소를 심을 수 있다. */
+export function isOwnApplicationFileUrl(url: string, studentId: string, bucket: string): boolean {
+  return new RegExp(
+    `^https://firebasestorage\\.googleapis\\.com/v0/b/${escapeRegExp(bucket)}/o/programApplications%2F` +
+      `${escapeRegExp(encodeURIComponent(studentId))}%2F[^?#]+\\?alt=media&token=[0-9a-f-]+$`
+  ).test(url);
+}
+
 /** 관리자가 만든 외부인 추가 질문 기준으로 응답을 검증·정리한다. 모르는 문항 id의 값은 버린다. */
 export function parseExternalAnswers(raw: unknown, questions: ExternalQuestion[]): Record<string, string | string[]> {
   const input = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};

@@ -98,7 +98,7 @@ export function ExternalApplicantsCard({
     const targets = selectedApps.length > 0 ? selectedApps : filtered;
     if (
       !confirm(
-        `외부인 ${targets.length}명의 연락처·이메일 등 개인정보를 복호화해 파일로 내려받아요. 열람 기록이 남고, 받은 파일은 업무 목적으로만 쓰고 사용 후 삭제해주세요. 계속할까요?`
+        `외부인 ${targets.length}명의 연락처·이메일 등 개인정보를 원문으로 내려받아요. 열람 기록이 남고, 받은 파일은 업무 목적으로만 쓰고 사용 후 삭제해주세요. 계속할까요?`
       )
     )
       return;
@@ -139,7 +139,7 @@ export function ExternalApplicantsCard({
             {!program.allowExternal && " (현재 외부인 신청은 꺼져 있어요)"}
           </p>
           <p className="mt-0.5 flex items-center gap-1 text-[11px] text-success">
-            <ShieldCheck size={12} /> 연락처·이메일·팀원·추가 질문 응답은 암호화돼 있어요. 열람·내려받기 때만 복호화되고 기록이 남아요.
+            <ShieldCheck size={12} /> 연락처·이메일·팀원·추가 질문 응답은 보호 저장돼 있어요. 열람·내려받기 때만 원문이 보이고 기록이 남아요.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -298,7 +298,7 @@ export function ExternalApplicantsCard({
         <Overlay title="외부인 신청 상세" onClose={() => setDetail(null)}>
           <p className="text-sm font-semibold text-foreground">{detail.app.name}</p>
           <p className="mt-0.5 text-[11px] text-muted">이 열람은 기록됐어요. 창을 닫으면 화면에서 원문이 지워져요.</p>
-          {!detail.info && <p className="mt-3 text-sm text-danger">복호화할 수 있는 정보가 없어요.</p>}
+          {!detail.info && <p className="mt-3 text-sm text-danger">확인할 수 있는 정보가 없어요.</p>}
           {detail.info && (
           <dl className="mt-3 flex flex-col gap-3">
             {[

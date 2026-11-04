@@ -13,7 +13,10 @@ export interface ExportColumn {
   label: string;
   group: ExportColumnGroup;
   width: number;
-  value: (a: ProgramApplication) => string | number;
+  /** true면 연락처·이메일·팀원·설문 응답처럼 서버에서 열람(revealProgramApplicants)해야 채울 수 있는 열 */
+  needsReveal?: boolean;
+  /** p: 열람해 받은 원문 — needsReveal 열에서만 쓴다 */
+  value: (a: ProgramApplication, p?: ExternalPrivateInfo) => string | number;
 }
 
 function formatDate(ms?: number): string {
@@ -27,13 +30,13 @@ export function programExportColumns(program: Program): ExportColumn[] {
     { key: "studentId", label: "학번", group: "basic", width: 14, value: (a) => a.studentId },
     { key: "name", label: "이름", group: "basic", width: 10, value: (a) => a.studentName },
     { key: "department", label: "학과", group: "basic", width: 20, value: (a) => a.department },
-    { key: "phone", label: "연락처", group: "basic", width: 14, value: (a) => a.phone },
-    { key: "email", label: "이메일", group: "basic", width: 26, value: (a) => a.email },
+    { key: "phone", label: "연락처", group: "basic", width: 14, needsReveal: true, value: (_, p) => p?.phone ?? "" },
+    { key: "email", label: "이메일", group: "basic", width: 26, needsReveal: true, value: (_, p) => p?.email ?? "" },
   ];
   if (program.teamType === "팀") {
     basic.push(
       { key: "teamName", label: "팀명", group: "basic", width: 14, value: (a) => a.teamName },
-      { key: "teamMembers", label: "팀원", group: "basic", width: 30, value: (a) => a.teamMembers }
+      { key: "teamMembers", label: "팀원", group: "basic", width: 30, needsReveal: true, value: (_, p) => p?.teamMembers ?? "" }
     );
   }
   basic.push(
@@ -49,7 +52,8 @@ export function programExportColumns(program: Program): ExportColumn[] {
     label: `${i + 1}. ${q.title}`,
     group: "survey",
     width: q.type === "long" ? 40 : 20,
-    value: (a) => formatAnswer(a.answers?.[q.id]),
+    needsReveal: true,
+    value: (_, p) => formatAnswer(p?.answers[q.id]),
   }));
   return [...basic, ...survey];
 }
@@ -69,10 +73,12 @@ export async function exportProgramApplications(
   program: Program,
   apps: ProgramApplication[],
   columns: ExportColumn[],
-  format: "xlsx" | "csv"
+  format: "xlsx" | "csv",
+  /** needsReveal 열을 골랐을 때 서버에서 열람해 받은 원문 (revealProgramApplicants) */
+  privateById: Record<string, ExternalPrivateInfo> = {}
 ): Promise<void> {
   const header = columns.map((c) => c.label);
-  const rows = apps.map((a) => columns.map((c) => c.value(a)));
+  const rows = apps.map((a) => columns.map((c) => c.value(a, privateById[a.id])));
   await writeTable(program, header, rows, columns.map((c) => c.width), format, "신청자");
 }
 
@@ -80,7 +86,7 @@ export async function exportProgramApplications(
 export async function exportExternalApplications(
   program: Program,
   apps: ExternalProgramApplication[],
-  /** 서버에서 복호화해 받은 원문 (revealExternalApplicants) — 열람 기록이 남은 뒤에만 파일에 들어간다. */
+  /** 서버에서 열람해 받은 원문 (revealExternalApplicants) — 열람 기록이 남은 뒤에만 파일에 들어간다. */
   privateById: Record<string, ExternalPrivateInfo>,
   format: "xlsx" | "csv"
 ): Promise<void> {

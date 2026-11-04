@@ -23,7 +23,6 @@ import {
   getProgram,
   incrementProgramView,
   listMyProgramApplications,
-  ProgramFullError,
   sessionPhase,
   seatsTaken,
   subscribeProgramCounts,
@@ -418,7 +417,7 @@ function ApplyModal({
     e.preventDefault();
     setError(null);
     const digits = phone.replace(/\D/g, "");
-    if (digits.length < 9) return setError("연락처를 숫자로 정확히 입력해주세요.");
+    if (!/^0\d{8,10}$/.test(digits)) return setError("연락처를 숫자로 정확히 입력해주세요.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("이메일 형식을 확인해주세요.");
     if (isTeam && (!teamName.trim() || !teamMembers.trim())) return setError("팀명과 팀원 정보를 입력해주세요.");
     if (program.requireApplicationFile && !file) return setError("신청서 파일을 첨부해주세요.");
@@ -446,7 +445,7 @@ function ApplyModal({
         applicationFileName: uploaded?.name ?? "",
         answers: cleanAnswers(program.formQuestions, answers),
       };
-      await applyToProgram(input);
+      const masked = await applyToProgram(input);
       setDone(true);
       onApplied({
         id: `${program.id}_${session.id}_${student.studentId}`,
@@ -458,20 +457,19 @@ function ApplyModal({
         studentId: student.studentId,
         studentName: student.name,
         department: student.department,
-        phone: input.phone,
-        email: input.email,
+        phoneMasked: masked.phoneMasked,
+        emailMasked: masked.emailMasked,
         teamName: input.teamName,
-        teamMembers: input.teamMembers,
         applicationFileUrl: input.applicationFileUrl,
         applicationFileName: input.applicationFileName,
-        answers: input.answers,
         privacyAgreed: true,
         status: "신청",
         appliedAt: Date.now(),
       });
     } catch (err) {
-      if (err instanceof ProgramFullError) setError("정원이 마감되어 신청할 수 없어요.");
-      else setError("신청에 실패했어요. 이미 신청했거나 신청기간이 아닐 수 있어요. 새로고침 후 다시 시도해주세요.");
+      setError(
+        callableErrorMessage(err, "신청에 실패했어요. 이미 신청했거나 신청기간이 아닐 수 있어요. 새로고침 후 다시 시도해주세요.")
+      );
     } finally {
       setSubmitting(false);
     }
@@ -511,10 +509,10 @@ function ApplyModal({
           <FormRow label="이름">{student.name}</FormRow>
           <FormRow label="학부/학과">{student.department}</FormRow>
           <FormRow label="연락처" required>
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="숫자만 입력" inputMode="numeric" className="py-2" />
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="숫자만 입력" inputMode="numeric" maxLength={20} className="py-2" />
           </FormRow>
           <FormRow label="이메일" required>
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className="py-2" />
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" maxLength={100} className="py-2" />
           </FormRow>
           {isTeam && (
             <>
@@ -526,6 +524,7 @@ function ApplyModal({
                   value={teamMembers}
                   onChange={(e) => setTeamMembers(e.target.value)}
                   rows={3}
+                  maxLength={1000}
                   placeholder={"본인 외 팀원을 한 줄에 한 명씩\n예) 20261234 홍길동 인공지능공학전공"}
                   className="w-full rounded-xl border border-border bg-white px-3.5 py-2 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15"
                 />

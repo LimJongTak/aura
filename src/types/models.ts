@@ -688,14 +688,18 @@ export interface ProgramApplication {
   studentId: string;
   studentName: string;
   department: string;
-  phone: string;
-  email: string;
+  /** 화면 표시용 마스킹 값 (010-****-5678, ab***@s.scnu.ac.kr). 연락처·이메일·팀원·설문 응답 원문은 서버에
+   *  보호 저장돼 있고 관리자가 revealProgramApplicants로 열람할 때만 받는다. */
+  phoneMasked?: string;
+  emailMasked?: string;
+  /** 예전 방식(평문) 문서에만 남아 있는 값 — secureLegacyProgramApplications가 옮기면 사라진다. */
+  phone?: string;
+  email?: string;
+  teamMembers?: string;
+  answers?: Record<string, ProgramAnswer>;
   teamName: string;
-  teamMembers: string;
   applicationFileUrl: string;
   applicationFileName: string;
-  /** 신청 설문 응답 ({문항 id: 응답}) — 설문이 없던 글의 신청에는 없다. */
-  answers?: Record<string, ProgramAnswer>;
   privacyAgreed: boolean;
   status: ProgramApplicationStatus;
   appliedAt: number;

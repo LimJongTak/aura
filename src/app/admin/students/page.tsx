@@ -469,7 +469,7 @@ function ExportStudentsModal({
           <div className="mt-3 flex gap-2 rounded-xl bg-danger-light px-3 py-2.5 text-xs text-danger">
             <ShieldAlert size={15} className="mt-px shrink-0" />
             <p>
-              개인정보(휴대전화번호·계좌정보)가 포함됩니다. 내려받는 순간 서버에서 복호화되며, 내려받은 관리자와
+              개인정보(휴대전화번호·계좌정보)가 포함됩니다. 내려받는 순간에만 원문을 받아오며, 내려받은 관리자와
               대상 학번이 기록으로 남습니다. 파일은 업무 목적으로만 사용하고 사용 후 즉시 삭제해주세요.
             </p>
           </div>

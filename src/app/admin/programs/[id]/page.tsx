@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ClipboardList, Download, ExternalLink, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, ClipboardList, Download, ExternalLink, Eye, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -19,6 +19,7 @@ import {
   grantProgramMileage,
   markProgramNonPayment,
   ProgramNotEndedError,
+  revealProgramApplicants,
   seatsTaken,
   sessionEnded,
   sessionPhase,
@@ -40,6 +41,7 @@ import {
 } from "@/lib/firestore/externalApplications";
 import { ExternalApplicantsCard } from "@/components/admin/ExternalApplicantsCard";
 import type {
+  ExternalPrivateInfo,
   ExternalProgramApplication,
   Program,
   ProgramApplication,
@@ -67,7 +69,22 @@ export default function AdminProgramDetailPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<"reject" | "grant" | "nonpay" | "export" | null>(null);
-  const [answersOf, setAnswersOf] = useState<ProgramApplication | null>(null);
+  // 열람한 원문은 상세 창이 열려 있는 동안 메모리에만 두고, 닫으면 버린다.
+  const [detail, setDetail] = useState<{ app: ProgramApplication; info: ExternalPrivateInfo | null } | null>(null);
+  const [revealingId, setRevealingId] = useState<string | null>(null);
+
+  async function openDetail(app: ProgramApplication) {
+    setRevealingId(app.id);
+    setError(null);
+    try {
+      const items = await revealProgramApplicants([app.id], "view");
+      setDetail({ app, info: items[app.id] ?? null });
+    } catch {
+      setError("신청 정보를 불러오지 못했어요.");
+    } finally {
+      setRevealingId(null);
+    }
+  }
 
   useEffect(() => {
     getProgram(params.id).then(setProgram).catch(() => setProgram(null));
@@ -392,15 +409,23 @@ export default function AdminProgramDetailPage() {
                     <td className="px-2 py-3">{a.studentName}</td>
                     <td className="px-2 py-3 text-xs">{a.department}</td>
                     <td className="px-2 py-3 text-xs text-muted">
-                      {a.phone}
+                      {maskedPhone(a)}
                       <br />
-                      {a.email}
+                      {maskedEmail(a)}
+                      <br />
+                      <button
+                        type="button"
+                        disabled={revealingId !== null}
+                        onClick={() => openDetail(a)}
+                        className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap font-semibold text-primary hover:underline disabled:opacity-50"
+                      >
+                        <Eye size={13} /> {revealingId === a.id ? "불러오는 중" : "열람"}
+                      </button>
                     </td>
                     {program.sessions.length > 1 && <td className="px-2 py-3 text-xs">{sessionLabel(a.sessionId)}</td>}
                     {program.teamType === "팀" && (
                       <td className="max-w-48 px-2 py-3 text-xs">
                         <p className="font-semibold">{a.teamName}</p>
-                        <p className="whitespace-pre-wrap text-muted">{a.teamMembers}</p>
                       </td>
                     )}
                     <td className="max-w-40 px-2 py-3 text-xs">
@@ -417,8 +442,9 @@ export default function AdminProgramDetailPage() {
                       <td className="px-2 py-3 text-xs">
                         <button
                           type="button"
-                          onClick={() => setAnswersOf(a)}
-                          className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-primary hover:underline"
+                          disabled={revealingId !== null}
+                          onClick={() => openDetail(a)}
+                          className="inline-flex items-center gap-1 whitespace-nowrap font-semibold text-primary hover:underline disabled:opacity-50"
                         >
                           <ClipboardList size={13} /> 응답 보기
                         </button>
@@ -477,7 +503,7 @@ export default function AdminProgramDetailPage() {
           onClose={() => setModal(null)}
         />
       )}
-      {answersOf && <AnswersModal program={program} app={answersOf} onClose={() => setAnswersOf(null)} />}
+      {detail && <ApplicantDetailModal program={program} detail={detail} onClose={() => setDetail(null)} />}
       {modal === "nonpay" && (
         <NonPaymentModal
           count={selectedApps.length}
@@ -687,15 +713,50 @@ function NonPaymentModal({
   );
 }
 
-function AnswersModal({ program, app, onClose }: { program: Program; app: ProgramApplication; onClose: () => void }) {
+/** 목록에 보여줄 마스킹 연락처 — 보호 저장 전 예전 문서는 남아 있는 평문을 화면에서 가려서 보여준다. */
+function maskedPhone(a: ProgramApplication): string {
+  if (a.phoneMasked) return a.phoneMasked;
+  const d = (a.phone ?? "").replace(/\D/g, "");
+  return d.length >= 8 ? `${d.slice(0, 3)}-****-${d.slice(-4)}` : "-";
+}
+
+function maskedEmail(a: ProgramApplication): string {
+  if (a.emailMasked) return a.emailMasked;
+  const [local, domain] = (a.email ?? "").split("@");
+  return domain ? `${local.slice(0, 2)}***@${domain}` : "-";
+}
+
+function ApplicantDetailModal({
+  program,
+  detail,
+  onClose,
+}: {
+  program: Program;
+  detail: { app: ProgramApplication; info: ExternalPrivateInfo | null };
+  onClose: () => void;
+}) {
+  const { app, info } = detail;
   return (
-    <ModalShell title="설문 응답" wide onClose={onClose}>
+    <ModalShell title="신청 상세" wide onClose={onClose}>
       <p className="text-sm font-semibold text-foreground">
         {app.studentName} <span className="font-normal text-muted">· {app.studentId}</span>
       </p>
+      <p className="mt-0.5 text-[11px] text-muted">이 열람은 기록됐어요. 창을 닫으면 화면에서 원문이 지워져요.</p>
+      {!info && <p className="mt-3 text-sm text-danger">확인할 수 있는 정보가 없어요.</p>}
       <dl className="mt-3 flex flex-col gap-3">
+        {info &&
+          [
+            ["연락처", info.phone],
+            ["이메일", info.email],
+            ...(program.teamType === "팀" ? [["팀명", app.teamName], ["팀원", info.teamMembers]] : []),
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl bg-surface p-3">
+              <dt className="text-xs font-bold text-muted">{label}</dt>
+              <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{value || "-"}</dd>
+            </div>
+          ))}
         {program.formQuestions.map((q, i) => {
-          const answer = formatAnswer(app.answers?.[q.id]);
+          const answer = formatAnswer(info?.answers[q.id]);
           return (
             <div key={q.id} className="rounded-xl bg-surface p-3">
               <dt className="text-xs font-bold text-muted">
@@ -811,7 +872,21 @@ function ExportModal({
           if (i > 0) await new Promise((r) => setTimeout(r, 600));
           await downloadSignatureSheet(program, rowsByKind[kind](), label);
         }
-      } else await exportProgramApplications(program, apps, cols, format);
+      } else {
+        // 연락처·이메일·팀원·설문 응답 열을 골랐을 때만 서버에서 원문을 받는다(열람 기록이 남는다).
+        const needsReveal = cols.some((c) => c.needsReveal) && apps.length > 0;
+        if (
+          needsReveal &&
+          !confirm(
+            `신청자 ${apps.length}명의 연락처·이메일 등 개인정보가 파일에 들어가요. 열람 기록이 남고, 받은 파일은 업무 목적으로만 쓰고 사용 후 삭제해주세요. 계속할까요?`
+          )
+        ) {
+          setBusy(false);
+          return;
+        }
+        const privateById = needsReveal ? await revealProgramApplicants(apps.map((a) => a.id), "export") : {};
+        await exportProgramApplications(program, apps, cols, format, privateById);
+      }
       onClose();
     } catch {
       setError("파일을 만들지 못했어요. 다시 시도해주세요.");
@@ -859,7 +934,7 @@ function ExportModal({
             <div className="mt-3">
               <label className="mb-1.5 block text-xs font-semibold text-muted">
                 외부인 소속 칸{" "}
-                <span className="font-normal">· 학번 칸은 비워 둬요 · 응답을 쓰면 암호화된 응답을 열람한 기록이 남아요</span>
+                <span className="font-normal">· 학번 칸은 비워 둬요 · 응답을 쓰면 신청자 응답을 열람한 기록이 남아요</span>
               </label>
               <Select value={affiliationQ} onChange={(e) => setAffiliationQ(e.target.value)} className="py-2">
                 <option value="">&ldquo;외부&rdquo;로 표시</option>

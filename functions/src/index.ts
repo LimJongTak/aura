@@ -13,6 +13,7 @@ import {
 } from "./externalPii";
 import {
   cleanText,
+  isOwnApplicationFileUrl,
   parseExternalAnswers,
   parseExternalEmail,
   parseExternalName,
@@ -1575,6 +1576,190 @@ export const revealExternalApplicants = onCall({ secrets: [EXTERNAL_PII_ENC_KEY]
 
   return { items };
 });
+
+// ---------------------------------------------------------------------------
+// 재학생 프로그램 신청 — 예전에는 학생 브라우저가 programApplications에 연락처·이메일·팀원·설문 응답을
+// 평문으로 직접 썼다. 이제 이 함수만 신청서를 만들고(규칙 create: false), 그 항목들은 재학생 연락처 키
+// (PHONE_ENC_KEY)로 외부인 신청과 같은 방식(AES-256-GCM, 문서 ID를 AAD로)으로 privateEnc에 묶어 저장한다.
+// 문서에는 화면용 마스킹 값만 평문으로 남고, 관리자는 revealProgramApplicants로 볼 때마다 기록이 남는다.
+// ---------------------------------------------------------------------------
+
+const STORAGE_BUCKET = "aura-d2e32.firebasestorage.app";
+
+export const submitProgramApplication = onCall({ secrets: [PHONE_ENC_KEY] }, async (request) => {
+  const studentId = await requireActiveStudent(request.auth);
+  const d = (request.data ?? {}) as Record<string, unknown>;
+  if (typeof d.programId !== "string" || !FIRESTORE_ID_PATTERN.test(d.programId)) {
+    throw new HttpsError("invalid-argument", "프로그램 정보가 올바르지 않습니다.");
+  }
+  if (typeof d.sessionId !== "string" || !FIRESTORE_ID_PATTERN.test(d.sessionId)) {
+    throw new HttpsError("invalid-argument", "회차 정보가 올바르지 않습니다.");
+  }
+  if (d.privacyAgreed !== true) throw new HttpsError("invalid-argument", "개인정보 제공에 동의해주세요.");
+  const phone = typeof d.phone === "string" ? d.phone.replace(/[^0-9]/g, "") : "";
+  if (typeof d.phone !== "string" || d.phone.length > 20 || !/^0\d{8,10}$/.test(phone)) {
+    throw new HttpsError("invalid-argument", "연락처를 숫자로 정확히 입력해주세요.");
+  }
+  const email = parseExternalEmail(d.email);
+
+  const db = admin.firestore();
+  const programId = d.programId;
+  const sessionId = d.sessionId;
+  const programRef = db.collection("programs").doc(programId);
+  const [programSnap, studentSnap] = await Promise.all([programRef.get(), db.collection("students").doc(studentId).get()]);
+  const program = programSnap.data();
+  const student = studentSnap.data();
+  if (!program || program.isPublished !== true || !program.sessions?.[sessionId]) {
+    throw new HttpsError("failed-precondition", "신청할 수 없는 프로그램입니다.");
+  }
+  if (!student) throw new HttpsError("failed-precondition", "학생 정보를 찾을 수 없습니다.");
+
+  const isTeam = program.teamType === "팀";
+  const teamName = isTeam ? cleanText(d.teamName, "팀명", 50, { required: true }) : "";
+  const teamMembers = isTeam ? cleanText(d.teamMembers, "팀원", 1000, { required: true, multiline: true }) : "";
+  const questions = Array.isArray(program.formQuestions) ? (program.formQuestions as ExternalQuestion[]) : [];
+  const answers = parseExternalAnswers(d.answers, questions);
+  const fileUrl = cleanText(d.applicationFileUrl, "신청서", 2000);
+  const fileName = fileUrl ? cleanText(d.applicationFileName, "신청서 파일명", 200) : "";
+  if (fileUrl && !isOwnApplicationFileUrl(fileUrl, studentId, STORAGE_BUCKET)) {
+    throw new HttpsError("invalid-argument", "신청서 파일이 올바르지 않습니다. 다시 첨부해주세요.");
+  }
+  if (program.requireApplicationFile === true && !fileUrl) {
+    throw new HttpsError("invalid-argument", "신청서 파일을 첨부해주세요.");
+  }
+
+  const appId = `${programId}_${sessionId}_${studentId}`;
+  const appRef = db.collection("programApplications").doc(appId);
+  const counterRef = programRef.collection("counters").doc(sessionId);
+
+  await db.runTransaction(async (tx) => {
+    const [fresh, counter, existing] = await Promise.all([tx.get(programRef), tx.get(counterRef), tx.get(appRef)]);
+    const p = fresh.data();
+    const s = p?.sessions?.[sessionId] as Record<string, unknown> | undefined;
+    const now = Date.now();
+    if (!p || p.isPublished !== true || !s) throw new HttpsError("failed-precondition", "신청할 수 없는 프로그램입니다.");
+    const start = tsMillis(s.applyStart);
+    const end = tsMillis(s.applyEnd);
+    if (start === null || end === null || now < start || now > end) {
+      throw new HttpsError("failed-precondition", "신청기간이 아닙니다.");
+    }
+    if (existing.exists) throw new HttpsError("already-exists", "이미 이 회차에 신청했어요. 신청내역에서 확인해주세요.");
+    const count = Number(counter.data()?.count ?? 0);
+    const capacity = typeof s.capacity === "number" ? s.capacity : null;
+    if (capacity !== null && count + Number(s.externalCount ?? 0) >= capacity) {
+      throw new HttpsError("resource-exhausted", "정원이 마감되어 신청할 수 없어요.");
+    }
+    if (counter.exists) tx.update(counterRef, { count: count + 1 });
+    else tx.set(counterRef, { count: 1 });
+    tx.set(appRef, {
+      programId,
+      programTitle: String(p.title ?? ""),
+      teamType: p.teamType === "팀" ? "팀" : "개인",
+      sessionId,
+      sessionRound: Number(s.round ?? 1),
+      studentId,
+      // 이름·학과는 요청 값이 아니라 학생명단에서 가져온다.
+      studentName: String(student.name ?? ""),
+      department: String(student.department ?? ""),
+      phoneMasked: maskExternalPhone(phone),
+      emailMasked: maskEmail(email),
+      privateEnc: encryptPrivate({ phone, email, teamMembers, answers }, PHONE_ENC_KEY.value(), appId),
+      teamName,
+      applicationFileUrl: fileUrl,
+      applicationFileName: fileName,
+      privacyAgreed: true,
+      status: "신청",
+      appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+  return { success: true, phoneMasked: maskExternalPhone(phone), emailMasked: maskEmail(email) };
+});
+
+/** 예전 방식(평문)으로 저장된 신청서의 개인정보 — 아직 privateEnc로 옮기기 전 문서용. */
+function legacyProgramPrivate(data: FirebaseFirestore.DocumentData): ReturnType<typeof decryptPrivate> {
+  return {
+    phone: String(data.phone ?? ""),
+    email: String(data.email ?? ""),
+    teamMembers: String(data.teamMembers ?? ""),
+    answers: (data.answers as Record<string, string | string[]> | undefined) ?? {},
+  };
+}
+
+/** 관리자가 재학생 신청자의 연락처·이메일·팀원·설문 응답을 볼 때 그 순간에만 풀어서 돌려준다.
+ *  누가·언제·어떤 신청을·어떤 용도로 열람했는지 programApplicantAccessLogs에 남긴다. */
+export const revealProgramApplicants = onCall({ secrets: [PHONE_ENC_KEY] }, async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const { ids, purpose } = (request.data ?? {}) as { ids?: unknown; purpose?: unknown };
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_REVEAL_BATCH) {
+    throw new HttpsError("invalid-argument", `한 번에 1~${MAX_REVEAL_BATCH}건까지 열람할 수 있습니다.`);
+  }
+  if (!ids.every(isDocId)) throw new HttpsError("invalid-argument", "신청 정보 형식이 올바르지 않습니다.");
+  if (purpose !== "view" && purpose !== "export") throw new HttpsError("invalid-argument", "열람 용도가 올바르지 않습니다.");
+  const uniqueIds = [...new Set(ids as string[])];
+
+  const db = admin.firestore();
+  const snaps = await db.getAll(...uniqueIds.map((id) => db.collection("programApplications").doc(id)));
+  const key = PHONE_ENC_KEY.value();
+  const items: Record<string, ReturnType<typeof decryptPrivate>> = {};
+  let failed = 0;
+  for (const snap of snaps) {
+    const data = snap.data();
+    if (!data) continue;
+    if (typeof data.privateEnc !== "string") {
+      items[snap.id] = legacyProgramPrivate(data);
+      continue;
+    }
+    try {
+      items[snap.id] = decryptPrivate(data.privateEnc, key, snap.id);
+    } catch (err) {
+      failed++;
+      console.error("program applicant decrypt failed", snap.id, err);
+    }
+  }
+
+  await db.collection("programApplicantAccessLogs").add({
+    adminUid: request.auth!.uid,
+    adminEmail: request.auth?.token.email ?? null,
+    purpose,
+    applicationIds: uniqueIds,
+    programIds: [...new Set(snaps.map((s) => s.data()?.programId).filter((v): v is string => typeof v === "string"))],
+    revealedCount: Object.keys(items).length,
+    failedCount: failed,
+    accessedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  return { items };
+});
+
+/** 예전 방식으로 평문 저장된 재학생 신청서를 privateEnc로 옮기고 평문 필드를 지운다. 매일 돌지만 옮길
+ *  문서가 없으면 바로 끝난다 — 배포 직후에는 Cloud Scheduler에서 한 번 직접 실행한다. */
+export const secureLegacyProgramApplications = onSchedule(
+  { schedule: "every day 04:30", timeZone: "Asia/Seoul", secrets: [PHONE_ENC_KEY] },
+  async () => {
+    const db = admin.firestore();
+    const key = PHONE_ENC_KEY.value();
+    const snap = await db.collection("programApplications").get();
+    const legacy = snap.docs.filter((doc) => typeof doc.data().privateEnc !== "string");
+    for (let i = 0; i < legacy.length; i += 400) {
+      const batch = db.batch();
+      for (const doc of legacy.slice(i, i + 400)) {
+        const data = doc.data();
+        const info = legacyProgramPrivate(data);
+        const digits = info.phone.replace(/[^0-9]/g, "");
+        batch.update(doc.ref, {
+          privateEnc: encryptPrivate(info, key, doc.id),
+          phoneMasked: digits.length >= 8 ? maskExternalPhone(digits) : "",
+          emailMasked: info.email.includes("@") ? maskEmail(info.email) : "",
+          phone: admin.firestore.FieldValue.delete(),
+          email: admin.firestore.FieldValue.delete(),
+          teamMembers: admin.firestore.FieldValue.delete(),
+          answers: admin.firestore.FieldValue.delete(),
+        });
+      }
+      await batch.commit();
+    }
+    console.log(`secured ${legacy.length} legacy program applications`);
+  }
+);
 
 /** 보유기간(회차 진행 종료 + 1년)이 지난 외부인 신청과 조회 비밀번호 해시를 매일 파기한다. */
 export const purgeExpiredExternalApplications = onSchedule(

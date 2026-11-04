@@ -12,7 +12,8 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase/client";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase/client";
 import { recordView } from "@/lib/firestore/visits";
 import { listExternalApplicationsForProgram } from "@/lib/firestore/externalApplications";
 import { nanoid } from "@/lib/utils/nanoid";
@@ -20,6 +21,7 @@ import {
   PROGRAM_SEAT_STATUSES,
   type ActivityGroup,
   type ApplicationFileType,
+  type ExternalPrivateInfo,
   type Program,
   type ProgramApplication,
   type ProgramApplicationStatus,
@@ -283,44 +285,59 @@ export interface ProgramApplyInput {
   answers: Record<string, ProgramAnswer>;
 }
 
-export class ProgramFullError extends Error {
-  constructor() {
-    super("정원이 마감되었습니다.");
-  }
+const submitApplicationFn = httpsCallable<
+  {
+    programId: string;
+    sessionId: string;
+    phone: string;
+    email: string;
+    teamName: string;
+    teamMembers: string;
+    applicationFileUrl: string;
+    applicationFileName: string;
+    answers: Record<string, ProgramAnswer>;
+    privacyAgreed: boolean;
+  },
+  { success: boolean; phoneMasked: string; emailMasked: string }
+>(functions, "submitProgramApplication");
+
+/** 신청 — submitProgramApplication Cloud Function이 신청기간·정원·중복을 확인하고, 연락처·이메일·팀원·
+ *  설문 응답은 서버에서 보호 저장한다(브라우저가 직접 쓰지 않는다). 화면용 마스킹 값을 돌려준다. */
+export async function applyToProgram(input: ProgramApplyInput): Promise<{ phoneMasked: string; emailMasked: string }> {
+  const { data } = await submitApplicationFn({
+    programId: input.program.id,
+    sessionId: input.session.id,
+    phone: input.phone,
+    email: input.email,
+    teamName: input.teamName,
+    teamMembers: input.teamMembers,
+    applicationFileUrl: input.applicationFileUrl,
+    applicationFileName: input.applicationFileName,
+    answers: input.answers,
+    privacyAgreed: true,
+  });
+  return { phoneMasked: data.phoneMasked, emailMasked: data.emailMasked };
 }
 
-/** 신청 문서 생성과 회차 신청 인원 +1을 한 트랜잭션으로 처리한다 — Firestore 규칙이 둘이
- *  함께 일어날 때만 허용하고, 정원 초과도 규칙에서 한 번 더 막는다. */
-export async function applyToProgram(input: ProgramApplyInput): Promise<void> {
-  const { program, session } = input;
-  const cRef = counterRef(program.id, session.id);
-  const aRef = doc(db, "programApplications", applicationId(program.id, session.id, input.studentId));
-  await runTransaction(db, async (tx) => {
-    const counter = await tx.get(cRef);
-    const count = Number(counter.data()?.count ?? 0);
-    if (session.capacity !== null && seatsTaken(session, count) >= session.capacity) throw new ProgramFullError();
-    tx.update(cRef, { count: count + 1 });
-    tx.set(aRef, {
-      programId: program.id,
-      programTitle: program.title,
-      teamType: program.teamType,
-      sessionId: session.id,
-      sessionRound: session.round,
-      studentId: input.studentId,
-      studentName: input.studentName,
-      department: input.department,
-      phone: input.phone,
-      email: input.email,
-      teamName: input.teamName,
-      teamMembers: input.teamMembers,
-      applicationFileUrl: input.applicationFileUrl,
-      applicationFileName: input.applicationFileName,
-      answers: input.answers,
-      privacyAgreed: true,
-      status: "신청" satisfies ProgramApplicationStatus,
-      appliedAt: serverTimestamp(),
-    });
-  });
+export type ProgramRevealPurpose = "view" | "export";
+
+const revealApplicantsFn = httpsCallable<
+  { ids: string[]; purpose: ProgramRevealPurpose },
+  { items: Record<string, ExternalPrivateInfo> }
+>(functions, "revealProgramApplicants");
+
+/** 관리자 전용 — 재학생 신청자의 연락처·이메일·팀원·설문 응답 원문을 받는다. 부를 때마다 서버에 열람 기록이
+ *  남는다(programApplicantAccessLogs). 결과는 화면 메모리에서만 쓴다. 한 번에 500건씩 나눠 부른다. */
+export async function revealProgramApplicants(
+  ids: string[],
+  purpose: ProgramRevealPurpose
+): Promise<Record<string, ExternalPrivateInfo>> {
+  const merged: Record<string, ExternalPrivateInfo> = {};
+  for (let i = 0; i < ids.length; i += 500) {
+    const { data } = await revealApplicantsFn({ ids: ids.slice(i, i + 500), purpose });
+    Object.assign(merged, data.items);
+  }
+  return merged;
 }
 
 /** 학생 본인 신청 취소 — 신청 상태이고 신청기간 안일 때만 가능 (규칙에서도 검증). */
