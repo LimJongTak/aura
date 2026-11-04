@@ -46,6 +46,7 @@ import type {
   ProgramApplicationStatus,
   Semester,
 } from "@/types/models";
+import { BOOTCAMP_ROUTE } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
 import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
 
@@ -716,14 +717,28 @@ const EXPORT_GROUPS: { id: ExportColumnGroup; label: string }[] = [
   { id: "survey", label: "설문 응답" },
 ];
 
-type SignatureMode = "students" | "combined" | "separate" | "externals";
+type SignatureMode = "students" | "combined" | "separate" | "separate3" | "externals" | "bootcamp" | "others";
 
-const SIGNATURE_MODES: { id: SignatureMode; label: string }[] = [
+const SIGNATURE_MODES: { id: SignatureMode; label: string; bootcamp?: boolean }[] = [
   { id: "combined", label: "한 명단으로 합쳐서" },
   { id: "separate", label: "재학생·외부인 따로 (파일 2개)" },
+  { id: "separate3", label: "재학생·청년도약·그 외 외부인 따로 (파일 3개)", bootcamp: true },
   { id: "students", label: "재학생만" },
-  { id: "externals", label: "외부인만" },
+  { id: "externals", label: "외부인 전체" },
+  { id: "bootcamp", label: "청년도약인재양성부트캠프만", bootcamp: true },
+  { id: "others", label: "외부인 (청년도약 제외)", bootcamp: true },
 ];
+
+/** 모드별로 내려받을 파일 목록 — [파일 이름 뒤 구분, 명단 종류]. */
+const SIGNATURE_FILES: Record<SignatureMode, [string | undefined, "students" | "externals" | "bootcamp" | "others" | "all"][]> = {
+  combined: [[undefined, "all"]],
+  separate: [["재학생", "students"], ["외부인", "externals"]],
+  separate3: [["재학생", "students"], ["청년도약인재양성부트캠프", "bootcamp"], ["외부인", "others"]],
+  students: [[undefined, "students"]],
+  externals: [["외부인", "externals"]],
+  bootcamp: [["청년도약인재양성부트캠프", "bootcamp"]],
+  others: [["외부인", "others"]],
+};
 
 function ExportModal({
   program,
@@ -739,6 +754,7 @@ function ExportModal({
   onClose: () => void;
 }) {
   const hasExternals = externals.some((a) => a.status !== "반려");
+  const bootcampCount = externals.filter((a) => a.status !== "반려" && a.route === BOOTCAMP_ROUTE).length;
   const [signatureMode, setSignatureMode] = useState<SignatureMode>(hasExternals ? "combined" : "students");
   // 외부인 소속 칸에 넣을 추가 질문 — 제목에 "소속"이 들어간 질문을 기본으로 고른다.
   const [affiliationQ, setAffiliationQ] = useState<string>(
@@ -770,21 +786,30 @@ function ExportModal({
       if (format === "hwpx") {
         const studentRows = studentSignatureRows(apps);
         const mode = hasExternals ? signatureMode : "students";
+        const files = SIGNATURE_FILES[mode];
+        const bootcampApps = externals.filter((a) => a.route === BOOTCAMP_ROUTE);
+        const otherApps = externals.filter((a) => a.route !== BOOTCAMP_ROUTE);
         // 외부인 소속 칸을 추가 질문 응답으로 채울 때만 서버에서 복호화한다(열람 기록이 남는다).
-        const needsReveal = mode !== "students" && !!affiliationQ;
-        const targets = externals.filter((a) => a.status !== "반려");
+        // 청년도약 신청자는 소속이 고정이라 복호화하지 않는다.
+        const needsOthers = files.some(([, kind]) => kind === "externals" || kind === "others" || kind === "all");
+        const targets = otherApps.filter((a) => a.status !== "반려");
         const privateById =
-          needsReveal && targets.length > 0 ? await revealExternalApplicants(targets.map((a) => a.id), "signature") : {};
-        const externalRows = externalSignatureRows(externals, affiliationQ || null, privateById);
-        if (mode === "students") await downloadSignatureSheet(program, studentRows);
-        else if (mode === "externals") await downloadSignatureSheet(program, externalRows, "외부인");
-        // 합칠 때는 재학생을 먼저, 외부인을 뒤에 이어 적는다 (각각 소속·이름 가나다순).
-        else if (mode === "combined") await downloadSignatureSheet(program, [...studentRows, ...externalRows]);
-        else {
-          await downloadSignatureSheet(program, studentRows, "재학생");
+          needsOthers && affiliationQ && targets.length > 0
+            ? await revealExternalApplicants(targets.map((a) => a.id), "signature")
+            : {};
+        const rowsOf = (list: ExternalProgramApplication[]) => externalSignatureRows(list, affiliationQ || null, privateById);
+        const rowsByKind = {
+          students: () => studentRows,
+          externals: () => rowsOf(externals),
+          bootcamp: () => rowsOf(bootcampApps),
+          others: () => rowsOf(otherApps),
+          // 합칠 때는 재학생을 먼저, 외부인을 뒤에 이어 적는다 (각각 소속·이름 가나다순).
+          all: () => [...studentRows, ...rowsOf(externals)],
+        };
+        for (const [i, [label, kind]] of files.entries()) {
           // 브라우저가 연속 다운로드를 하나로 합치지 않도록 잠깐 띄운다.
-          await new Promise((r) => setTimeout(r, 600));
-          await downloadSignatureSheet(program, externalRows, "외부인");
+          if (i > 0) await new Promise((r) => setTimeout(r, 600));
+          await downloadSignatureSheet(program, rowsByKind[kind](), label);
         }
       } else await exportProgramApplications(program, apps, cols, format);
       onClose();
@@ -824,13 +849,13 @@ function ExportModal({
         <>
           <p className="mb-1.5 mt-4 text-xs font-semibold text-muted">명단 구성 (외부인 신청자 포함 여부)</p>
           <div className="flex flex-wrap gap-2">
-            {SIGNATURE_MODES.map((m) => (
+            {SIGNATURE_MODES.filter((m) => !m.bootcamp || bootcampCount > 0).map((m) => (
               <ChoiceChip key={m.id} active={signatureMode === m.id} onClick={() => setSignatureMode(m.id)}>
                 {m.label}
               </ChoiceChip>
             ))}
           </div>
-          {signatureMode !== "students" && (
+          {signatureMode !== "students" && signatureMode !== "bootcamp" && (
             <div className="mt-3">
               <label className="mb-1.5 block text-xs font-semibold text-muted">
                 외부인 소속 칸{" "}
@@ -849,7 +874,8 @@ function ExportModal({
             </div>
           )}
           <p className="mt-1 text-[11px] text-muted">
-            외부인은 현재 회차 필터 기준 전체(반려 제외)가 들어가요. 합칠 때는 재학생 다음에 외부인이 이어져요.
+            외부인은 현재 회차 필터 기준 전체(반려 제외)가 들어가요. 합칠 때는 재학생 다음에 외부인이 이어져요. 신청 경로가
+            &ldquo;{BOOTCAMP_ROUTE}&rdquo;인 외부인({bootcampCount}명)은 소속 칸에 그 이름이 적혀요.
           </p>
         </>
       )}

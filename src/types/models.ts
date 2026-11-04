@@ -710,7 +710,18 @@ export type ExternalApplicationStatus = "신청" | "확정" | "반려";
 
 export const EXTERNAL_SEAT_STATUSES: ExternalApplicationStatus[] = ["신청", "확정"];
 
-export const DEFAULT_EXTERNAL_ROUTE_OPTIONS = ["학교 홈페이지", "SNS(인스타그램 등)", "지인 추천", "포스터·현수막", "기타"];
+/** 외부인 신청 경로 중 항상 맨 앞에 들어가는 고정 보기. 이 경로로 신청한 사람은 서명부 소속 칸에 이 이름이 적히고,
+ *  서명부를 따로 뽑을 수도 있다. 서버(functions/src/externalValidation.ts)에도 같은 값이 있다 — 바꾸면 둘 다 바꿀 것. */
+export const BOOTCAMP_ROUTE = "청년도약인재양성부트캠프";
+
+export const DEFAULT_EXTERNAL_ROUTE_OPTIONS = [BOOTCAMP_ROUTE, "학교 홈페이지", "SNS(인스타그램 등)", "지인 추천", "포스터·현수막", "기타"];
+
+/** 신청 화면에 실제로 보여줄 경로 보기 — 고정 보기를 맨 앞에 넣고, 관리자가 보기를 비워 뒀으면 "기타(직접 입력)"를 붙인다.
+ *  (이전 프로그램에 저장된 보기 목록에도 고정 보기가 자동으로 들어간다.) */
+export function externalRouteChoices(options: string[]): string[] {
+  const rest = options.filter((o) => o !== BOOTCAMP_ROUTE);
+  return [BOOTCAMP_ROUTE, ...(rest.length > 0 ? rest : ["기타"])];
+}
 
 /**
  * 외부인(비로그인) 프로그램 신청 1건 → externalProgramApplications/{id}.

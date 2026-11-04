@@ -69,14 +69,22 @@ export function parseExternalEmail(raw: unknown): string {
   return email;
 }
 
-/** 신청 경로 — 관리자가 보기를 정했으면 그중 하나(또는 "기타: 직접 입력"), 아니면 자유 입력. */
+/** 항상 맨 앞에 들어가는 고정 경로 보기 (src/types/models.ts의 BOOTCAMP_ROUTE와 같은 값). */
+export const BOOTCAMP_ROUTE = "청년도약인재양성부트캠프";
+
+/** 실제 선택 가능한 경로 보기 — 화면의 externalRouteChoices와 같은 규칙. */
+export function externalRouteChoices(options: string[]): string[] {
+  const rest = options.filter((o) => o !== BOOTCAMP_ROUTE);
+  return [BOOTCAMP_ROUTE, ...(rest.length > 0 ? rest : ["기타"])];
+}
+
+/** 신청 경로 — 보기 중 하나, 또는 "기타"가 있으면 "기타: 직접 입력". */
 export function parseExternalRoute(raw: unknown, options: string[]): string {
   const route = cleanText(raw, "신청 경로", 100, { required: true });
   if (FORMULA_LEAD.test(route)) throw new HttpsError("invalid-argument", "신청 경로를 올바르게 입력해주세요.");
-  if (options.length > 0) {
-    const isOther = options.includes("기타") && (route === "기타" || route.startsWith("기타: "));
-    if (!options.includes(route) && !isOther) throw new HttpsError("invalid-argument", "신청 경로를 선택해주세요.");
-  }
+  const choices = externalRouteChoices(options);
+  const isOther = choices.includes("기타") && (route === "기타" || route.startsWith("기타: "));
+  if (!choices.includes(route) && !isOther) throw new HttpsError("invalid-argument", "신청 경로를 선택해주세요.");
   return route;
 }
 

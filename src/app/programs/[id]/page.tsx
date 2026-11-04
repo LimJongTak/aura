@@ -30,6 +30,7 @@ import {
 } from "@/lib/firestore/programs";
 import { PROGRAM_FILE_MAX_BYTES, uploadProgramApplicationFile } from "@/lib/storage/programFiles";
 import type { Program, ProgramAnswer, ProgramApplication, ProgramQuestion, ProgramSession, Student } from "@/types/models";
+import { externalRouteChoices } from "@/types/models";
 
 export default function ProgramDetailPage() {
   const params = useParams<{ id: string }>();
@@ -617,7 +618,7 @@ function ExternalApplyModal({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const routeOptions = program.externalRouteOptions;
+  const routeOptions = externalRouteChoices(program.externalRouteOptions);
   const [route, setRoute] = useState("");
   const [routeOther, setRouteOther] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -638,8 +639,7 @@ function ExternalApplyModal({
     if (!name.trim()) return setError("이름을 입력해주세요.");
     if (!/^01[016789]\d{7,8}$/.test(digits)) return setError("휴대전화번호를 숫자로 정확히 입력해주세요.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("이메일 형식을 확인해주세요.");
-    const finalRoute =
-      routeOptions.length === 0 ? route.trim() : route === "기타" && routeOther.trim() ? `기타: ${routeOther.trim()}` : route;
+    const finalRoute = route === "기타" && routeOther.trim() ? `기타: ${routeOther.trim()}` : route;
     if (!finalRoute) return setError("신청 경로를 선택해주세요.");
     if (isTeam && (!teamName.trim() || !teamMembers.trim())) return setError("팀명과 팀원 정보를 입력해주세요.");
     const unanswered = program.externalQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
@@ -720,22 +720,16 @@ function ExternalApplyModal({
             <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" maxLength={100} className="py-2" />
           </FormRow>
           <FormRow label="신청 경로" required>
-            {routeOptions.length === 0 ? (
-              <Input value={route} onChange={(e) => setRoute(e.target.value)} maxLength={100} placeholder="어떻게 알고 신청하셨나요?" className="py-2" />
-            ) : (
-              <>
-                <Select value={route} onChange={(e) => setRoute(e.target.value)} className="py-2">
-                  <option value="">선택</option>
-                  {routeOptions.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </Select>
-                {route === "기타" && (
-                  <Input value={routeOther} onChange={(e) => setRouteOther(e.target.value)} maxLength={80} placeholder="직접 입력" className="mt-1.5 py-2" />
-                )}
-              </>
+            <Select value={route} onChange={(e) => setRoute(e.target.value)} className="py-2">
+              <option value="">선택</option>
+              {routeOptions.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </Select>
+            {route === "기타" && (
+              <Input value={routeOther} onChange={(e) => setRouteOther(e.target.value)} maxLength={80} placeholder="직접 입력" className="mt-1.5 py-2" />
             )}
           </FormRow>
           {isTeam && (

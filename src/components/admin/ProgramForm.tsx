@@ -21,6 +21,7 @@ import { emptyQuestion, normalizeQuestions, ProgramQuestionsEditor } from "@/com
 import {
   ACTIVITY_GROUPS,
   DEFAULT_EXTERNAL_ROUTE_OPTIONS,
+  externalRouteChoices,
   MAX_ADMIN_MILEAGE_GRANT,
   PROGRAM_TYPE_SUGGESTIONS,
   type ActivityGroup,
@@ -112,7 +113,7 @@ export function ProgramForm({
   const [allowExternal, setAllowExternal] = useState(initial?.allowExternal ?? false);
   const [externalGuide, setExternalGuide] = useState(initial?.externalGuide ?? "");
   const [externalRoutes, setExternalRoutes] = useState(
-    (initial?.allowExternal ? initial.externalRouteOptions : DEFAULT_EXTERNAL_ROUTE_OPTIONS).join("\n")
+    (initial?.allowExternal ? externalRouteChoices(initial.externalRouteOptions) : DEFAULT_EXTERNAL_ROUTE_OPTIONS).join("\n")
   );
   const [externalQuestions, setExternalQuestions] = useState<ProgramQuestion[]>(initial?.externalQuestions ?? []);
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? true);
@@ -251,7 +252,7 @@ export function ProgramForm({
     const extQuestions = allowExternal ? normalizeQuestions(externalQuestions) : [];
     if (typeof extQuestions === "string") return `외부인 ${extQuestions}`;
     const routeOptions = allowExternal
-      ? [...new Set(externalRoutes.split("\n").map((r) => r.trim().slice(0, 50)).filter(Boolean))]
+      ? externalRouteChoices([...new Set(externalRoutes.split("\n").map((r) => r.trim().slice(0, 50)).filter(Boolean))])
       : [];
     if (routeOptions.length > 20) return "외부인 신청 경로 보기는 20개까지 넣을 수 있어요.";
     return {
@@ -556,7 +557,10 @@ export function ProgramForm({
                 placeholder="예: 지역 고등학생 및 일반인 누구나 참여할 수 있어요."
               />
             </Field>
-            <Field label="신청 경로 보기" hint="한 줄에 하나씩 · 비워두면 자유 입력 · '기타'가 있으면 직접 입력칸이 함께 나와요">
+            <Field
+              label="신청 경로 보기"
+              hint="한 줄에 하나씩 · '기타'가 있으면 직접 입력칸이 함께 나와요 · '청년도약인재양성부트캠프'는 항상 맨 앞에 들어가요(서명부 소속 칸에 그대로 적히고 따로 뽑을 수 있어요)"
+            >
               <textarea
                 value={externalRoutes}
                 onChange={(e) => setExternalRoutes(e.target.value)}

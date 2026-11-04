@@ -8,6 +8,7 @@
 
 import { deflateSync, strFromU8, strToU8, unzipSync } from "fflate";
 import type { ExternalPrivateInfo, ExternalProgramApplication, Program, ProgramApplication } from "@/types/models";
+import { BOOTCAMP_ROUTE } from "@/types/models";
 
 const TEMPLATE_URL = "/templates/signature-sheet.hwpx";
 const SECTION_PATH = "Contents/section0.xml";
@@ -226,8 +227,9 @@ export function studentSignatureRows(apps: ProgramApplication[]): SignatureRow[]
     .sort(byDeptThenName);
 }
 
-/** 외부인 신청자(반려 제외). 학번 칸은 비우고, 소속 칸은 관리자가 고른 추가 질문(예: "소속 학교·기관")의
- *  응답으로 채운다 — 고르지 않았거나 응답이 없으면 "외부". 정렬은 재학생과 같은 기준. */
+/** 외부인 신청자(반려 제외). 학번 칸은 비우고, 소속 칸은 신청 경로가 "청년도약인재양성부트캠프"면 그 이름,
+ *  아니면 관리자가 고른 추가 질문(예: "소속 학교·기관")의 응답으로 채운다 — 고르지 않았거나 응답이 없으면 "외부".
+ *  정렬은 재학생과 같은 기준. */
 export function externalSignatureRows(
   apps: ExternalProgramApplication[],
   affiliationQuestionId: string | null,
@@ -237,6 +239,7 @@ export function externalSignatureRows(
   return apps
     .filter((a) => a.status !== "반려")
     .map((a) => {
+      if (a.route === BOOTCAMP_ROUTE) return { department: BOOTCAMP_ROUTE, studentId: "", name: a.name };
       const answer = affiliationQuestionId ? privateById[a.id]?.answers[affiliationQuestionId] : undefined;
       const affiliation = (Array.isArray(answer) ? answer.join(", ") : answer)?.trim();
       return { department: affiliation || "외부", studentId: "", name: a.name };
