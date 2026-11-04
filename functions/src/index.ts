@@ -1,5 +1,26 @@
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import {
+  burnPinCheck,
+  decryptPrivate,
+  encryptPrivate,
+  hashPin,
+  lookupKeyOf,
+  maskEmail,
+  maskPhone as maskExternalPhone,
+  pinMatches,
+} from "./externalPii";
+import {
+  cleanText,
+  parseExternalAnswers,
+  parseExternalEmail,
+  parseExternalName,
+  parseExternalPhone,
+  parseExternalPin,
+  parseExternalRoute,
+  type ExternalQuestion,
+} from "./externalValidation";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import { Resend } from "resend";
@@ -1262,3 +1283,325 @@ export const recordView = onCall(async (request) => {
     .set({ count: admin.firestore.FieldValue.increment(1), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   return { counted: true };
 });
+
+// ---------------------------------------------------------------------------
+// 외부인(비로그인) 프로그램 신청 — 재학생 로그인 신청과 별개의 경로.
+//
+// 보안 설계
+//  - 클라이언트는 externalProgramApplications에 직접 쓸 수 없다(규칙 write: false, 관리자 상태 변경만 허용).
+//    신청·조회·취소는 모두 이 함수들이 Admin SDK로 처리하고, 모든 입력을 서버에서 다시 검증한다
+//    (형식·길이·보기 목록·필수 문항, 공개 여부·외부인 허용·신청기간·정원은 서버 시각/DB 값 기준).
+//  - 조회·취소는 이름 + 휴대전화번호 + 신청 때 정한 4자리 조회 비밀번호가 모두 맞아야 한다 — 이름과
+//    번호만으로는 지인이 남의 신청을 보거나 취소할 수 있다. 비밀번호는 신청마다 무작위 salt를 붙인 scrypt
+//    해시로만, 관리자도 읽을 수 없는 externalApplicantSecrets에 저장한다.
+//  - 이름+번호는 HMAC(lookupKey)으로만 검색한다. 비밀번호가 틀리면 그 lookupKey에 실패 횟수를 쌓고,
+//    1시간에 5회 틀리면 1시간 잠근다(4자리 대입 차단). IP별 호출 횟수 제한도 함께 건다.
+//  - 신청 내역이 없을 때와 비밀번호가 틀렸을 때 같은 응답을 줘서 남의 신청 여부를 알아낼 수 없다.
+//  - 조회 응답에는 연락처·이메일 등 입력한 개인정보를 다시 싣지 않는다.
+//  - 연락처·이메일·팀원·추가 질문 응답은 외부인 전용 키(EXTERNAL_PII_ENC_KEY)로 AES-256-GCM 암호화해
+//    privateEnc에 저장하고, 문서에는 마스킹 값만 평문으로 둔다. 관리자는 revealExternalApplicants로
+//    필요할 때만 복호화해 보며, 그때마다 externalApplicantAccessLogs에 열람 기록이 남는다.
+//  - 보유기간(회차 진행 종료 + 1년)이 지난 신청은 매일 자동 파기한다.
+// ---------------------------------------------------------------------------
+
+// 외부인 개인정보 전용 대칭키(base64, 32바이트) — 재학생 전화번호·계좌 키와 분리해 피해 범위를 나눈다.
+const EXTERNAL_PII_ENC_KEY = defineSecret("EXTERNAL_PII_ENC_KEY");
+const MAX_REVEAL_BATCH = 500;
+
+const EXTERNAL_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
+const EXTERNAL_LOOKUP_MAX_FAILURES = 5;
+const EXTERNAL_LOOKUP_LOCK_MS = 60 * 60 * 1000;
+const FIRESTORE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** 이름+번호로 만든 조회 키 — DB만 보고는 원래 이름·번호를 알아낼 수도, 대입해볼 수도 없다. */
+function externalLookupKey(name: string, phone: string): string {
+  return lookupKeyOf(name, phone, EXTERNAL_PII_ENC_KEY.value());
+}
+
+function tsMillis(v: unknown): number | null {
+  return v instanceof admin.firestore.Timestamp ? v.toMillis() : null;
+}
+
+/** 외부인 신청 접수. 문서 ID를 프로그램·회차·조회키로 고정해 같은 사람의 같은 회차 중복 신청을 막고,
+ *  정원 확인과 회차 카운터 +1을 한 트랜잭션에서 처리한다(재학생 신청과 같은 카운터를 공유). */
+export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY] }, async (request) => {
+  const d = (request.data ?? {}) as Record<string, unknown>;
+  if (typeof d.programId !== "string" || !FIRESTORE_ID_PATTERN.test(d.programId)) {
+    throw new HttpsError("invalid-argument", "프로그램 정보가 올바르지 않습니다.");
+  }
+  if (typeof d.sessionId !== "string" || !FIRESTORE_ID_PATTERN.test(d.sessionId)) {
+    throw new HttpsError("invalid-argument", "회차 정보가 올바르지 않습니다.");
+  }
+  if (d.privacyAgreed !== true) throw new HttpsError("invalid-argument", "개인정보 수집·이용에 동의해주세요.");
+  const name = parseExternalName(d.name);
+  const phone = parseExternalPhone(d.phone);
+  const pin = parseExternalPin(d.pin);
+  const email = parseExternalEmail(d.email);
+  await enforceRateLimit(request, "submitExternalApplication", 20, 10 * 60);
+
+  const db = admin.firestore();
+  const programId = d.programId;
+  const sessionId = d.sessionId;
+  const programRef = db.collection("programs").doc(programId);
+  const program = (await programRef.get()).data();
+  const session = program?.sessions?.[sessionId] as Record<string, unknown> | undefined;
+  if (!program || program.isPublished !== true || program.allowExternal !== true || !session) {
+    throw new HttpsError("failed-precondition", "외부인 신청을 받지 않는 프로그램입니다.");
+  }
+
+  const routeOptions = Array.isArray(program.externalRouteOptions) ? (program.externalRouteOptions as string[]) : [];
+  const route = parseExternalRoute(d.route, routeOptions);
+  const isTeam = program.teamType === "팀";
+  const teamName = isTeam ? cleanText(d.teamName, "팀명", 50, { required: true }) : "";
+  const teamMembers = isTeam ? cleanText(d.teamMembers, "팀원", 1000, { required: true, multiline: true }) : "";
+  const questions = Array.isArray(program.externalQuestions) ? (program.externalQuestions as ExternalQuestion[]) : [];
+  const answers = parseExternalAnswers(d.answers, questions);
+
+  const lookupKey = externalLookupKey(name, phone);
+  const appId = `${programId}_${sessionId}_ext_${lookupKey.slice(0, 32)}`;
+  const appRef = db.collection("externalProgramApplications").doc(appId);
+  const secretRef = db.collection("externalApplicantSecrets").doc(appId);
+  const counterRef = programRef.collection("counters").doc(sessionId);
+  const salt = crypto.randomBytes(16).toString("hex");
+  const pinHash = hashPin(pin, salt);
+  const runEnd = tsMillis(session.runEnd) ?? Date.now();
+
+  await db.runTransaction(async (tx) => {
+    const [freshProgram, counter, existing] = await Promise.all([tx.get(programRef), tx.get(counterRef), tx.get(appRef)]);
+    const s = freshProgram.data()?.sessions?.[sessionId] as Record<string, unknown> | undefined;
+    const now = Date.now();
+    if (!s || freshProgram.data()?.allowExternal !== true || freshProgram.data()?.isPublished !== true) {
+      throw new HttpsError("failed-precondition", "외부인 신청을 받지 않는 프로그램입니다.");
+    }
+    const start = tsMillis(s.applyStart);
+    const end = tsMillis(s.applyEnd);
+    if (start === null || end === null || now < start || now > end) {
+      throw new HttpsError("failed-precondition", "신청기간이 아닙니다.");
+    }
+    if (existing.exists) throw new HttpsError("already-exists", "이미 이 회차에 신청하셨습니다. 신청 조회에서 확인해주세요.");
+    const count = Number(counter.data()?.count ?? 0);
+    const capacity = typeof s.capacity === "number" ? s.capacity : null;
+    if (capacity !== null && count + Number(s.externalCount ?? 0) >= capacity) {
+      throw new HttpsError("resource-exhausted", "정원이 마감되었습니다.");
+    }
+    if (counter.exists) tx.update(counterRef, { count: count + 1 });
+    else tx.set(counterRef, { count: 1 });
+    tx.set(appRef, {
+      programId,
+      programTitle: String(freshProgram.data()?.title ?? ""),
+      sessionId,
+      sessionRound: Number(s.round ?? 1),
+      name,
+      // 연락처·이메일·팀원·추가 질문 응답은 암호문으로만 저장하고 화면용 마스킹 값만 평문으로 둔다.
+      phoneMasked: maskExternalPhone(phone),
+      emailMasked: maskEmail(email),
+      privateEnc: encryptPrivate({ phone, email, teamMembers, answers }, EXTERNAL_PII_ENC_KEY.value(), appId),
+      route,
+      teamName,
+      privacyAgreed: true,
+      status: "신청",
+      lookupKey,
+      appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+      retainUntil: admin.firestore.Timestamp.fromMillis(runEnd + EXTERNAL_RETENTION_MS),
+    });
+    tx.set(secretRef, { lookupKey, pinHash, salt, createdAt: admin.firestore.FieldValue.serverTimestamp() });
+  });
+
+  return { success: true };
+});
+
+/** 이름+번호+비밀번호로 본인 신청을 찾는다. 비밀번호가 맞는 신청만 돌려주고, 하나도 맞지 않으면
+ *  실패 횟수를 올린다(5회면 1시간 잠금). 내역이 없을 때와 틀렸을 때 응답은 같다(빈 목록). */
+async function findExternalApplications(
+  request: CallableRequest,
+  scope: string
+): Promise<{ lookupKey: string; docs: FirebaseFirestore.QueryDocumentSnapshot[] }> {
+  const d = (request.data ?? {}) as Record<string, unknown>;
+  const name = parseExternalName(d.name);
+  const phone = parseExternalPhone(d.phone);
+  const pin = parseExternalPin(d.pin);
+  await enforceRateLimit(request, scope, 30, 10 * 60);
+
+  const db = admin.firestore();
+  const lookupKey = externalLookupKey(name, phone);
+  const guardRef = db.collection("externalLookupGuards").doc(lookupKey);
+  const guard = (await guardRef.get()).data();
+  const now = Date.now();
+  if (guard?.lockedUntil && (guard.lockedUntil as FirebaseFirestore.Timestamp).toMillis() > now) {
+    throw new HttpsError("resource-exhausted", "조회 비밀번호를 여러 번 틀려 1시간 동안 조회가 제한됩니다.");
+  }
+
+  const snap = await db.collection("externalProgramApplications").where("lookupKey", "==", lookupKey).get();
+  if (snap.empty) {
+    // 내역이 있을 때와 응답 시간이 비슷하도록 같은 비용의 해시를 한 번 돌린다.
+    burnPinCheck(pin);
+    return { lookupKey, docs: [] };
+  }
+
+  const secrets = await db.getAll(...snap.docs.map((doc) => db.collection("externalApplicantSecrets").doc(doc.id)));
+  const matched = snap.docs.filter((doc, i) => {
+    const s = secrets[i].data();
+    if (!s?.pinHash || !s.salt || s.lookupKey !== lookupKey) return false;
+    return pinMatches(pin, s.salt as string, s.pinHash as string);
+  });
+
+  if (matched.length === 0) {
+    await db.runTransaction(async (tx) => {
+      const g = (await tx.get(guardRef)).data();
+      const windowStart = (g?.windowStart as number | undefined) ?? 0;
+      const inWindow = now - windowStart < EXTERNAL_LOOKUP_LOCK_MS;
+      const failures = (inWindow ? ((g?.failures as number | undefined) ?? 0) : 0) + 1;
+      tx.set(guardRef, {
+        windowStart: inWindow ? windowStart : now,
+        failures,
+        lockedUntil:
+          failures >= EXTERNAL_LOOKUP_MAX_FAILURES ? admin.firestore.Timestamp.fromMillis(now + EXTERNAL_LOOKUP_LOCK_MS) : null,
+        expiresAt: admin.firestore.Timestamp.fromMillis(now + 2 * EXTERNAL_LOOKUP_LOCK_MS),
+      });
+    });
+  } else if (guard) {
+    await guardRef.delete();
+  }
+  return { lookupKey, docs: matched };
+}
+
+export const lookupExternalApplications = onCall({ secrets: [EXTERNAL_PII_ENC_KEY] }, async (request) => {
+  const { docs } = await findExternalApplications(request, "lookupExternalApplications");
+  const db = admin.firestore();
+  const programIds = [...new Set(docs.map((doc) => doc.data().programId as string))];
+  const programs = programIds.length > 0 ? await db.getAll(...programIds.map((id) => db.collection("programs").doc(id))) : [];
+  const programById = new Map(programs.map((p) => [p.id, p.data()]));
+  const now = Date.now();
+
+  const items = docs
+    .map((doc) => {
+      const a = doc.data();
+      const s = programById.get(a.programId)?.sessions?.[a.sessionId] as Record<string, unknown> | undefined;
+      const applyStart = tsMillis(s?.applyStart);
+      const applyEnd = tsMillis(s?.applyEnd);
+      return {
+        id: doc.id,
+        programId: a.programId as string,
+        programTitle: a.programTitle as string,
+        sessionRound: Number(a.sessionRound ?? 0),
+        runStart: tsMillis(s?.runStart),
+        runEnd: tsMillis(s?.runEnd),
+        status: a.status as string,
+        note: a.status === "반려" ? String(a.note ?? "") : "",
+        appliedAt: tsMillis(a.appliedAt) ?? 0,
+        cancellable:
+          a.status === "신청" && applyStart !== null && applyEnd !== null && now >= applyStart && now <= applyEnd,
+      };
+    })
+    .sort((x, y) => y.appliedAt - x.appliedAt);
+  return { items };
+});
+
+/** 외부인 본인 신청 취소 — "신청" 상태이고 신청기간 안일 때만(재학생과 같은 기준). */
+export const cancelExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY] }, async (request) => {
+  const applicationId = (request.data as { applicationId?: unknown })?.applicationId;
+  if (typeof applicationId !== "string" || !FIRESTORE_ID_PATTERN.test(applicationId)) {
+    throw new HttpsError("invalid-argument", "신청 정보가 올바르지 않습니다.");
+  }
+  const { docs } = await findExternalApplications(request, "cancelExternalApplication");
+  if (!docs.some((doc) => doc.id === applicationId)) {
+    throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
+  }
+
+  const db = admin.firestore();
+  const appRef = db.collection("externalProgramApplications").doc(applicationId);
+  await db.runTransaction(async (tx) => {
+    const app = await tx.get(appRef);
+    const a = app.data();
+    if (!a) throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
+    const programRef = db.collection("programs").doc(a.programId as string);
+    const counterRef = programRef.collection("counters").doc(a.sessionId as string);
+    const [program, counter] = await Promise.all([tx.get(programRef), tx.get(counterRef)]);
+    const s = program.data()?.sessions?.[a.sessionId as string] as Record<string, unknown> | undefined;
+    const now = Date.now();
+    const start = tsMillis(s?.applyStart);
+    const end = tsMillis(s?.applyEnd);
+    if (a.status !== "신청" || start === null || end === null || now < start || now > end) {
+      throw new HttpsError("failed-precondition", "신청기간이 지났거나 이미 처리된 신청이라 취소할 수 없습니다.");
+    }
+    if (counter.exists) tx.update(counterRef, { count: Math.max(0, Number(counter.data()?.count ?? 0) - 1) });
+    tx.delete(appRef);
+    tx.delete(db.collection("externalApplicantSecrets").doc(applicationId));
+  });
+  return { success: true };
+});
+
+/** 관리자가 외부인 신청자의 연락처·이메일·팀원·추가 질문 응답을 볼 때, 그 순간에만 서버에서 복호화해
+ *  돌려준다. 관리자 권한을 확인하고, 호출할 때마다 누가·언제·어떤 신청을·어떤 용도로 열람했는지
+ *  externalApplicantAccessLogs에 남긴다(관리자만 조회, 클라이언트 쓰기 불가). */
+export const revealExternalApplicants = onCall({ secrets: [EXTERNAL_PII_ENC_KEY] }, async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const { ids, purpose } = (request.data ?? {}) as { ids?: unknown; purpose?: unknown };
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_REVEAL_BATCH) {
+    throw new HttpsError("invalid-argument", `한 번에 1~${MAX_REVEAL_BATCH}건까지 열람할 수 있습니다.`);
+  }
+  if (!ids.every((id) => typeof id === "string" && FIRESTORE_ID_PATTERN.test(id))) {
+    throw new HttpsError("invalid-argument", "신청 정보 형식이 올바르지 않습니다.");
+  }
+  if (purpose !== "view" && purpose !== "export" && purpose !== "signature") {
+    throw new HttpsError("invalid-argument", "열람 용도가 올바르지 않습니다.");
+  }
+  const uniqueIds = [...new Set(ids as string[])];
+
+  const db = admin.firestore();
+  const snaps = await db.getAll(...uniqueIds.map((id) => db.collection("externalProgramApplications").doc(id)));
+  const key = EXTERNAL_PII_ENC_KEY.value();
+  const items: Record<string, ReturnType<typeof decryptPrivate>> = {};
+  let failed = 0;
+  for (const snap of snaps) {
+    const enc = snap.data()?.privateEnc;
+    if (typeof enc !== "string") continue;
+    try {
+      items[snap.id] = decryptPrivate(enc, key, snap.id);
+    } catch (err) {
+      failed++;
+      console.error("external PII decrypt failed", snap.id, err);
+    }
+  }
+
+  // 열람 기록에는 신청 문서 ID와 프로그램만 남기고 개인정보 원문은 남기지 않는다.
+  await db.collection("externalApplicantAccessLogs").add({
+    adminUid: request.auth!.uid,
+    adminEmail: request.auth?.token.email ?? null,
+    purpose,
+    applicationIds: uniqueIds,
+    programIds: [...new Set(snaps.map((s) => s.data()?.programId).filter((v): v is string => typeof v === "string"))],
+    revealedCount: Object.keys(items).length,
+    failedCount: failed,
+    accessedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return { items };
+});
+
+/** 보유기간(회차 진행 종료 + 1년)이 지난 외부인 신청과 조회 비밀번호 해시를 매일 파기한다. */
+export const purgeExpiredExternalApplications = onSchedule(
+  { schedule: "every day 04:00", timeZone: "Asia/Seoul" },
+  async () => {
+    const db = admin.firestore();
+    const now = admin.firestore.Timestamp.now();
+    for (;;) {
+      const snap = await db.collection("externalProgramApplications").where("retainUntil", "<", now).limit(200).get();
+      if (snap.empty) break;
+      const batch = db.batch();
+      snap.docs.forEach((doc) => {
+        batch.delete(doc.ref);
+        batch.delete(db.collection("externalApplicantSecrets").doc(doc.id));
+      });
+      await batch.commit();
+      if (snap.size < 200) break;
+    }
+    // 끝난 잠금 기록도 정리한다.
+    const guards = await db.collection("externalLookupGuards").where("expiresAt", "<", now).limit(400).get();
+    if (!guards.empty) {
+      const batch = db.batch();
+      guards.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+  }
+);

@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Info, Paperclip, Settings, Upload, X } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Info, Paperclip, Settings, Upload, UserRound, X } from "lucide-react";
+import {
+  callableErrorMessage,
+  submitExternalApplication,
+} from "@/lib/firestore/externalApplications";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge } from "@/components/programs/shared";
@@ -34,6 +38,7 @@ export default function ProgramDetailPage() {
   const [myApps, setMyApps] = useState<ProgramApplication[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
+  const [externalOpen, setExternalOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const { loading: sessionLoading, user, student } = useStudentSession();
   const { isAdmin } = useAdminUser();
@@ -99,6 +104,20 @@ export default function ProgramDetailPage() {
       return;
     }
     setApplyOpen(true);
+  }
+
+  function handleExternalClick() {
+    setNotice(null);
+    if (!selectedSession) {
+      setNotice("신청할 회차를 선택해주세요.");
+      return;
+    }
+    const phase = sessionPhase(selectedSession, counts[selectedSession.id] ?? 0);
+    if (phase !== "신청가능") {
+      setNotice(`선택한 회차는 ${phase} 상태라 신청할 수 없어요.`);
+      return;
+    }
+    setExternalOpen(true);
   }
 
   return (
@@ -198,23 +217,49 @@ export default function ProgramDetailPage() {
               <p className="text-sm text-muted">관리자 계정에서는 신청할 수 없습니다.</p>
             </div>
           ) : (
-            <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex gap-2">
-                <Info size={18} className="mt-0.5 shrink-0 text-danger" />
-                <div className="text-sm">
-                  <p className="font-bold text-danger">로그인 후 신청할 수 있어요</p>
-                  <p className="mt-1 font-medium leading-relaxed text-danger">
-                    프로그램 참여 마일리지는 로그인한 학번으로 신청한 내역을 기준으로 지급돼요. 마일리지를
-                    받으려면 꼭 본인 학번으로 로그인한 뒤 신청해주세요.
-                  </p>
+            <>
+              <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-2">
+                  <Info size={18} className="mt-0.5 shrink-0 text-danger" />
+                  <div className="text-sm">
+                    <p className="font-bold text-danger">재학생은 로그인 후 신청할 수 있어요</p>
+                    <p className="mt-1 font-medium leading-relaxed text-danger">
+                      프로그램 참여 마일리지는 로그인한 학번으로 신청한 내역을 기준으로 지급돼요. 마일리지를
+                      받으려면 꼭 본인 학번으로 로그인한 뒤 신청해주세요.
+                    </p>
+                  </div>
                 </div>
+                <Link href={`/login?next=${encodeURIComponent(`/programs/${program.id}`)}`} className="shrink-0">
+                  <Button size="lg" className="w-full rounded-lg sm:w-auto">
+                    로그인 후 신청
+                  </Button>
+                </Link>
               </div>
-              <Link href={`/login?next=${encodeURIComponent(`/programs/${program.id}`)}`} className="shrink-0">
-                <Button size="lg" className="w-full rounded-lg sm:w-auto">
-                  로그인 후 신청
-                </Button>
-              </Link>
-            </div>
+              {program.allowExternal && (
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-border bg-surface px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex gap-2 text-sm">
+                    <UserRound size={18} className="mt-0.5 shrink-0 text-primary" />
+                    <div>
+                      <p className="font-bold text-foreground">외부인도 신청할 수 있는 프로그램이에요</p>
+                      <p className="mt-1 leading-relaxed text-muted">
+                        재학생이 아니라면 로그인 없이 신청할 수 있어요 (마일리지는 지급되지 않아요). 신청 내역은{" "}
+                        <Link href="/programs/external" className="font-semibold text-primary hover:underline">
+                          외부인 신청조회
+                        </Link>
+                        에서 확인·취소할 수 있어요.
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="lg" variant="outline" onClick={handleExternalClick} className="shrink-0 rounded-lg">
+                    외부인 신청하기
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {externalOpen && selectedSession && (
+            <ExternalApplyModal program={program} session={selectedSession} onClose={() => setExternalOpen(false)} />
           )}
 
           {applyOpen && selectedSession && student && (
@@ -545,6 +590,227 @@ function ApplyModal({
               수집 항목: 학번, 이름, 학과, 연락처, 이메일 · 이용 목적: 프로그램 운영 및 마일리지 지급 · 보유 기간:
               사업 종료 시까지
             </p>
+          </FormRow>
+        </div>
+        {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}
+        <div className="mt-5 flex justify-center">
+          <Button type="submit" loading={submitting} className="min-w-32 rounded-lg">
+            신청하기
+          </Button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+/** 외부인(비로그인) 신청 창. 입력값은 Cloud Function이 서버에서 다시 검증하고 저장한다 —
+ *  이 화면은 Firestore에 직접 쓰지 않는다. 파일 첨부는 받지 않는다(비로그인 업로드 차단). */
+function ExternalApplyModal({
+  program,
+  session,
+  onClose,
+}: {
+  program: Program;
+  session: ProgramSession;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const routeOptions = program.externalRouteOptions;
+  const [route, setRoute] = useState("");
+  const [routeOther, setRouteOther] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [teamMembers, setTeamMembers] = useState("");
+  const [answers, setAnswers] = useState<Record<string, ProgramAnswer>>({});
+  const [pin, setPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const isTeam = program.teamType === "팀";
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const digits = phone.replace(/\D/g, "");
+    if (!name.trim()) return setError("이름을 입력해주세요.");
+    if (!/^01[016789]\d{7,8}$/.test(digits)) return setError("휴대전화번호를 숫자로 정확히 입력해주세요.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("이메일 형식을 확인해주세요.");
+    const finalRoute =
+      routeOptions.length === 0 ? route.trim() : route === "기타" && routeOther.trim() ? `기타: ${routeOther.trim()}` : route;
+    if (!finalRoute) return setError("신청 경로를 선택해주세요.");
+    if (isTeam && (!teamName.trim() || !teamMembers.trim())) return setError("팀명과 팀원 정보를 입력해주세요.");
+    const unanswered = program.externalQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
+    if (unanswered) return setError(`"${unanswered.title}"에 답해주세요.`);
+    if (!/^\d{4}$/.test(pin)) return setError("조회 비밀번호는 숫자 4자리로 정해주세요.");
+    if (pin !== pinConfirm) return setError("조회 비밀번호 확인이 일치하지 않아요.");
+    if (!agreed) return setError("개인정보 수집·이용에 동의해주세요.");
+
+    setSubmitting(true);
+    try {
+      await submitExternalApplication({
+        programId: program.id,
+        sessionId: session.id,
+        name: name.trim(),
+        phone: digits,
+        email: email.trim(),
+        route: finalRoute.slice(0, 100),
+        teamName: isTeam ? teamName.trim() : "",
+        teamMembers: isTeam ? teamMembers.trim() : "",
+        answers: cleanAnswers(program.externalQuestions, answers),
+        pin,
+        privacyAgreed: true,
+      });
+      setDone(true);
+    } catch (err) {
+      setError(callableErrorMessage(err, "신청에 실패했어요. 잠시 후 다시 시도해주세요."));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <ModalShell title="외부인 신청" onClose={onClose}>
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <CheckCircle2 size={40} className="text-success" />
+          <p className="font-bold text-foreground">신청이 완료되었어요.</p>
+          <p className="text-sm leading-relaxed text-muted">
+            신청 결과 확인과 취소는 <b className="text-foreground">외부인 신청조회</b>에서
+            <br />
+            이름·휴대전화번호·조회 비밀번호로 할 수 있어요.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>
+              닫기
+            </Button>
+            <Link href="/programs/external">
+              <Button size="sm">신청조회 바로가기</Button>
+            </Link>
+          </div>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  return (
+    <ModalShell title="외부인 신청" onClose={onClose}>
+      <form onSubmit={handleSubmit} autoComplete="off">
+        <p className="text-sm font-semibold text-foreground">
+          {program.title} <span className="font-normal text-muted">· {session.round}회차</span>
+        </p>
+        {program.externalGuide && (
+          <p className="mt-2 whitespace-pre-wrap rounded-lg bg-primary-light/50 px-3 py-2 text-xs leading-relaxed text-primary-dark">
+            {program.externalGuide}
+          </p>
+        )}
+        <p className="mt-2 text-right text-[11px] text-muted">
+          <span className="text-danger">*</span> 표시 필수입력사항
+        </p>
+        <div className="mt-1 border-t-2 border-primary text-sm">
+          <FormRow label="이름" required>
+            <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} className="py-2" />
+          </FormRow>
+          <FormRow label="휴대전화" required>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="숫자만 입력" inputMode="numeric" maxLength={13} className="py-2" />
+          </FormRow>
+          <FormRow label="이메일" required>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" maxLength={100} className="py-2" />
+          </FormRow>
+          <FormRow label="신청 경로" required>
+            {routeOptions.length === 0 ? (
+              <Input value={route} onChange={(e) => setRoute(e.target.value)} maxLength={100} placeholder="어떻게 알고 신청하셨나요?" className="py-2" />
+            ) : (
+              <>
+                <Select value={route} onChange={(e) => setRoute(e.target.value)} className="py-2">
+                  <option value="">선택</option>
+                  {routeOptions.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </Select>
+                {route === "기타" && (
+                  <Input value={routeOther} onChange={(e) => setRouteOther(e.target.value)} maxLength={80} placeholder="직접 입력" className="mt-1.5 py-2" />
+                )}
+              </>
+            )}
+          </FormRow>
+          {isTeam && (
+            <>
+              <FormRow label="팀명" required>
+                <Input value={teamName} onChange={(e) => setTeamName(e.target.value)} maxLength={50} className="py-2" />
+              </FormRow>
+              <FormRow label="팀원" required>
+                <textarea
+                  value={teamMembers}
+                  onChange={(e) => setTeamMembers(e.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="본인 외 팀원을 한 줄에 한 명씩"
+                  className={textareaClass}
+                />
+              </FormRow>
+            </>
+          )}
+          {program.externalQuestions.length > 0 && (
+            <div className="border-b border-border bg-surface px-3 py-2 text-xs font-bold text-foreground">추가 질문</div>
+          )}
+          {program.externalQuestions.map((q) => (
+            <div key={q.id} className="border-b border-border px-3 py-3">
+              <p className="mb-1.5 break-words text-sm font-semibold text-foreground">
+                {q.required && <span className="text-danger">* </span>}
+                {q.title}
+              </p>
+              <QuestionInput question={q} value={answers[q.id]} onChange={(v) => setAnswers((prev) => ({ ...prev, [q.id]: v }))} />
+            </div>
+          ))}
+          <FormRow label="조회 비밀번호" required>
+            <div className="flex gap-1.5">
+              <Input
+                type="password"
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                inputMode="numeric"
+                autoComplete="new-password"
+                placeholder="숫자 4자리"
+                className="py-2"
+              />
+              <Input
+                type="password"
+                value={pinConfirm}
+                onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                inputMode="numeric"
+                autoComplete="new-password"
+                placeholder="한 번 더"
+                className="py-2"
+              />
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted">
+              신청 조회·취소 때 이름·휴대전화번호와 함께 입력해요. 생일·연속 숫자처럼 짐작하기 쉬운 번호는 피해주세요.
+            </p>
+          </FormRow>
+          <FormRow label="개인정보 동의" required>
+            <div className="rounded-lg bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted">
+              <p>
+                <b className="text-foreground">수집 항목</b>: 이름, 휴대전화번호, 이메일, 신청 경로
+                {isTeam && ", 팀명·팀원"}
+                {program.externalQuestions.length > 0 && ", 추가 질문 응답"}
+              </p>
+              <p>
+                <b className="text-foreground">이용 목적</b>: 프로그램 신청 접수·참가자 확인 및 운영 안내
+              </p>
+              <p>
+                <b className="text-foreground">보유 기간</b>: 해당 회차 종료 후 1년 (이후 자동 파기, 신청 취소 시 즉시 삭제)
+              </p>
+              <p className="mt-1">동의를 거부할 수 있으며, 거부하면 프로그램 신청이 제한돼요.</p>
+            </div>
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="h-4 w-4 accent-primary" />
+              개인정보 수집·이용에 동의합니다
+            </label>
           </FormRow>
         </div>
         {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}

@@ -3,7 +3,7 @@
  *  크기가 커서 호출 시점에만 동적 import한다. */
 
 import { formatAnswer } from "@/lib/firestore/programs";
-import type { Program, ProgramApplication } from "@/types/models";
+import type { ExternalPrivateInfo, ExternalProgramApplication, Program, ProgramApplication } from "@/types/models";
 import { sanitizeCell, sanitizeRow } from "./sanitizeCell";
 
 export type ExportColumnGroup = "basic" | "survey";
@@ -73,7 +73,58 @@ export async function exportProgramApplications(
 ): Promise<void> {
   const header = columns.map((c) => c.label);
   const rows = apps.map((a) => columns.map((c) => c.value(a)));
+  await writeTable(program, header, rows, columns.map((c) => c.width), format, "신청자");
+}
 
+/** 외부인 신청자 명단 — 기본 항목 + 외부인 추가 질문 응답 전체. 수식 주입 방지는 재학생 명단과 같다. */
+export async function exportExternalApplications(
+  program: Program,
+  apps: ExternalProgramApplication[],
+  /** 서버에서 복호화해 받은 원문 (revealExternalApplicants) — 열람 기록이 남은 뒤에만 파일에 들어간다. */
+  privateById: Record<string, ExternalPrivateInfo>,
+  format: "xlsx" | "csv"
+): Promise<void> {
+  const p = (a: ExternalProgramApplication) => privateById[a.id];
+  const cols: { label: string; width: number; value: (a: ExternalProgramApplication) => string | number }[] = [
+    { label: "회차", width: 6, value: (a) => a.sessionRound },
+    { label: "이름", width: 10, value: (a) => a.name },
+    { label: "연락처", width: 14, value: (a) => p(a)?.phone ?? "" },
+    { label: "이메일", width: 26, value: (a) => p(a)?.email ?? "" },
+    { label: "신청 경로", width: 18, value: (a) => a.route },
+  ];
+  if (program.teamType === "팀") {
+    cols.push(
+      { label: "팀명", width: 14, value: (a) => a.teamName },
+      { label: "팀원", width: 30, value: (a) => p(a)?.teamMembers ?? "" }
+    );
+  }
+  program.externalQuestions.forEach((q, i) =>
+    cols.push({ label: `${i + 1}. ${q.title}`, width: q.type === "long" ? 40 : 20, value: (a) => formatAnswer(p(a)?.answers[q.id]) })
+  );
+  cols.push(
+    { label: "신청일", width: 12, value: (a) => formatDate(a.appliedAt) },
+    { label: "상태", width: 8, value: (a) => a.status },
+    { label: "반려 사유", width: 24, value: (a) => a.note ?? "" }
+  );
+  await writeTable(
+    program,
+    cols.map((c) => c.label),
+    apps.map((a) => cols.map((c) => c.value(a))),
+    cols.map((c) => c.width),
+    format,
+    "외부인"
+  );
+}
+
+async function writeTable(
+  program: Program,
+  header: string[],
+  rows: (string | number)[][],
+  widths: number[],
+  format: "xlsx" | "csv",
+  kind: "신청자" | "외부인"
+): Promise<void> {
+  const base = kind === "신청자" ? fileBaseName(program) : fileBaseName(program).replace("_신청자_", "_외부인신청자_");
   if (format === "csv") {
     const csv = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
     // 엑셀에서 열어도 한글이 깨지지 않도록 UTF-8 BOM을 붙인다.
@@ -81,7 +132,7 @@ export async function exportProgramApplications(
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${fileBaseName(program)}.csv`;
+    link.download = `${base}.csv`;
     link.click();
     URL.revokeObjectURL(url);
     return;
@@ -89,8 +140,8 @@ export async function exportProgramApplications(
 
   const XLSX = await import("xlsx");
   const sheet = XLSX.utils.aoa_to_sheet([header, ...rows.map(sanitizeRow)]);
-  sheet["!cols"] = columns.map((c) => ({ wch: c.width }));
+  sheet["!cols"] = widths.map((wch) => ({ wch }));
   const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, "신청자");
-  XLSX.writeFile(book, `${fileBaseName(program)}.xlsx`);
+  XLSX.utils.book_append_sheet(book, sheet, kind);
+  XLSX.writeFile(book, `${base}.xlsx`);
 }

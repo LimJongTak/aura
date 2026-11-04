@@ -650,6 +650,14 @@ export interface Program {
   applicationFileTypes: ApplicationFileType[];
   /** 신청 설문 문항 (선택 사항 — 비어 있으면 기본 신청 양식만 받는다) */
   formQuestions: ProgramQuestion[];
+  /** 외부인(비로그인) 신청을 받는 프로그램인지. 재학생 로그인 신청과는 별개의 경로다. */
+  allowExternal: boolean;
+  /** 외부인 신청 창 위에 보여줄 안내 문구 (대상·준비물 등) */
+  externalGuide: string;
+  /** 외부인 신청 양식의 "신청 경로" 보기 — 비어 있으면 자유 입력으로 받는다. */
+  externalRouteOptions: string[];
+  /** 외부인 신청 때만 받는 추가 질문 (이름·연락처·이메일·신청 경로는 항상 받는다) */
+  externalQuestions: ProgramQuestion[];
   isPublished: boolean;
   viewCount: number;
   sessions: ProgramSession[];
@@ -695,4 +703,48 @@ export interface ProgramApplication {
   note?: string;
   mileageGranted?: boolean;
   mileageGrantedAt?: number;
+}
+
+/** 외부인 신청 상태 — 외부인에게는 마일리지가 없어서 신청 → 확정/반려만 있다. */
+export type ExternalApplicationStatus = "신청" | "확정" | "반려";
+
+export const EXTERNAL_SEAT_STATUSES: ExternalApplicationStatus[] = ["신청", "확정"];
+
+export const DEFAULT_EXTERNAL_ROUTE_OPTIONS = ["학교 홈페이지", "SNS(인스타그램 등)", "지인 추천", "포스터·현수막", "기타"];
+
+/**
+ * 외부인(비로그인) 프로그램 신청 1건 → externalProgramApplications/{id}.
+ * 클라이언트는 이 컬렉션에 쓸 수 없고 submitExternalApplication Cloud Function만 만든다.
+ * 관리자만 읽을 수 있고, 연락처·이메일·팀원·추가 질문 응답은 암호문(privateEnc)으로만 저장된다. 조회 비밀번호 해시는 externalApplicantSecrets/{id}에 따로 둬서
+ * 관리자 화면으로도 내려가지 않는다. lookupKey는 이름+전화번호의 HMAC(조회용, 원문 복원 불가).
+ */
+export interface ExternalProgramApplication {
+  id: string;
+  programId: string;
+  programTitle: string;
+  sessionId: string;
+  sessionRound: number;
+  name: string;
+  /** 화면 표시용 마스킹 값 (010-****-5678). 원문은 암호화돼 있어 revealExternalApplicants로만 받는다. */
+  phoneMasked: string;
+  /** 화면 표시용 마스킹 값 (ab***@naver.com) */
+  emailMasked: string;
+  /** 신청 경로 (어떻게 알고 신청했는지) */
+  route: string;
+  teamName: string;
+  privacyAgreed: boolean;
+  status: ExternalApplicationStatus;
+  note?: string;
+  appliedAt: number;
+  processedAt?: number;
+  /** 개인정보 파기 예정 시각 (회차 진행 종료 + 1년) */
+  retainUntil: number;
+}
+
+/** 관리자가 열람(서버 복호화)했을 때만 받는 외부인 개인정보 원문. 화면 메모리에만 두고 저장하지 않는다. */
+export interface ExternalPrivateInfo {
+  phone: string;
+  email: string;
+  teamMembers: string;
+  answers: Record<string, ProgramAnswer>;
 }

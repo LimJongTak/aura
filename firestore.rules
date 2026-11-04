@@ -543,6 +543,39 @@ service cloud.firestore {
       );
     }
 
+    // 외부인(비로그인) 프로그램 신청: 이름·연락처·이메일 등 개인정보라 관리자만 읽는다. 생성·본인 조회·
+    // 취소는 submitExternalApplication 등 Cloud Function(Admin SDK)만 하고, 클라이언트 생성은 막는다.
+    // 관리자는 상태(확정/반려)와 사유만 바꾸거나 삭제할 수 있다 — 이름·연락처·조회키는 고칠 수 없다.
+    match /externalProgramApplications/{id} {
+      allow read: if isAdmin();
+      allow create: if false;
+      // 연락처·이메일 등은 암호문(privateEnc)이라 문서를 읽어도 원문은 없다 — 원문은 revealExternalApplicants
+      // Cloud Function으로만, 열람 기록을 남기며 받는다. 관리자도 암호문·마스킹 값·조회키는 고칠 수 없다.
+      allow update: if isAdmin() &&
+        request.resource.data.status in ["신청", "확정", "반려"] &&
+        request.resource.data.get("note", "") is string &&
+        request.resource.data.get("note", "").size() <= 200 &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "note", "processedAt"]);
+      allow delete: if isAdmin();
+    }
+
+    // 관리자의 외부인 개인정보 열람(복호화) 기록 — Cloud Function만 쓰고 관리자만 조회한다.
+    match /externalApplicantAccessLogs/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // 외부인 조회 비밀번호 해시(salt 포함) — 관리자도 읽을 수 없다. 관리자가 신청을 지울 때 함께 지우는 것만 허용.
+    match /externalApplicantSecrets/{id} {
+      allow read, create, update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // 외부인 조회 비밀번호 오류 횟수·잠금 기록 — Cloud Functions만 접근한다.
+    match /externalLookupGuards/{id} {
+      allow read, write: if false;
+    }
+
     // 학생 등록 신청: 이제 registerStudent Cloud Function(Admin SDK)이 관리자 승인 없이
     // 바로 계정·students 문서를 만들고 이 컬렉션에는 감사 기록만 남긴다 — 클라이언트
     // 직접 생성은 막는다. 예전에 접수된 검토중 건은 관리자가 계속 처리할 수 있다.

@@ -137,7 +137,11 @@ aura/
 | --- | --- |
 | `programs` | 프로그램 게시글(회차, 정원, 외부 신청 인원, 신청 설문) |
 | `programApplications` | 회차별 신청. 문서 ID `{programId}_{sessionId}_{studentId}`로 중복 신청을 막습니다 |
-| `counters` | 회차별 신청 인원 카운터(정원 검사용) |
+| `counters` | 회차별 신청 인원 카운터(정원 검사용). 재학생·외부인 신청이 함께 씁니다 |
+| `externalProgramApplications` | 외부인(비로그인) 신청. 연락처·이메일·팀원·추가 질문 응답은 암호문(`privateEnc`)과 마스킹 값만 저장. 관리자만 읽기, 생성은 Cloud Function만 |
+| `externalApplicantSecrets` | 외부인 조회 비밀번호(4자리)의 salt + scrypt 해시. 아무도 읽을 수 없음 |
+| `externalLookupGuards` | 외부인 조회 비밀번호 오류 횟수·잠금(1시간 5회). Cloud Function만 |
+| `externalApplicantAccessLogs` | 관리자의 외부인 개인정보 열람·내려받기 기록. 관리자만 읽기 |
 
 #### 장학금·개인정보
 
@@ -188,7 +192,8 @@ aura/
 
 - **계좌번호**: `saveBankAccount` 함수가 암호화한 값(`accountNumberEnc`)과 마지막 4자리만 저장합니다. `bankAccounts`는 클라이언트가 직접 쓸 수 없습니다(`allow write: if false`). 복호화는 관리자가 지급 관리에서 엑셀을 내보낼 때 `exportBankAccountsForPayment` 안에서만 일어나고, 그때마다 `bankAccountExportLogs`에 기록이 남습니다.
 - **휴대전화번호**: `savePhoneNumber` 함수가 `studentContacts`에 암호문(`phoneEnc`)과 마스킹 값(`010-****-1234`)만 저장합니다.
-- **키 관리**: `RESEND_API_KEY`, `BANK_ACCOUNT_ENC_KEY`, `PHONE_ENC_KEY`는 코드가 아니라 Cloud Functions 시크릿(Secret Manager)에 있습니다.
+- **외부인 신청자**: `submitExternalApplication`이 연락처·이메일·팀원·추가 질문 응답을 외부인 전용 키(`EXTERNAL_PII_ENC_KEY`)로 AES-256-GCM 암호화(문서 ID를 AAD로 묶음)하고, 문서에는 마스킹 값만 평문으로 둡니다. 관리자는 `revealExternalApplicants`로 열람·내려받기 때만 복호화하고, 그때마다 `externalApplicantAccessLogs`에 기록이 남습니다. 본인 조회·취소는 이름+번호의 HMAC 검색키와 조회 비밀번호(scrypt)로 확인하며, IP별 호출 제한과 비밀번호 5회 오류 시 1시간 잠금이 걸립니다. 회차 종료 1년 뒤 `purgeExpiredExternalApplications`가 매일 자동 파기합니다. 입력 검증·암호화는 `functions/src/externalValidation.ts`, `functions/src/externalPii.ts`에 있습니다.
+- **키 관리**: `RESEND_API_KEY`, `BANK_ACCOUNT_ENC_KEY`, `PHONE_ENC_KEY`, `EXTERNAL_PII_ENC_KEY`는 코드가 아니라 Cloud Functions 시크릿(Secret Manager)에 있습니다. `EXTERNAL_PII_ENC_KEY`를 바꾸면 기존 외부인 신청을 복호화·조회할 수 없으니 교체하지 마세요.
 
 ### 주의 사항
 
@@ -281,6 +286,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" \
   | npx firebase functions:secrets:set BANK_ACCOUNT_ENC_KEY --data-file -
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" \
   | npx firebase functions:secrets:set PHONE_ENC_KEY --data-file -
+# 외부인 신청자 개인정보 암호화 키 (위 두 키와 다른 값)
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" \
+  | npx firebase functions:secrets:set EXTERNAL_PII_ENC_KEY --data-file -
 
 npx firebase deploy --only functions
 ```

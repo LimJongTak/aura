@@ -32,9 +32,20 @@ import {
   programExportColumns,
   type ExportColumnGroup,
 } from "@/lib/excel/programApplicationsExport";
-import { downloadSignatureSheet } from "@/lib/hwpx/signatureSheet";
+import { downloadSignatureSheet, externalSignatureRows, studentSignatureRows } from "@/lib/hwpx/signatureSheet";
 import { deleteProgramFile } from "@/lib/storage/programFiles";
-import type { Program, ProgramApplication, ProgramApplicationStatus, Semester } from "@/types/models";
+import {
+  revealExternalApplicants,
+  subscribeExternalApplicationsForProgram,
+} from "@/lib/firestore/externalApplications";
+import { ExternalApplicantsCard } from "@/components/admin/ExternalApplicantsCard";
+import type {
+  ExternalProgramApplication,
+  Program,
+  ProgramApplication,
+  ProgramApplicationStatus,
+  Semester,
+} from "@/types/models";
 import { cn } from "@/lib/utils/cn";
 import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
 
@@ -45,6 +56,7 @@ export default function AdminProgramDetailPage() {
   const router = useRouter();
   const [program, setProgram] = useState<Program | null | undefined>(undefined);
   const [apps, setApps] = useState<ProgramApplication[] | null>(null);
+  const [externals, setExternals] = useState<ExternalProgramApplication[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [sessionFilter, setSessionFilter] = useState("전체");
@@ -61,9 +73,11 @@ export default function AdminProgramDetailPage() {
     listSemesters().then(setSemesters).catch(() => setSemesters([]));
     const unsubApps = subscribeApplicationsForProgram(params.id, setApps);
     const unsubCounts = subscribeProgramCounts(params.id, setCounts);
+    const unsubExternal = subscribeExternalApplicationsForProgram(params.id, setExternals, () => setExternals([]));
     return () => {
       unsubApps();
       unsubCounts();
+      unsubExternal();
     };
   }, [params.id]);
 
@@ -192,11 +206,17 @@ export default function AdminProgramDetailPage() {
                 {seatsTaken(s, count)}
                 <span className="text-sm font-semibold text-muted"> / {s.capacity === null ? "제한없음" : `${s.capacity}명`}</span>
               </p>
-              {s.externalCount > 0 && (
-                <p className="text-[11px] font-semibold text-muted">
-                  홈페이지 {count}명 + 외부 {s.externalCount}명
-                </p>
-              )}
+              {(() => {
+                // 회차 카운터에는 재학생 + 외부인(비로그인) 신청이 함께 들어 있다.
+                const ext = (externals ?? []).filter((a) => a.sessionId === s.id && a.status !== "반려").length;
+                if (s.externalCount === 0 && ext === 0) return null;
+                return (
+                  <p className="text-[11px] font-semibold text-muted">
+                    재학생 {Math.max(0, count - ext)}명{ext > 0 && ` + 외부인 신청 ${ext}명`}
+                    {s.externalCount > 0 && ` + 별도 접수 ${s.externalCount}명`}
+                  </p>
+                );
+              })()}
               <p className="mt-1 text-[11px] leading-relaxed text-muted">
                 신청 {formatDateTime(s.applyStart)} ~ {formatDateTime(s.applyEnd)}
                 <br />
@@ -425,6 +445,10 @@ export default function AdminProgramDetailPage() {
         )}
       </Card>
 
+      {(program.allowExternal || (externals?.length ?? 0) > 0) && (
+        <ExternalApplicantsCard program={program} apps={externals} sessionFilter={sessionFilter} />
+      )}
+
       {modal === "reject" && (
         <RejectModal
           count={selectedApps.length}
@@ -444,7 +468,13 @@ export default function AdminProgramDetailPage() {
         />
       )}
       {modal === "export" && (
-        <ExportModal program={program} filtered={filtered} selected={selectedApps} onClose={() => setModal(null)} />
+        <ExportModal
+          program={program}
+          filtered={filtered}
+          selected={selectedApps}
+          externals={(externals ?? []).filter((a) => sessionFilter === "전체" || a.sessionId === sessionFilter)}
+          onClose={() => setModal(null)}
+        />
       )}
       {answersOf && <AnswersModal program={program} app={answersOf} onClose={() => setAnswersOf(null)} />}
       {modal === "nonpay" && (
@@ -686,17 +716,34 @@ const EXPORT_GROUPS: { id: ExportColumnGroup; label: string }[] = [
   { id: "survey", label: "설문 응답" },
 ];
 
+type SignatureMode = "students" | "combined" | "separate" | "externals";
+
+const SIGNATURE_MODES: { id: SignatureMode; label: string }[] = [
+  { id: "combined", label: "한 명단으로 합쳐서" },
+  { id: "separate", label: "재학생·외부인 따로 (파일 2개)" },
+  { id: "students", label: "재학생만" },
+  { id: "externals", label: "외부인만" },
+];
+
 function ExportModal({
   program,
   filtered,
   selected,
+  externals,
   onClose,
 }: {
   program: Program;
   filtered: ProgramApplication[];
   selected: ProgramApplication[];
+  externals: ExternalProgramApplication[];
   onClose: () => void;
 }) {
+  const hasExternals = externals.some((a) => a.status !== "반려");
+  const [signatureMode, setSignatureMode] = useState<SignatureMode>(hasExternals ? "combined" : "students");
+  // 외부인 소속 칸에 넣을 추가 질문 — 제목에 "소속"이 들어간 질문을 기본으로 고른다.
+  const [affiliationQ, setAffiliationQ] = useState<string>(
+    () => program.externalQuestions.find((q) => q.title.includes("소속"))?.id ?? ""
+  );
   const columns = useMemo(() => programExportColumns(program), [program]);
   const [checked, setChecked] = useState<Set<string>>(() => new Set(columns.map((c) => c.key)));
   const [scope, setScope] = useState<"filtered" | "selected">(selected.length > 0 ? "selected" : "filtered");
@@ -720,8 +767,26 @@ function ExportModal({
     setBusy(true);
     setError(null);
     try {
-      if (format === "hwpx") await downloadSignatureSheet(program, apps);
-      else await exportProgramApplications(program, apps, cols, format);
+      if (format === "hwpx") {
+        const studentRows = studentSignatureRows(apps);
+        const mode = hasExternals ? signatureMode : "students";
+        // 외부인 소속 칸을 추가 질문 응답으로 채울 때만 서버에서 복호화한다(열람 기록이 남는다).
+        const needsReveal = mode !== "students" && !!affiliationQ;
+        const targets = externals.filter((a) => a.status !== "반려");
+        const privateById =
+          needsReveal && targets.length > 0 ? await revealExternalApplicants(targets.map((a) => a.id), "signature") : {};
+        const externalRows = externalSignatureRows(externals, affiliationQ || null, privateById);
+        if (mode === "students") await downloadSignatureSheet(program, studentRows);
+        else if (mode === "externals") await downloadSignatureSheet(program, externalRows, "외부인");
+        // 합칠 때는 재학생을 먼저, 외부인을 뒤에 이어 적는다 (각각 소속·이름 가나다순).
+        else if (mode === "combined") await downloadSignatureSheet(program, [...studentRows, ...externalRows]);
+        else {
+          await downloadSignatureSheet(program, studentRows, "재학생");
+          // 브라우저가 연속 다운로드를 하나로 합치지 않도록 잠깐 띄운다.
+          await new Promise((r) => setTimeout(r, 600));
+          await downloadSignatureSheet(program, externalRows, "외부인");
+        }
+      } else await exportProgramApplications(program, apps, cols, format);
       onClose();
     } catch {
       setError("파일을 만들지 못했어요. 다시 시도해주세요.");
@@ -754,6 +819,40 @@ function ExportModal({
           서명부 (.hwpx)
         </ChoiceChip>
       </div>
+
+      {format === "hwpx" && hasExternals && (
+        <>
+          <p className="mb-1.5 mt-4 text-xs font-semibold text-muted">명단 구성 (외부인 신청자 포함 여부)</p>
+          <div className="flex flex-wrap gap-2">
+            {SIGNATURE_MODES.map((m) => (
+              <ChoiceChip key={m.id} active={signatureMode === m.id} onClick={() => setSignatureMode(m.id)}>
+                {m.label}
+              </ChoiceChip>
+            ))}
+          </div>
+          {signatureMode !== "students" && (
+            <div className="mt-3">
+              <label className="mb-1.5 block text-xs font-semibold text-muted">
+                외부인 소속 칸{" "}
+                <span className="font-normal">· 학번 칸은 비워 둬요 · 응답을 쓰면 암호화된 응답을 열람한 기록이 남아요</span>
+              </label>
+              <Select value={affiliationQ} onChange={(e) => setAffiliationQ(e.target.value)} className="py-2">
+                <option value="">&ldquo;외부&rdquo;로 표시</option>
+                {program.externalQuestions
+                  .filter((q) => q.type !== "long")
+                  .map((q) => (
+                    <option key={q.id} value={q.id}>
+                      추가 질문 응답: {q.title}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+          )}
+          <p className="mt-1 text-[11px] text-muted">
+            외부인은 현재 회차 필터 기준 전체(반려 제외)가 들어가요. 합칠 때는 재학생 다음에 외부인이 이어져요.
+          </p>
+        </>
+      )}
 
       {format === "hwpx" ? (
         <p className="mt-4 rounded-xl bg-surface px-3 py-2.5 text-xs leading-relaxed text-muted">

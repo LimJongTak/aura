@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
 import { recordView } from "@/lib/firestore/visits";
+import { listExternalApplicationsForProgram } from "@/lib/firestore/externalApplications";
 import { nanoid } from "@/lib/utils/nanoid";
 import {
   PROGRAM_SEAT_STATUSES,
@@ -72,6 +73,10 @@ function programFromSnap(id: string, data: Record<string, unknown>): Program {
     applicationFileGuide: String(data.applicationFileGuide ?? ""),
     applicationFileTypes: (data.applicationFileTypes as ApplicationFileType[]) ?? [],
     formQuestions: (data.formQuestions as ProgramQuestion[]) ?? [],
+    allowExternal: !!data.allowExternal,
+    externalGuide: String(data.externalGuide ?? ""),
+    externalRouteOptions: (data.externalRouteOptions as string[]) ?? [],
+    externalQuestions: (data.externalQuestions as ProgramQuestion[]) ?? [],
     isPublished: !!data.isPublished,
     viewCount: Number(data.viewCount ?? 0),
     sessions,
@@ -159,6 +164,10 @@ export interface ProgramInput {
   applicationFileGuide: string;
   applicationFileTypes: ApplicationFileType[];
   formQuestions: ProgramQuestion[];
+  allowExternal: boolean;
+  externalGuide: string;
+  externalRouteOptions: string[];
+  externalQuestions: ProgramQuestion[];
   isPublished: boolean;
   sessions: ProgramSession[];
 }
@@ -237,9 +246,17 @@ export async function updateProgram(id: string, input: ProgramInput, previous: P
 
 /** 글 삭제 — 신청 내역도 함께 지운다 (마일리지 지급 기록은 mileageApplications에 그대로 남는다). */
 export async function deleteProgram(program: Program): Promise<void> {
-  const apps = await listApplicationsForProgram(program.id);
+  const [apps, externals] = await Promise.all([
+    listApplicationsForProgram(program.id),
+    listExternalApplicationsForProgram(program.id),
+  ]);
   const batch = writeBatch(db);
   apps.forEach((a) => batch.delete(doc(db, "programApplications", a.id)));
+  // 외부인 신청(개인정보)과 조회 비밀번호 해시도 함께 지운다.
+  externals.forEach((a) => {
+    batch.delete(doc(db, "externalProgramApplications", a.id));
+    batch.delete(doc(db, "externalApplicantSecrets", a.id));
+  });
   program.sessions.forEach((s) => batch.delete(counterRef(program.id, s.id)));
   batch.delete(doc(db, "programs", program.id));
   await batch.commit();

@@ -7,7 +7,7 @@
  *  hwpx는 XML 파일들을 zip으로 묶은 형식이라 브라우저에서 바로 풀어 고친 뒤 다시 묶는다. */
 
 import { deflateSync, strFromU8, strToU8, unzipSync } from "fflate";
-import type { Program, ProgramApplication } from "@/types/models";
+import type { ExternalPrivateInfo, ExternalProgramApplication, Program, ProgramApplication } from "@/types/models";
 
 const TEMPLATE_URL = "/templates/signature-sheet.hwpx";
 const SECTION_PATH = "Contents/section0.xml";
@@ -215,21 +215,46 @@ function replaceZipEntry(zip: Uint8Array, target: string, content: Uint8Array): 
   return out;
 }
 
-/** 신청자(반려 제외)를 소속(학과) 가나다순, 같은 학과 안에서는 이름 가나다순(동명이인은 학번순)으로 정렬해 서명부를 만들고 내려받는다. */
-export async function downloadSignatureSheet(program: Program, apps: ProgramApplication[]): Promise<void> {
-  const res = await fetch(TEMPLATE_URL);
-  if (!res.ok) throw new Error("서명부 서식을 불러오지 못했습니다.");
-  const rows = apps
+const byDeptThenName = (a: SignatureRow, b: SignatureRow) =>
+  a.department.localeCompare(b.department, "ko") || a.name.localeCompare(b.name, "ko") || a.studentId.localeCompare(b.studentId);
+
+/** 재학생 신청자(반려 제외)를 소속(학과) 가나다순, 같은 학과 안에서는 이름 가나다순(동명이인은 학번순)으로. */
+export function studentSignatureRows(apps: ProgramApplication[]): SignatureRow[] {
+  return apps
     .filter((a) => a.status !== "반려")
     .map((a) => ({ department: a.department, studentId: a.studentId, name: a.studentName }))
-    .sort((a, b) => a.department.localeCompare(b.department, "ko") || a.name.localeCompare(b.name, "ko") || a.studentId.localeCompare(b.studentId));
+    .sort(byDeptThenName);
+}
+
+/** 외부인 신청자(반려 제외). 학번 칸은 비우고, 소속 칸은 관리자가 고른 추가 질문(예: "소속 학교·기관")의
+ *  응답으로 채운다 — 고르지 않았거나 응답이 없으면 "외부". 정렬은 재학생과 같은 기준. */
+export function externalSignatureRows(
+  apps: ExternalProgramApplication[],
+  affiliationQuestionId: string | null,
+  /** 소속 칸에 응답을 쓸 때만 필요한 복호화 원문 (revealExternalApplicants) */
+  privateById: Record<string, ExternalPrivateInfo> = {}
+): SignatureRow[] {
+  return apps
+    .filter((a) => a.status !== "반려")
+    .map((a) => {
+      const answer = affiliationQuestionId ? privateById[a.id]?.answers[affiliationQuestionId] : undefined;
+      const affiliation = (Array.isArray(answer) ? answer.join(", ") : answer)?.trim();
+      return { department: affiliation || "외부", studentId: "", name: a.name };
+    })
+    .sort(byDeptThenName);
+}
+
+/** 채울 명단으로 서명부를 만들고 내려받는다. label은 파일 이름 뒤에 붙는 구분(예: "재학생"). */
+export async function downloadSignatureSheet(program: Program, rows: SignatureRow[], label?: string): Promise<void> {
+  const res = await fetch(TEMPLATE_URL);
+  if (!res.ok) throw new Error("서명부 서식을 불러오지 못했습니다.");
   const bytes = fillSignatureSheet(new Uint8Array(await res.arrayBuffer()), program.title, rows);
 
   const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/hwp+zip" }));
   const link = document.createElement("a");
   link.href = url;
   const safeTitle = program.title.replace(/[\\/:*?"<>|]/g, "").slice(0, 40);
-  link.download = `${safeTitle}_서명부_${new Date().toISOString().slice(0, 10)}.hwpx`;
+  link.download = `${safeTitle}_서명부${label ? `_${label}` : ""}_${new Date().toISOString().slice(0, 10)}.hwpx`;
   link.click();
   URL.revokeObjectURL(url);
 }

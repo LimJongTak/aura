@@ -40,10 +40,11 @@ export function NonCurricularBadge({ isNonCurricular }: { isNonCurricular: boole
 }
 
 /** 프로그램 신청 / 신청내역 사이를 오가는 탭 (참고 사이트의 하위 메뉴와 같은 역할). */
-export function ProgramTabs({ active }: { active: "list" | "my" }) {
+export function ProgramTabs({ active }: { active: "list" | "my" | "external" }) {
   const tabs = [
     { key: "list", label: "프로그램 신청", href: "/programs" },
     { key: "my", label: "신청내역", href: "/programs/my" },
+    { key: "external", label: "외부인 신청조회", href: "/programs/external" },
   ] as const;
   return (
     <div className="flex border-b border-border">

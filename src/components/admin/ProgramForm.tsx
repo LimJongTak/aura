@@ -20,6 +20,7 @@ import { ProgramContentEditor } from "@/components/admin/ProgramContentEditor";
 import { emptyQuestion, normalizeQuestions, ProgramQuestionsEditor } from "@/components/admin/ProgramQuestionsEditor";
 import {
   ACTIVITY_GROUPS,
+  DEFAULT_EXTERNAL_ROUTE_OPTIONS,
   MAX_ADMIN_MILEAGE_GRANT,
   PROGRAM_TYPE_SUGGESTIONS,
   type ActivityGroup,
@@ -108,6 +109,12 @@ export function ProgramForm({
   );
   const [useSurvey, setUseSurvey] = useState((initial?.formQuestions.length ?? 0) > 0);
   const [questions, setQuestions] = useState<ProgramQuestion[]>(initial?.formQuestions ?? []);
+  const [allowExternal, setAllowExternal] = useState(initial?.allowExternal ?? false);
+  const [externalGuide, setExternalGuide] = useState(initial?.externalGuide ?? "");
+  const [externalRoutes, setExternalRoutes] = useState(
+    (initial?.allowExternal ? initial.externalRouteOptions : DEFAULT_EXTERNAL_ROUTE_OPTIONS).join("\n")
+  );
+  const [externalQuestions, setExternalQuestions] = useState<ProgramQuestion[]>(initial?.externalQuestions ?? []);
   const [isPublished, setIsPublished] = useState(initial?.isPublished ?? true);
   const [sessions, setSessions] = useState<SessionDraft[]>(
     initial && initial.sessions.length > 0
@@ -241,6 +248,12 @@ export function ProgramForm({
     const formQuestions = useSurvey ? normalizeQuestions(questions) : [];
     if (typeof formQuestions === "string") return formQuestions;
     if (useSurvey && formQuestions.length === 0) return "설문 문항을 1개 이상 추가하거나 \"추가 설문 받기\"를 꺼주세요.";
+    const extQuestions = allowExternal ? normalizeQuestions(externalQuestions) : [];
+    if (typeof extQuestions === "string") return `외부인 ${extQuestions}`;
+    const routeOptions = allowExternal
+      ? [...new Set(externalRoutes.split("\n").map((r) => r.trim().slice(0, 50)).filter(Boolean))]
+      : [];
+    if (routeOptions.length > 20) return "외부인 신청 경로 보기는 20개까지 넣을 수 있어요.";
     return {
       title: title.trim(),
       teamType,
@@ -257,6 +270,11 @@ export function ProgramForm({
       // 저장 순서를 고정해 둔다 (체크한 순서와 무관하게 PDF → 한글 → 워드 → 엑셀 → 이미지).
       applicationFileTypes: APPLICATION_FILE_TYPE_KEYS.filter((t) => applicationFileTypes.includes(t)),
       formQuestions,
+      allowExternal,
+      // 외부인 신청을 끄면 외부인 설정은 비워서 저장한다 (다시 켜면 기본값부터 다시 입력).
+      externalGuide: allowExternal ? externalGuide.trim() : "",
+      externalRouteOptions: routeOptions,
+      externalQuestions: extQuestions,
       isPublished,
       sessions: parsed.sort((a, b) => a.round - b.round),
     };
@@ -517,6 +535,54 @@ export function ProgramForm({
             </>
           )}
         </div>
+      </Card>
+
+      <Card className="flex flex-col gap-4">
+        <h2 className="font-bold text-foreground">외부인 신청</h2>
+        <Check checked={allowExternal} onChange={setAllowExternal} label="외부인(비로그인) 신청 받기">
+          켜면 상세 화면에 &ldquo;외부인 신청하기&rdquo; 버튼이 생겨, 로그인 없이 이름·연락처·이메일·신청 경로와 아래 추가
+          질문으로 신청할 수 있어요. 재학생 로그인 신청과 정원을 함께 쓰고, 외부인에게는 마일리지가 지급되지 않아요. 외부인은
+          이름·연락처·조회 비밀번호(4자리)로 신청 조회·취소를 해요.
+        </Check>
+        {allowExternal && (
+          <div className="flex flex-col gap-4 rounded-xl bg-surface p-4">
+            <Field label="외부인 안내 문구" hint="외부인 신청 창 맨 위에 보여요 (대상·준비물 등)">
+              <textarea
+                value={externalGuide}
+                onChange={(e) => setExternalGuide(e.target.value)}
+                rows={2}
+                maxLength={1000}
+                className={textareaClass}
+                placeholder="예: 지역 고등학생 및 일반인 누구나 참여할 수 있어요."
+              />
+            </Field>
+            <Field label="신청 경로 보기" hint="한 줄에 하나씩 · 비워두면 자유 입력 · '기타'가 있으면 직접 입력칸이 함께 나와요">
+              <textarea
+                value={externalRoutes}
+                onChange={(e) => setExternalRoutes(e.target.value)}
+                rows={4}
+                className={textareaClass}
+              />
+            </Field>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-muted">
+                외부인 추가 질문 <span className="font-normal">· 소속(학교·기관), 학년 등 외부인에게만 받을 내용</span>
+              </p>
+              {externalQuestions.length > 0 && (
+                <ProgramQuestionsEditor questions={externalQuestions} onChange={setExternalQuestions} />
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2"
+                onClick={() => setExternalQuestions((prev) => [...prev, emptyQuestion()])}
+              >
+                <Plus size={15} /> 질문 추가
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card className="flex flex-col gap-4">

@@ -59,6 +59,7 @@ const GROUPS = [
     items: [
       { label: "프로그램 신청", href: "/programs" },
       { label: "신청내역", href: "/programs/my" },
+      { label: "외부인 신청조회", href: "/programs/external" },
     ],
   },
 ];

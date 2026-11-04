@@ -192,6 +192,11 @@ export default function ProgramsPage() {
                             <NonCurricularBadge isNonCurricular />
                           </span>
                         )}
+                        {p.allowExternal && (
+                          <span className="ml-1.5 inline-flex rounded-full bg-surface px-2.5 py-1 align-middle text-xs font-semibold text-foreground/70 ring-1 ring-border">
+                            외부인 신청 가능
+                          </span>
+                        )}
                       </td>
                       <td className="px-2 py-4 text-xs leading-relaxed text-muted">
                         {range ? (
@@ -227,6 +232,11 @@ export default function ProgramsPage() {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <PhaseBadge phase={programPhase(p)} />
                       {p.isNonCurricular && <NonCurricularBadge isNonCurricular />}
+                      {p.allowExternal && (
+                        <span className="inline-flex rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-foreground/70 ring-1 ring-border">
+                          외부인 신청 가능
+                        </span>
+                      )}
                       <span className="text-xs text-muted">
                         {p.teamType} · {p.programType || "프로그램"}
                       </span>
