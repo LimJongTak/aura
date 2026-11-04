@@ -541,8 +541,8 @@ export function ProgramForm({
       <Card className="flex flex-col gap-4">
         <h2 className="font-bold text-foreground">외부인 신청</h2>
         <Check checked={allowExternal} onChange={setAllowExternal} label="외부인(비로그인) 신청 받기">
-          켜면 상세 화면에 &ldquo;외부인 신청하기&rdquo; 버튼이 생겨, 로그인 없이 이름·연락처·이메일·신청 경로와 아래 추가
-          질문으로 신청할 수 있어요. 재학생 로그인 신청과 정원을 함께 쓰고, 외부인에게는 마일리지가 지급되지 않아요. 외부인은
+          켜면 상세 화면에 &ldquo;외부인 신청하기&rdquo; 버튼이 생겨, 로그인 없이 신청할 수 있어요. 재학생 신청 항목(팀 정보·신청서
+          첨부·추가 설문)을 똑같이 작성하고, 여기에 이름·연락처·이메일·신청 경로와 아래 외부인 추가 질문을 더 받아요. 재학생 로그인 신청과 정원을 함께 쓰고, 외부인에게는 마일리지가 지급되지 않아요. 외부인은
           이름·연락처·조회 비밀번호(4자리)로 신청 조회·취소를 해요.
         </Check>
         {allowExternal && (

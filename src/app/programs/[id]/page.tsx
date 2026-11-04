@@ -16,7 +16,12 @@ import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { toStudentEmail } from "@/lib/auth/studentAuth";
 import { getMyPhoneNumber } from "@/lib/firestore/studentContacts";
-import { allowedExtensions, describeFileTypes, isAllowedFile } from "@/lib/constants/applicationFileTypes";
+import {
+  allowedExtensions,
+  APPLICATION_FILE_TYPE_KEYS,
+  describeFileTypes,
+  isAllowedFile,
+} from "@/lib/constants/applicationFileTypes";
 import {
   applyToProgram,
   formatDateTime,
@@ -28,7 +33,15 @@ import {
   subscribeProgramCounts,
 } from "@/lib/firestore/programs";
 import { PROGRAM_FILE_MAX_BYTES, uploadProgramApplicationFile } from "@/lib/storage/programFiles";
-import type { Program, ProgramAnswer, ProgramApplication, ProgramQuestion, ProgramSession, Student } from "@/types/models";
+import type {
+  ApplicationFileType,
+  Program,
+  ProgramAnswer,
+  ProgramApplication,
+  ProgramQuestion,
+  ProgramSession,
+  Student,
+} from "@/types/models";
 import { externalRouteChoices } from "@/types/models";
 
 export default function ProgramDetailPage() {
@@ -531,56 +544,13 @@ function ApplyModal({
               </FormRow>
             </>
           )}
-          <FormRow label="신청서" required={program.requireApplicationFile}>
-            {program.applicationFileGuide && (
-              <p className="mb-2 whitespace-pre-wrap text-xs text-muted">{program.applicationFileGuide}</p>
-            )}
-            <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted transition hover:border-primary hover:text-primary">
-              <Upload size={14} className="shrink-0" />
-              <span className="truncate">
-                {file
-                  ? file.name
-                  : fileTypes.length > 0
-                    ? `${describeFileTypes(fileTypes)} 파일 선택 (20MB 이하)`
-                    : "파일 선택 (20MB 이하)"}
-              </span>
-              <input
-                type="file"
-                accept={fileTypes.length > 0 ? allowedExtensions(fileTypes).join(",") : undefined}
-                className="hidden"
-                onChange={(e) => {
-                  const picked = e.target.files?.[0] ?? null;
-                  setError(
-                    picked && !isAllowedFile(picked.name, fileTypes)
-                      ? `신청서는 ${describeFileTypes(fileTypes)} 파일만 첨부할 수 있어요.`
-                      : null
-                  );
-                  setFile(picked);
-                }}
-              />
-            </label>
-            {fileTypes.length > 0 && (
-              <p className="mt-1 text-[11px] font-semibold text-primary-dark">
-                {describeFileTypes(fileTypes)} 형식만 받아요.
-              </p>
-            )}
-          </FormRow>
-          {program.formQuestions.length > 0 && (
-            <div className="border-b border-border bg-surface px-3 py-2 text-xs font-bold text-foreground">추가 설문</div>
-          )}
-          {program.formQuestions.map((q) => (
-            <div key={q.id} className="border-b border-border px-3 py-3">
-              <p className="mb-1.5 break-words text-sm font-semibold text-foreground">
-                {q.required && <span className="text-danger">* </span>}
-                {q.title}
-              </p>
-              <QuestionInput
-                question={q}
-                value={answers[q.id]}
-                onChange={(v) => setAnswers((prev) => ({ ...prev, [q.id]: v }))}
-              />
-            </div>
-          ))}
+          <ApplicationFileRow program={program} fileTypes={fileTypes} file={file} onPick={setFile} onError={setError} />
+          <QuestionsSection
+            title="추가 설문"
+            questions={program.formQuestions}
+            answers={answers}
+            onChange={(id, v) => setAnswers((prev) => ({ ...prev, [id]: v }))}
+          />
           <FormRow label="개인정보 동의" required>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="h-4 w-4 accent-primary" />
@@ -603,8 +573,98 @@ function ApplyModal({
   );
 }
 
-/** 외부인(비로그인) 신청 창. 입력값은 Cloud Function이 서버에서 다시 검증하고 저장한다 —
- *  이 화면은 Firestore에 직접 쓰지 않는다. 파일 첨부는 받지 않는다(비로그인 업로드 차단). */
+/** 신청서 첨부 칸 — 재학생·외부인 신청 창이 같이 쓴다. */
+function ApplicationFileRow({
+  program,
+  fileTypes,
+  file,
+  onPick,
+  onError,
+}: {
+  program: Program;
+  fileTypes: ApplicationFileType[];
+  file: File | null;
+  onPick: (file: File | null) => void;
+  onError: (message: string | null) => void;
+}) {
+  return (
+    <FormRow label="신청서" required={program.requireApplicationFile}>
+      {program.applicationFileGuide && (
+        <p className="mb-2 whitespace-pre-wrap text-xs text-muted">{program.applicationFileGuide}</p>
+      )}
+      <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-xs text-muted transition hover:border-primary hover:text-primary">
+        <Upload size={14} className="shrink-0" />
+        <span className="truncate">
+          {file
+            ? file.name
+            : fileTypes.length > 0
+              ? `${describeFileTypes(fileTypes)} 파일 선택 (20MB 이하)`
+              : "파일 선택 (20MB 이하)"}
+        </span>
+        <input
+          type="file"
+          accept={fileTypes.length > 0 ? allowedExtensions(fileTypes).join(",") : undefined}
+          className="hidden"
+          onChange={(e) => {
+            const picked = e.target.files?.[0] ?? null;
+            onError(
+              picked && !isAllowedFile(picked.name, fileTypes)
+                ? `신청서는 ${describeFileTypes(fileTypes)} 파일만 첨부할 수 있어요.`
+                : null
+            );
+            onPick(picked);
+          }}
+        />
+      </label>
+      {fileTypes.length > 0 && (
+        <p className="mt-1 text-[11px] font-semibold text-primary-dark">{describeFileTypes(fileTypes)} 형식만 받아요.</p>
+      )}
+    </FormRow>
+  );
+}
+
+/** 설문 문항 묶음 — 재학생 신청 설문, 외부인 추가 질문에 같이 쓴다. */
+function QuestionsSection({
+  title,
+  questions,
+  answers,
+  onChange,
+}: {
+  title: string;
+  questions: ProgramQuestion[];
+  answers: Record<string, ProgramAnswer>;
+  onChange: (id: string, value: ProgramAnswer) => void;
+}) {
+  if (questions.length === 0) return null;
+  return (
+    <>
+      <div className="border-b border-border bg-surface px-3 py-2 text-xs font-bold text-foreground">{title}</div>
+      {questions.map((q) => (
+        <div key={q.id} className="border-b border-border px-3 py-3">
+          <p className="mb-1.5 break-words text-sm font-semibold text-foreground">
+            {q.required && <span className="text-danger">* </span>}
+            {q.title}
+          </p>
+          <QuestionInput question={q} value={answers[q.id]} onChange={(v) => onChange(q.id, v)} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** 파일을 base64로 읽는다 (외부인 신청서는 로그인 없이 받으므로 Cloud Function에 함께 보내 서버가 확인·저장한다). */
+function readFileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+/** 외부인(비로그인) 신청 창 — 재학생 신청 창의 항목(팀·신청서·신청 설문)에 외부인 개인정보(이름·휴대전화·이메일·
+ *  신청 경로)와 외부인 추가 질문, 조회 비밀번호가 더해진다. 입력값과 파일은 Cloud Function이 서버에서 다시 검증하고
+ *  저장한다 — 이 화면은 Firestore·Storage에 직접 쓰지 않는다. */
 function ExternalApplyModal({
   program,
   session,
@@ -622,6 +682,9 @@ function ExternalApplyModal({
   const [routeOther, setRouteOther] = useState("");
   const [teamName, setTeamName] = useState("");
   const [teamMembers, setTeamMembers] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  // 관리자가 형식을 고르지 않았으면(제한 없음) 서버가 내용을 확인할 수 있는 형식 전체를 받는다.
+  const fileTypes = program.applicationFileTypes.length > 0 ? program.applicationFileTypes : APPLICATION_FILE_TYPE_KEYS;
   const [answers, setAnswers] = useState<Record<string, ProgramAnswer>>({});
   const [pin, setPin] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -641,7 +704,12 @@ function ExternalApplyModal({
     const finalRoute = route === "기타" && routeOther.trim() ? `기타: ${routeOther.trim()}` : route;
     if (!finalRoute) return setError("신청 경로를 선택해주세요.");
     if (isTeam && (!teamName.trim() || !teamMembers.trim())) return setError("팀명과 팀원 정보를 입력해주세요.");
-    const unanswered = program.externalQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
+    if (program.requireApplicationFile && !file) return setError("신청서 파일을 첨부해주세요.");
+    if (file && !isAllowedFile(file.name, fileTypes))
+      return setError(`신청서는 ${describeFileTypes(fileTypes)} 파일만 첨부할 수 있어요.`);
+    if (file && file.size > PROGRAM_FILE_MAX_BYTES) return setError("파일은 20MB 이하만 첨부할 수 있어요.");
+    const allQuestions = [...program.formQuestions, ...program.externalQuestions];
+    const unanswered = allQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
     if (unanswered) return setError(`"${unanswered.title}"에 답해주세요.`);
     if (!/^\d{4}$/.test(pin)) return setError("조회 비밀번호는 숫자 4자리로 정해주세요.");
     if (pin !== pinConfirm) return setError("조회 비밀번호 확인이 일치하지 않아요.");
@@ -649,6 +717,7 @@ function ExternalApplyModal({
 
     setSubmitting(true);
     try {
+      const fileData = file ? await readFileBase64(file) : "";
       await submitExternalApplication({
         programId: program.id,
         sessionId: session.id,
@@ -658,7 +727,9 @@ function ExternalApplyModal({
         route: finalRoute.slice(0, 100),
         teamName: isTeam ? teamName.trim() : "",
         teamMembers: isTeam ? teamMembers.trim() : "",
-        answers: cleanAnswers(program.externalQuestions, answers),
+        answers: cleanAnswers(allQuestions, answers),
+        applicationFileName: file?.name ?? "",
+        applicationFileData: fileData,
         pin,
         privacyAgreed: true,
       });
@@ -748,18 +819,19 @@ function ExternalApplyModal({
               </FormRow>
             </>
           )}
-          {program.externalQuestions.length > 0 && (
-            <div className="border-b border-border bg-surface px-3 py-2 text-xs font-bold text-foreground">추가 질문</div>
-          )}
-          {program.externalQuestions.map((q) => (
-            <div key={q.id} className="border-b border-border px-3 py-3">
-              <p className="mb-1.5 break-words text-sm font-semibold text-foreground">
-                {q.required && <span className="text-danger">* </span>}
-                {q.title}
-              </p>
-              <QuestionInput question={q} value={answers[q.id]} onChange={(v) => setAnswers((prev) => ({ ...prev, [q.id]: v }))} />
-            </div>
-          ))}
+          <ApplicationFileRow program={program} fileTypes={fileTypes} file={file} onPick={setFile} onError={setError} />
+          <QuestionsSection
+            title="추가 설문"
+            questions={program.formQuestions}
+            answers={answers}
+            onChange={(id, v) => setAnswers((prev) => ({ ...prev, [id]: v }))}
+          />
+          <QuestionsSection
+            title="외부인 추가 질문"
+            questions={program.externalQuestions}
+            answers={answers}
+            onChange={(id, v) => setAnswers((prev) => ({ ...prev, [id]: v }))}
+          />
           <FormRow label="조회 비밀번호" required>
             <div className="flex gap-1.5">
               <Input
@@ -790,7 +862,8 @@ function ExternalApplyModal({
               <p>
                 <b className="text-foreground">수집 항목</b>: 이름, 휴대전화번호, 이메일, 신청 경로
                 {isTeam && ", 팀명·팀원"}
-                {program.externalQuestions.length > 0 && ", 추가 질문 응답"}
+                {", 신청서 파일(첨부한 경우)"}
+                {program.formQuestions.length + program.externalQuestions.length > 0 && ", 설문·추가 질문 응답"}
               </p>
               <p>
                 <b className="text-foreground">이용 목적</b>: 프로그램 신청 접수·참가자 확인 및 운영 안내

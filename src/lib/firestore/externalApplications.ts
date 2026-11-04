@@ -18,7 +18,8 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
-import { db, functions } from "@/lib/firebase/client";
+import { deleteObject, getDownloadURL, ref } from "firebase/storage";
+import { db, functions, storage } from "@/lib/firebase/client";
 import {
   EXTERNAL_SEAT_STATUSES,
   type ExternalApplicationStatus,
@@ -47,6 +48,8 @@ function fromSnap(id: string, data: Record<string, unknown>): ExternalProgramApp
     emailMasked: String(data.emailMasked ?? ""),
     route: String(data.route ?? ""),
     teamName: String(data.teamName ?? ""),
+    applicationFilePath: String(data.applicationFilePath ?? ""),
+    applicationFileName: String(data.applicationFileName ?? ""),
     privacyAgreed: !!data.privacyAgreed,
     status: (data.status as ExternalApplicationStatus) ?? "신청",
     note: data.note ? String(data.note) : undefined,
@@ -123,6 +126,19 @@ export async function deleteExternalApplications(apps: ExternalProgramApplicatio
     batch.update(counterRef(programId, sessionId), { count: increment(delta) });
   }
   await batch.commit();
+  // 신청서 파일도 지운다 (실패해도 보유기간 만료 때 서버가 다시 정리한다).
+  await Promise.all(apps.map((a) => deleteExternalApplicationFile(a)));
+}
+
+export async function deleteExternalApplicationFile(app: ExternalProgramApplication): Promise<void> {
+  if (!app.applicationFilePath) return;
+  await deleteObject(ref(storage, app.applicationFilePath)).catch(() => undefined);
+}
+
+/** 관리자 전용 — 외부인 신청서 파일을 여는 임시 링크. Storage 규칙상 관리자만 받을 수 있다. */
+export async function externalApplicationFileUrl(app: ExternalProgramApplication): Promise<string | null> {
+  if (!app.applicationFilePath) return null;
+  return getDownloadURL(ref(storage, app.applicationFilePath));
 }
 
 export type ExternalRevealPurpose = "view" | "export" | "signature";
@@ -161,6 +177,9 @@ export interface ExternalApplyInput {
   teamName: string;
   teamMembers: string;
   answers: Record<string, ProgramAnswer>;
+  /** 신청서 파일 — 서버가 형식·내용을 확인해 관리자만 볼 수 있는 곳에 저장한다. 없으면 빈 문자열. */
+  applicationFileName: string;
+  applicationFileData: string;
   pin: string;
   privacyAgreed: boolean;
 }

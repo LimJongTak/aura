@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { formatAnswer, formatDate } from "@/lib/firestore/programs";
 import {
   deleteExternalApplications,
+  externalApplicationFileUrl,
   revealExternalApplicants,
   setExternalApplicationsStatus,
 } from "@/lib/firestore/externalApplications";
@@ -46,7 +47,11 @@ export function ExternalApplicantsCard({
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectNote, setRejectNote] = useState("");
   // 열람(복호화)한 원문은 이 창이 열려 있는 동안 메모리에만 두고, 닫으면 버린다.
-  const [detail, setDetail] = useState<{ app: ExternalProgramApplication; info: ExternalPrivateInfo | null } | null>(null);
+  const [detail, setDetail] = useState<{
+    app: ExternalProgramApplication;
+    info: ExternalPrivateInfo | null;
+    fileUrl: string | null;
+  } | null>(null);
   const [revealingId, setRevealingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -118,8 +123,11 @@ export function ExternalApplicantsCard({
     setRevealingId(app.id);
     setError(null);
     try {
-      const items = await revealExternalApplicants([app.id], "view");
-      setDetail({ app, info: items[app.id] ?? null });
+      const [items, fileUrl] = await Promise.all([
+        revealExternalApplicants([app.id], "view"),
+        externalApplicationFileUrl(app).catch(() => null),
+      ]);
+      setDetail({ app, info: items[app.id] ?? null, fileUrl });
     } catch {
       setError("개인정보를 불러오지 못했어요.");
     } finally {
@@ -311,13 +319,28 @@ export function ExternalApplicantsCard({
                 <dd className="mt-1 whitespace-pre-wrap break-words text-sm text-foreground">{value || "-"}</dd>
               </div>
             ))}
-            {program.externalQuestions.map((q, i) => {
+            {(program.requireApplicationFile || detail.app.applicationFilePath) && (
+              <div className="rounded-xl bg-surface p-3">
+                <dt className="text-xs font-bold text-muted">신청서</dt>
+                <dd className="mt-1 break-words text-sm">
+                  {detail.fileUrl ? (
+                    <a href={detail.fileUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">
+                      {detail.app.applicationFileName || "파일"}
+                    </a>
+                  ) : (
+                    <span className="text-muted">{detail.app.applicationFilePath ? "파일을 불러오지 못했어요" : "(첨부 안 함)"}</span>
+                  )}
+                </dd>
+              </div>
+            )}
+            {[
+              ...program.formQuestions.map((q, i) => ({ q, label: `설문 ${i + 1}. ${q.title}` })),
+              ...program.externalQuestions.map((q, i) => ({ q, label: `추가 질문 ${i + 1}. ${q.title}` })),
+            ].map(({ q, label }) => {
               const answer = formatAnswer(detail.info?.answers[q.id]);
               return (
                 <div key={q.id} className="rounded-xl bg-surface p-3">
-                  <dt className="text-xs font-bold text-muted">
-                    {i + 1}. {q.title}
-                  </dt>
+                  <dt className="text-xs font-bold text-muted">{label}</dt>
                   <dd className={cn("mt-1 whitespace-pre-wrap break-words text-sm", answer ? "text-foreground" : "text-muted")}>
                     {answer || "(응답 없음)"}
                   </dd>

@@ -15,7 +15,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase/client";
 import { recordView } from "@/lib/firestore/visits";
-import { listExternalApplicationsForProgram } from "@/lib/firestore/externalApplications";
+import { deleteExternalApplicationFile, listExternalApplicationsForProgram } from "@/lib/firestore/externalApplications";
 import { nanoid } from "@/lib/utils/nanoid";
 import {
   PROGRAM_SEAT_STATUSES,
@@ -262,6 +262,8 @@ export async function deleteProgram(program: Program): Promise<void> {
   program.sessions.forEach((s) => batch.delete(counterRef(program.id, s.id)));
   batch.delete(doc(db, "programs", program.id));
   await batch.commit();
+  // 외부인 신청서 파일도 지운다.
+  await Promise.all(externals.map(deleteExternalApplicationFile));
 }
 
 // ─── 학생: 신청 / 신청내역 / 취소 ──────────────────────────────────────────────

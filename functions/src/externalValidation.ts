@@ -88,6 +88,70 @@ export function parseExternalRoute(raw: unknown, options: string[]): string {
   return route;
 }
 
+// ─── 외부인 신청서 파일 ─────────────────────────────────────────────────────────
+// 로그인 없이 받는 파일이라 Storage에 직접 올리게 하지 않고, Cloud Function이 받아서 확장자·실제 내용(파일 시그니처)·
+// 크기를 확인한 뒤 관리자만 읽을 수 있는 경로에 저장한다. src/lib/constants/applicationFileTypes.ts와 같은 형식 목록.
+
+export const EXTERNAL_FILE_MAX_BYTES = 20 * 1024 * 1024;
+
+const PDF = [0x25, 0x50, 0x44, 0x46]; // %PDF
+const ZIP = [0x50, 0x4b, 0x03, 0x04]; // hwpx·docx·xlsx
+const OLE = [0xd0, 0xcf, 0x11, 0xe0]; // hwp·doc·xls
+const JPG = [0xff, 0xd8, 0xff];
+const PNG = [0x89, 0x50, 0x4e, 0x47];
+
+const FILE_KINDS: Record<string, { mime: string; magic: number[] }> = {
+  ".pdf": { mime: "application/pdf", magic: PDF },
+  ".hwp": { mime: "application/x-hwp", magic: OLE },
+  ".hwpx": { mime: "application/hwp+zip", magic: ZIP },
+  ".doc": { mime: "application/msword", magic: OLE },
+  ".docx": { mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", magic: ZIP },
+  ".xls": { mime: "application/vnd.ms-excel", magic: OLE },
+  ".xlsx": { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", magic: ZIP },
+  ".jpg": { mime: "image/jpeg", magic: JPG },
+  ".jpeg": { mime: "image/jpeg", magic: JPG },
+  ".png": { mime: "image/png", magic: PNG },
+};
+
+const FILE_TYPE_EXTENSIONS: Record<string, string[]> = {
+  pdf: [".pdf"],
+  hwp: [".hwp", ".hwpx"],
+  word: [".doc", ".docx"],
+  excel: [".xls", ".xlsx"],
+  image: [".jpg", ".jpeg", ".png"],
+};
+
+export interface ExternalFile {
+  name: string;
+  ext: string;
+  mime: string;
+  bytes: Buffer;
+}
+
+/** 외부인이 보낸 신청서 파일(base64)을 검증한다. 관리자가 형식을 고르지 않았어도(제한 없음) 내용을 확인할 수 있는
+ *  위 형식만 받는다 — 실행 파일·HTML 같은 파일이 관리자 PC로 내려가지 않게 한다. */
+export function parseExternalFile(rawName: unknown, rawData: unknown, allowedTypes: string[]): ExternalFile {
+  const name = cleanText(rawName, "신청서 파일명", 200, { required: true }).replace(/[\\/]/g, "_");
+  if (typeof rawData !== "string" || rawData.length === 0) {
+    throw new HttpsError("invalid-argument", "신청서 파일을 다시 첨부해주세요.");
+  }
+  if (rawData.length > Math.ceil(EXTERNAL_FILE_MAX_BYTES / 3) * 4 + 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(rawData)) {
+    throw new HttpsError("invalid-argument", "신청서 파일은 20MB 이하만 첨부할 수 있어요.");
+  }
+  const ext = (name.toLowerCase().match(/\.[a-z0-9]+$/) ?? [""])[0];
+  const exts = allowedTypes.length > 0 ? allowedTypes.flatMap((t) => FILE_TYPE_EXTENSIONS[t] ?? []) : Object.keys(FILE_KINDS);
+  const kind = FILE_KINDS[ext];
+  if (!kind || !exts.includes(ext)) throw new HttpsError("invalid-argument", "이 프로그램에서 받지 않는 파일 형식이에요.");
+  const bytes = Buffer.from(rawData, "base64");
+  if (bytes.length === 0 || bytes.length > EXTERNAL_FILE_MAX_BYTES) {
+    throw new HttpsError("invalid-argument", "신청서 파일은 20MB 이하만 첨부할 수 있어요.");
+  }
+  if (!kind.magic.every((b, i) => bytes[i] === b)) {
+    throw new HttpsError("invalid-argument", "파일 내용이 확장자와 맞지 않아요. 원본 파일을 다시 첨부해주세요.");
+  }
+  return { name, ext, mime: kind.mime, bytes };
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

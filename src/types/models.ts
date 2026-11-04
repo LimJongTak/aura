@@ -747,6 +747,9 @@ export interface ExternalProgramApplication {
   /** 신청 경로 (어떻게 알고 신청했는지) */
   route: string;
   teamName: string;
+  /** 신청서 파일의 Storage 경로(관리자만 읽기) — 첨부하지 않았으면 빈 문자열 */
+  applicationFilePath: string;
+  applicationFileName: string;
   privacyAgreed: boolean;
   status: ExternalApplicationStatus;
   note?: string;

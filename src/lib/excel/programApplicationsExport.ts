@@ -104,8 +104,12 @@ export async function exportExternalApplications(
       { label: "팀원", width: 30, value: (a) => p(a)?.teamMembers ?? "" }
     );
   }
+  cols.push({ label: "신청서 파일명", width: 24, value: (a) => a.applicationFileName });
+  program.formQuestions.forEach((q, i) =>
+    cols.push({ label: `설문 ${i + 1}. ${q.title}`, width: q.type === "long" ? 40 : 20, value: (a) => formatAnswer(p(a)?.answers[q.id]) })
+  );
   program.externalQuestions.forEach((q, i) =>
-    cols.push({ label: `${i + 1}. ${q.title}`, width: q.type === "long" ? 40 : 20, value: (a) => formatAnswer(p(a)?.answers[q.id]) })
+    cols.push({ label: `추가 질문 ${i + 1}. ${q.title}`, width: q.type === "long" ? 40 : 20, value: (a) => formatAnswer(p(a)?.answers[q.id]) })
   );
   cols.push(
     { label: "신청일", width: 12, value: (a) => formatDate(a.appliedAt) },

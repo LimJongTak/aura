@@ -819,7 +819,7 @@ function ExportModal({
   const [signatureMode, setSignatureMode] = useState<SignatureMode>(hasExternals ? "combined" : "students");
   // 외부인 소속 칸에 넣을 추가 질문 — 제목에 "소속"이 들어간 질문을 기본으로 고른다.
   const [affiliationQ, setAffiliationQ] = useState<string>(
-    () => program.externalQuestions.find((q) => q.title.includes("소속"))?.id ?? ""
+    () => [...program.externalQuestions, ...program.formQuestions].find((q) => q.title.includes("소속"))?.id ?? ""
   );
   const columns = useMemo(() => programExportColumns(program), [program]);
   const [checked, setChecked] = useState<Set<string>>(() => new Set(columns.map((c) => c.key)));
@@ -938,11 +938,11 @@ function ExportModal({
               </label>
               <Select value={affiliationQ} onChange={(e) => setAffiliationQ(e.target.value)} className="py-2">
                 <option value="">&ldquo;외부&rdquo;로 표시</option>
-                {program.externalQuestions
+                {[...program.externalQuestions, ...program.formQuestions]
                   .filter((q) => q.type !== "long")
                   .map((q) => (
                     <option key={q.id} value={q.id}>
-                      추가 질문 응답: {q.title}
+                      응답: {q.title}
                     </option>
                   ))}
               </Select>

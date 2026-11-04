@@ -20,6 +20,7 @@ import {
   parseExternalPhone,
   parseExternalPin,
   parseExternalRoute,
+  parseExternalFile,
   type ExternalQuestion,
 } from "./externalValidation";
 import { clientIp, type RawRequestLike } from "./requestIp";
@@ -1320,7 +1321,19 @@ function tsMillis(v: unknown): number | null {
 
 /** 외부인 신청 접수. 문서 ID를 프로그램·회차·조회키로 고정해 같은 사람의 같은 회차 중복 신청을 막고,
  *  정원 확인과 회차 카운터 +1을 한 트랜잭션에서 처리한다(재학생 신청과 같은 카운터를 공유). */
-export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY] }, async (request) => {
+/** 외부인 신청서 파일 경로 — Storage 규칙상 관리자만 읽고 지울 수 있고, 아무도 직접 올릴 수 없다. */
+function externalFilePrefix(appId: string): string {
+  return `externalProgramApplications/${appId}/`;
+}
+
+async function deleteExternalFiles(appId: string): Promise<void> {
+  await admin.storage().bucket().deleteFiles({ prefix: externalFilePrefix(appId) }).catch((err) => {
+    console.error("external file delete failed", appId, err);
+  });
+}
+
+// 신청서 파일(최대 20MB, base64로 약 27MB)을 함께 받으므로 메모리를 넉넉히 준다.
+export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY], memory: "1GiB" }, async (request) => {
   const d = (request.data ?? {}) as Record<string, unknown>;
   if (typeof d.programId !== "string" || !FIRESTORE_ID_PATTERN.test(d.programId)) {
     throw new HttpsError("invalid-argument", "프로그램 정보가 올바르지 않습니다.");
@@ -1350,8 +1363,17 @@ export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY
   const isTeam = program.teamType === "팀";
   const teamName = isTeam ? cleanText(d.teamName, "팀명", 50, { required: true }) : "";
   const teamMembers = isTeam ? cleanText(d.teamMembers, "팀원", 1000, { required: true, multiline: true }) : "";
-  const questions = Array.isArray(program.externalQuestions) ? (program.externalQuestions as ExternalQuestion[]) : [];
+  // 재학생과 같은 신청 설문(formQuestions) + 외부인 추가 질문(externalQuestions). 문항 id는 서로 겹치지 않는다.
+  const questions = [
+    ...(Array.isArray(program.formQuestions) ? (program.formQuestions as ExternalQuestion[]) : []),
+    ...(Array.isArray(program.externalQuestions) ? (program.externalQuestions as ExternalQuestion[]) : []),
+  ];
   const answers = parseExternalAnswers(d.answers, questions);
+  const fileTypes = Array.isArray(program.applicationFileTypes) ? (program.applicationFileTypes as string[]) : [];
+  const file = d.applicationFileData ? parseExternalFile(d.applicationFileName, d.applicationFileData, fileTypes) : null;
+  if (program.requireApplicationFile === true && !file) {
+    throw new HttpsError("invalid-argument", "신청서 파일을 첨부해주세요.");
+  }
 
   const lookupKey = externalLookupKey(name, phone);
   const appId = `${programId}_${sessionId}_ext_${lookupKey.slice(0, 32)}`;
@@ -1362,6 +1384,31 @@ export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY
   const pinHash = hashPin(pin, salt);
   const runEnd = tsMillis(session.runEnd) ?? Date.now();
 
+  // 이미 신청한 사람이면 파일을 올리기 전에 돌려보낸다(같은 신청 경로의 기존 파일을 건드리지 않게).
+  if ((await appRef.get()).exists) {
+    throw new HttpsError("already-exists", "이미 이 회차에 신청하셨습니다. 신청 조회에서 확인해주세요.");
+  }
+
+  // 파일은 신청서 저장 전에 올리고, 신청이 실패하면 지운다. 브라우저가 보낸 형식이 아니라 확인한 형식으로 저장하고,
+  // 내려받을 때 브라우저가 실행하지 않고 저장하도록 attachment로 둔다.
+  let filePath = "";
+  if (file) {
+    filePath = `${externalFilePrefix(appId)}${crypto.randomBytes(8).toString("hex")}${file.ext}`;
+    await admin
+      .storage()
+      .bucket()
+      .file(filePath)
+      .save(file.bytes, {
+        resumable: false,
+        contentType: file.mime,
+        metadata: {
+          contentDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+          metadata: { firebaseStorageDownloadTokens: crypto.randomUUID() },
+        },
+      });
+  }
+
+  try {
   await db.runTransaction(async (tx) => {
     const [freshProgram, counter, existing] = await Promise.all([tx.get(programRef), tx.get(counterRef), tx.get(appRef)]);
     const s = freshProgram.data()?.sessions?.[sessionId] as Record<string, unknown> | undefined;
@@ -1394,6 +1441,8 @@ export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY
       privateEnc: encryptPrivate({ phone, email, teamMembers, answers }, EXTERNAL_PII_ENC_KEY.value(), appId),
       route,
       teamName,
+      applicationFilePath: filePath,
+      applicationFileName: file?.name ?? "",
       privacyAgreed: true,
       status: "신청",
       lookupKey,
@@ -1402,6 +1451,10 @@ export const submitExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY
     });
     tx.set(secretRef, { lookupKey, pinHash, salt, createdAt: admin.firestore.FieldValue.serverTimestamp() });
   });
+  } catch (err) {
+    if (filePath) await admin.storage().bucket().file(filePath).delete().catch(() => undefined);
+    throw err;
+  }
 
   return { success: true };
 });
@@ -1526,6 +1579,7 @@ export const cancelExternalApplication = onCall({ secrets: [EXTERNAL_PII_ENC_KEY
     tx.delete(appRef);
     tx.delete(db.collection("externalApplicantSecrets").doc(applicationId));
   });
+  await deleteExternalFiles(applicationId);
   return { success: true };
 });
 
@@ -1776,6 +1830,8 @@ export const purgeExpiredExternalApplications = onSchedule(
         batch.delete(db.collection("externalApplicantSecrets").doc(doc.id));
       });
       await batch.commit();
+      // 신청서 파일도 함께 파기한다.
+      await Promise.all(snap.docs.map((doc) => deleteExternalFiles(doc.id)));
       if (snap.size < 200) break;
     }
     // 끝난 잠금 기록도 정리한다.
