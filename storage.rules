@@ -46,9 +46,15 @@ service firebase.storage {
     // 주의: getDownloadURL()로 발급한 다운로드 URL에는 토큰이 포함되어 있어,
     // 이미 발급된 URL은 이 규칙과 무관하게 계속 열람 가능하다(Firebase Storage의
     // 알려진 동작). 이 규칙은 새 무단 업로드/추측 경로 접근을 막는 용도다.
+    //
+    // 학생은 새 파일 올리기(create)만 할 수 있다 — 파일 이름에 무작위 값이 붙어 덮어쓸 일이 없는데, 예전에는
+    // update도 열려 있어서 심사·지급이 끝난 뒤 같은 경로에 다른 파일을 올려 증빙을 바꿔치기할 수 있었다.
     match /evidence/{studentId}/{fileName} {
       allow read: if isActiveSelf(studentId) || isAdmin();
-      allow write: if (isActiveSelf(studentId) || isAdmin()) &&
+      allow create: if (isActiveSelf(studentId) || isAdmin()) &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType == "application/pdf";
+      allow update: if isAdmin() &&
         request.resource.size < 10 * 1024 * 1024 &&
         request.resource.contentType == "application/pdf";
       allow delete: if false;
@@ -67,7 +73,11 @@ service firebase.storage {
     // 이미지)은 화면에서 고르게 하고, 서버에서는 실행 가능한 문서 형식을 막는다.
     match /programApplications/{studentId}/{fileName} {
       allow read: if isActiveSelf(studentId) || isAdmin();
-      allow write: if (isActiveSelf(studentId) || isAdmin()) &&
+      // 증빙서류와 같은 이유로 학생은 새로 올리기만, 덮어쓰기는 관리자만.
+      allow create: if (isActiveSelf(studentId) || isAdmin()) &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        !isActiveContent(request.resource.contentType);
+      allow update: if isAdmin() &&
         request.resource.size < 20 * 1024 * 1024 &&
         !isActiveContent(request.resource.contentType);
       allow delete: if false;

@@ -21,6 +21,7 @@ import {
   parseExternalRoute,
   type ExternalQuestion,
 } from "./externalValidation";
+import { clientIp, type RawRequestLike } from "./requestIp";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 import { Resend } from "resend";
@@ -125,16 +126,19 @@ async function setStudentPassword(uid: string, studentId: string, newPassword: s
     .set({ mustChangePassword: false, authUid: uid, passwordChangedAt: nowSeconds() }, { merge: true });
 }
 
-function clientIpHash(request: { rawRequest?: { ip?: string; headers?: Record<string, unknown> } }): string {
-  const forwarded = String(request.rawRequest?.headers?.["x-forwarded-for"] ?? "").split(",")[0].trim();
-  const ip = request.rawRequest?.ip || forwarded || "unknown";
-  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
+function clientIpHash(request: RawRequestLike): string {
+  return crypto.createHash("sha256").update(clientIp(request)).digest("hex").slice(0, 32);
+}
+
+/** Firestore 문서 ID로 쓸 값인지 — "/"가 들어가면 다른 경로(하위 컬렉션)를 가리키게 된다. */
+function isDocId(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0 && v.length <= 128 && !v.includes("/") && v !== "." && v !== "..";
 }
 
 /** 로그인 없이 부르는 함수의 남용(대량 등록·이름 대조 등)을 막기 위한 IP별 호출 횟수 제한.
  *  IP는 해시로만 저장한다. 학교 와이파이처럼 여러 학생이 한 IP를 쓰는 경우를 고려해 넉넉히 잡는다. */
 async function enforceRateLimit(
-  request: { rawRequest?: { ip?: string; headers?: Record<string, unknown> } },
+  request: RawRequestLike,
   name: string,
   limit: number,
   windowSeconds: number
@@ -146,7 +150,7 @@ async function enforceRateLimit(
 
 /** enforceRateLimit와 같지만 한도를 넘으면 오류 대신 false를 돌려준다 (조회수처럼 조용히 무시할 호출용). */
 async function consumeRateLimit(
-  request: { rawRequest?: { ip?: string; headers?: Record<string, unknown> } },
+  request: RawRequestLike,
   name: string,
   limit: number,
   windowSeconds: number
@@ -208,25 +212,8 @@ export const verifyCodeAndChangePassword = onCall(async (request) => {
   }
 
   const ref = admin.firestore().collection("passwordResets").doc(studentId);
-  const snap = await ref.get();
-  if (!snap.exists) {
-    throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
-  }
-  const data = snap.data()!;
-  if (!data.codeHash) {
-    throw new HttpsError("failed-precondition", "인증번호를 먼저 요청해주세요.");
-  }
-
-  if (data.attempts >= MAX_ATTEMPTS) {
-    throw new HttpsError("resource-exhausted", "시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.");
-  }
-  if ((data.expiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) {
-    throw new HttpsError("deadline-exceeded", "인증번호가 만료되었습니다. 다시 요청해주세요.");
-  }
-  if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) {
-    await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
-    throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
-  }
+  // 예전에는 트랜잭션 없이 읽고 대조해서 동시 요청으로 5회 제한을 넘길 수 있었다 — 공통 검사로 바꾼다.
+  await checkEmailCode(ref, code, false);
 
   // 학생명단에 없는 학번이거나 이 학번에 묶인 다른 Auth 계정이면, 메일 인증을 통과했더라도 바꾸지 않는다
   // (setStudentPassword가 authUid를 이 계정으로 묶어버리기 때문).
@@ -322,15 +309,19 @@ async function sendCodeEmail(to: string, code: string, opts: { title: string; no
 /** ref 문서에 저장된 인증번호와 대조한다. 틀리면 시도 횟수를 올리고 오류를 던진다(5회 초과 시 잠금).
  *  consume이면 맞았을 때 인증번호를 지워 다시 쓸 수 없게 한다. */
 async function checkEmailCode(ref: FirebaseFirestore.DocumentReference, code: string, consume: boolean): Promise<void> {
-  // 실패 시 시도 횟수 증가는 트랜잭션 밖에서 처리해야 롤백되지 않는다.
   const outcome = await admin.firestore().runTransaction(async (tx) => {
     const data = (await tx.get(ref)).data();
     if (!data?.codeHash) return "missing" as const;
-    if ((data.attempts as number) >= MAX_ATTEMPTS) return "exhausted" as const;
+    if (((data.attempts as number | undefined) ?? 0) >= MAX_ATTEMPTS) return "exhausted" as const;
     if ((data.expiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) return "expired" as const;
-    if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) return "mismatch" as const;
-    if (consume) tx.update(ref, { codeHash: null, expiresAt: null });
-    return "ok" as const;
+    // 대조하기 전에 같은 트랜잭션에서 시도 횟수부터 올린다 — 예전에는 틀렸을 때만 트랜잭션 밖에서 올려서,
+    // 동시에 수십 건을 보내면 모두 "0회 시도"로 읽혀 5회 제한을 넘겨 대입할 수 있었다.
+    const matched = hashesMatch(data.codeHash as string, sha256(code.trim()));
+    tx.update(ref, {
+      attempts: admin.firestore.FieldValue.increment(1),
+      ...(matched && consume ? { codeHash: null, expiresAt: null } : {}),
+    });
+    return matched ? ("ok" as const) : ("mismatch" as const);
   });
   switch (outcome) {
     case "missing":
@@ -340,7 +331,6 @@ async function checkEmailCode(ref: FirebaseFirestore.DocumentReference, code: st
     case "expired":
       throw new HttpsError("deadline-exceeded", "인증번호가 만료되었습니다. 다시 요청해주세요.");
     case "mismatch":
-      await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
       throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
   }
 }
@@ -428,16 +418,20 @@ export const verifyPasswordResetCode = onCall(async (request) => {
   const ref = admin.firestore().collection("passwordResetRequests").doc(account.studentId);
   const resetToken = crypto.randomBytes(32).toString("hex");
 
-  // 실패 시 시도 횟수 증가는 트랜잭션 밖에서 처리해야 롤백되지 않는다.
   const outcome = await admin.firestore().runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.data();
     if (!data?.codeHash) return "missing" as const;
-    if ((data.attempts as number) >= MAX_ATTEMPTS) return "exhausted" as const;
+    if (((data.attempts as number | undefined) ?? 0) >= MAX_ATTEMPTS) return "exhausted" as const;
     if ((data.expiresAt as FirebaseFirestore.Timestamp).toMillis() < Date.now()) return "expired" as const;
-    if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) return "mismatch" as const;
+    // checkEmailCode와 같이 대조 전에 시도 횟수를 같은 트랜잭션에서 올린다(동시 대입 차단).
+    if (!hashesMatch(data.codeHash as string, sha256(code.trim()))) {
+      tx.update(ref, { attempts: admin.firestore.FieldValue.increment(1) });
+      return "mismatch" as const;
+    }
 
     tx.update(ref, {
+      attempts: admin.firestore.FieldValue.increment(1),
       codeHash: null,
       tokenHash: sha256(resetToken),
       tokenExpiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000),
@@ -452,10 +446,8 @@ export const verifyPasswordResetCode = onCall(async (request) => {
       throw new HttpsError("resource-exhausted", "시도 횟수를 초과했습니다. 인증번호를 다시 요청해주세요.");
     case "expired":
       throw new HttpsError("deadline-exceeded", "인증번호가 만료되었습니다. 다시 요청해주세요.");
-    case "mismatch": {
-      await ref.update({ attempts: admin.firestore.FieldValue.increment(1) });
+    case "mismatch":
       throw new HttpsError("invalid-argument", "인증번호가 일치하지 않습니다.");
-    }
   }
 
   return { resetToken, expiresInMinutes: RESET_TOKEN_TTL_MINUTES };
@@ -509,12 +501,15 @@ export const resetPasswordWithToken = onCall(async (request) => {
 export const approveStudentRegistration = onCall(async (request) => {
   await requireAdminAuth(request.auth?.uid);
   const { requestId } = request.data as { requestId?: string };
-  if (!requestId) throw new HttpsError("invalid-argument", "requestId가 필요합니다.");
+  if (!isDocId(requestId)) throw new HttpsError("invalid-argument", "requestId가 필요합니다.");
 
   const reqRef = admin.firestore().collection("studentRegistrationRequests").doc(requestId);
   const reqSnap = await reqRef.get();
   if (!reqSnap.exists) throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
   const reg = reqSnap.data()!;
+  // 이미 처리된 신청을 다시 승인하면 그사이 비밀번호를 바꾼 학생 문서가 초기 비밀번호 상태로 덮어써진다.
+  if (reg.status !== "검토중") throw new HttpsError("failed-precondition", "이미 처리된 신청입니다.");
+  if (!isDocId(reg.studentId)) throw new HttpsError("failed-precondition", "신청 내역의 학번이 올바르지 않습니다.");
 
   const email = toStudentEmail(reg.studentId);
   let uid: string;
@@ -903,8 +898,8 @@ export const rejectEmailAccountRequest = onCall(async (request) => {
  * 신청 이력(mileageApplications 등)은 감사 기록으로 남기기 위해 그대로 둔다. */
 export const deleteStudent = onCall(async (request) => {
   await requireAdminAuth(request.auth?.uid);
-  const { studentId } = request.data as { studentId?: string };
-  if (!studentId) throw new HttpsError("invalid-argument", "studentId가 필요합니다.");
+  const { studentId } = request.data as { studentId?: unknown };
+  if (!isDocId(studentId)) throw new HttpsError("invalid-argument", "studentId가 필요합니다.");
 
   // 학번 메일 계정과, 학교 메일 아이디로 전환·승인된 경우 학생 문서에 묶인 계정(authUid)을 함께 지운다.
   const studentRef = admin.firestore().collection("students").doc(studentId);
@@ -1011,7 +1006,7 @@ export const exportBankAccountsForPayment = onCall({ secrets: [BANK_ACCOUNT_ENC_
   if (studentIds.length > MAX_EXPORT_BATCH) {
     throw new HttpsError("invalid-argument", `한 번에 최대 ${MAX_EXPORT_BATCH}명까지 내보낼 수 있습니다.`);
   }
-  if (!studentIds.every((id) => typeof id === "string" && id.length > 0)) {
+  if (!studentIds.every(isDocId)) {
     throw new HttpsError("invalid-argument", "studentIds 형식이 올바르지 않습니다.");
   }
 
@@ -1127,7 +1122,7 @@ export const exportStudentPrivateInfo = onCall({ secrets: [PHONE_ENC_KEY, BANK_A
   if (studentIds.length > MAX_EXPORT_BATCH) {
     throw new HttpsError("invalid-argument", `한 번에 최대 ${MAX_EXPORT_BATCH}명까지 내보낼 수 있습니다.`);
   }
-  if (!studentIds.every((id) => typeof id === "string" && id.length > 0)) {
+  if (!studentIds.every(isDocId)) {
     throw new HttpsError("invalid-argument", "studentIds 형식이 올바르지 않습니다.");
   }
   if (
@@ -1208,7 +1203,7 @@ export const hasPendingStudentRegistration = onCall(async (request) => {
  * 없게 한다. */
 export const checkPrivacyConsent = onCall(async (request) => {
   const { studentId, name } = request.data as { studentId?: string; name?: string };
-  if (!studentId || typeof studentId !== "string" || !studentId.trim()) {
+  if (!studentId || typeof studentId !== "string" || !isDocId(studentId.trim())) {
     throw new HttpsError("invalid-argument", "학번이 필요합니다.");
   }
   if (!name || typeof name !== "string" || !name.trim()) {
@@ -1425,9 +1420,26 @@ async function findExternalApplications(
   const db = admin.firestore();
   const lookupKey = externalLookupKey(name, phone);
   const guardRef = db.collection("externalLookupGuards").doc(lookupKey);
-  const guard = (await guardRef.get()).data();
   const now = Date.now();
-  if (guard?.lockedUntil && (guard.lockedUntil as FirebaseFirestore.Timestamp).toMillis() > now) {
+  // 비밀번호를 대조하기 전에 이번 시도를 "실패"로 먼저 기록하고(맞으면 아래에서 지운다), 잠금 여부도 같은
+  // 트랜잭션에서 판단한다. 예전에는 잠금 확인과 실패 기록이 따로 일어나서, 동시에 수천 건을 보내면 모두
+  // 잠기기 전 상태로 읽혀 4자리(1만 가지)를 한꺼번에 대입할 수 있었다.
+  const locked = await db.runTransaction(async (tx) => {
+    const g = (await tx.get(guardRef)).data();
+    if (g?.lockedUntil && (g.lockedUntil as FirebaseFirestore.Timestamp).toMillis() > now) return true;
+    const windowStart = (g?.windowStart as number | undefined) ?? 0;
+    const inWindow = now - windowStart < EXTERNAL_LOOKUP_LOCK_MS;
+    const failures = (inWindow ? ((g?.failures as number | undefined) ?? 0) : 0) + 1;
+    tx.set(guardRef, {
+      windowStart: inWindow ? windowStart : now,
+      failures,
+      lockedUntil:
+        failures >= EXTERNAL_LOOKUP_MAX_FAILURES ? admin.firestore.Timestamp.fromMillis(now + EXTERNAL_LOOKUP_LOCK_MS) : null,
+      expiresAt: admin.firestore.Timestamp.fromMillis(now + 2 * EXTERNAL_LOOKUP_LOCK_MS),
+    });
+    return false;
+  });
+  if (locked) {
     throw new HttpsError("resource-exhausted", "조회 비밀번호를 여러 번 틀려 1시간 동안 조회가 제한됩니다.");
   }
 
@@ -1445,23 +1457,8 @@ async function findExternalApplications(
     return pinMatches(pin, s.salt as string, s.pinHash as string);
   });
 
-  if (matched.length === 0) {
-    await db.runTransaction(async (tx) => {
-      const g = (await tx.get(guardRef)).data();
-      const windowStart = (g?.windowStart as number | undefined) ?? 0;
-      const inWindow = now - windowStart < EXTERNAL_LOOKUP_LOCK_MS;
-      const failures = (inWindow ? ((g?.failures as number | undefined) ?? 0) : 0) + 1;
-      tx.set(guardRef, {
-        windowStart: inWindow ? windowStart : now,
-        failures,
-        lockedUntil:
-          failures >= EXTERNAL_LOOKUP_MAX_FAILURES ? admin.firestore.Timestamp.fromMillis(now + EXTERNAL_LOOKUP_LOCK_MS) : null,
-        expiresAt: admin.firestore.Timestamp.fromMillis(now + 2 * EXTERNAL_LOOKUP_LOCK_MS),
-      });
-    });
-  } else if (guard) {
-    await guardRef.delete();
-  }
+  // 맞으면 미리 적어 둔 실패 기록을 지운다.
+  if (matched.length > 0) await guardRef.delete();
   return { lookupKey, docs: matched };
 }
 
