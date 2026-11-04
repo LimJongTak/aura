@@ -439,7 +439,7 @@ function ApplyModal({
     if (file && file.size > PROGRAM_FILE_MAX_BYTES) return setError("파일은 20MB 이하만 첨부할 수 있어요.");
     const unanswered = program.formQuestions.find((q) => q.required && isBlankAnswer(answers[q.id]));
     if (unanswered) return setError(`설문 "${unanswered.title}"에 답해주세요.`);
-    if (!agreed) return setError("개인정보 제공에 동의해주세요.");
+    if (!agreed) return setError("개인정보 수집·이용에 동의해주세요.");
 
     setSubmitting(true);
     try {
@@ -552,14 +552,26 @@ function ApplyModal({
             onChange={(id, v) => setAnswers((prev) => ({ ...prev, [id]: v }))}
           />
           <FormRow label="개인정보 동의" required>
-            <label className="flex items-center gap-2 text-sm">
+            {/* 외부인 신청 창과 같은 형식 — 수집 항목은 이 프로그램이 실제로 받는 항목에 맞춰 붙는다. */}
+            <div className="rounded-lg bg-surface px-3 py-2 text-[11px] leading-relaxed text-muted">
+              <p>
+                <b className="text-foreground">수집 항목</b>: 학번, 이름, 학과, 연락처, 이메일
+                {isTeam && ", 팀명·팀원"}
+                {", 신청서 파일(첨부한 경우)"}
+                {program.formQuestions.length > 0 && ", 설문 응답"}
+              </p>
+              <p>
+                <b className="text-foreground">이용 목적</b>: 프로그램 신청 접수·참가자 확인, 운영 안내 및 마일리지 지급
+              </p>
+              <p>
+                <b className="text-foreground">보유 기간</b>: 사업 종료 시까지 (신청 취소 시 즉시 삭제)
+              </p>
+              <p className="mt-1">동의를 거부할 수 있으며, 거부하면 프로그램 신청이 제한돼요.</p>
+            </div>
+            <label className="mt-2 flex items-center gap-2 text-sm">
               <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="h-4 w-4 accent-primary" />
-              개인정보 제공에 동의합니다
+              개인정보 수집·이용에 동의합니다
             </label>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted">
-              수집 항목: 학번, 이름, 학과, 연락처, 이메일 · 이용 목적: 프로그램 운영 및 마일리지 지급 · 보유 기간:
-              사업 종료 시까지
-            </p>
           </FormRow>
         </div>
         {error && <p className="mt-3 text-sm font-medium text-danger">{error}</p>}
