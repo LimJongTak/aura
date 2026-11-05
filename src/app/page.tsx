@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ClipboardList, GraduationCap, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, ClipboardList, GraduationCap, Phone, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { MILEAGE_SCORE_TABLE } from "@/lib/constants/mileageScoreTable";
@@ -215,7 +215,7 @@ export default function HomePage() {
 
           <Section title="문의처">
             <Card className="flex items-start gap-4 bg-surface">
-              <Sparkles className="mt-0.5 shrink-0 text-primary" size={20} />
+              <Phone className="mt-0.5 shrink-0 text-primary" size={20} />
               <div>
                 <p className="font-semibold text-foreground">국립순천대학교 AI인재양성부트캠프사업단</p>
                 <p className="mt-1">문의 전화: 061-750-5390 · 5391 · 5393 · 5394 · 5396</p>
