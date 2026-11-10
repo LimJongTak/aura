@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Eye, ShieldCheck, Trash2, X } from "lucide-react";
+import { Download, Eye, Pencil, ShieldCheck, Trash2, X } from "lucide-react";
+import { ApplicantEditForm, type EditField } from "@/components/admin/ApplicantEditForm";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -11,7 +12,9 @@ import {
   externalApplicationFileUrl,
   revealExternalApplicants,
   setExternalApplicationsStatus,
+  updateExternalApplicant,
 } from "@/lib/firestore/externalApplications";
+import { externalRouteChoices } from "@/types/models";
 import { exportExternalApplications } from "@/lib/excel/programApplicationsExport";
 import { cn } from "@/lib/utils/cn";
 import type {
@@ -53,6 +56,8 @@ export function ExternalApplicantsCard({
     fileUrl: string | null;
   } | null>(null);
   const [revealingId, setRevealingId] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const bySession = useMemo(
@@ -128,6 +133,8 @@ export function ExternalApplicantsCard({
         externalApplicationFileUrl(app).catch(() => null),
       ]);
       setDetail({ app, info: items[app.id] ?? null, fileUrl });
+      setEditing(false);
+      setSaved(null);
     } catch {
       setError("개인정보를 불러오지 못했어요.");
     } finally {
@@ -302,10 +309,87 @@ export function ExternalApplicantsCard({
         </Overlay>
       )}
 
-      {detail && (
+      {detail && editing && detail.info && (
+        <Overlay title="외부인 신청 정보 수정" onClose={() => setDetail(null)}>
+          <p className="mb-3 text-sm font-semibold text-foreground">{detail.app.name}</p>
+          <ApplicantEditForm
+            fields={[
+              {
+                key: "name",
+                label: "이름",
+                maxLength: 30,
+                hint: "이름·휴대전화번호를 고치면 신청자는 고친 값으로 신청 조회를 해야 해요 (조회 비밀번호는 그대로).",
+              },
+              { key: "phone", label: "휴대전화번호", maxLength: 20 },
+              { key: "email", label: "이메일", maxLength: 100 },
+              routeField(program.externalRouteOptions),
+              ...(isTeam || detail.app.teamName
+                ? [
+                    { key: "teamName", label: "팀명", maxLength: 50 },
+                    { key: "teamMembers", label: "팀원", multiline: true, maxLength: 1000 },
+                  ]
+                : []),
+            ]}
+            initial={{
+              name: detail.app.name,
+              phone: detail.info.phone,
+              email: detail.info.email,
+              route: detail.app.route,
+              teamName: detail.app.teamName,
+              teamMembers: detail.info.teamMembers,
+            }}
+            questions={[
+              ...program.formQuestions.map((q, i) => ({ q, label: `설문 ${i + 1}. ${q.title}` })),
+              ...program.externalQuestions.map((q, i) => ({ q, label: `추가 질문 ${i + 1}. ${q.title}` })),
+            ]}
+            initialAnswers={detail.info.answers}
+            onCancel={() => setEditing(false)}
+            onSave={async (v, answers) => {
+              const changed = await updateExternalApplicant(detail.app.id, {
+                name: v.name,
+                phone: v.phone,
+                email: v.email,
+                route: v.route,
+                teamName: v.teamName,
+                teamMembers: v.teamMembers,
+                answers,
+              });
+              setDetail({
+                ...detail,
+                app: { ...detail.app, name: v.name.trim(), route: v.route.trim(), teamName: v.teamName.trim() },
+                info: {
+                  phone: v.phone.replace(/\D/g, ""),
+                  email: v.email.trim().toLowerCase(),
+                  teamMembers: v.teamMembers.trim(),
+                  answers,
+                },
+              });
+              setSaved(changed.length > 0 ? "수정했어요." : "바뀐 내용이 없어요.");
+              setEditing(false);
+            }}
+          />
+        </Overlay>
+      )}
+
+      {detail && !editing && (
         <Overlay title="외부인 신청 상세" onClose={() => setDetail(null)}>
-          <p className="text-sm font-semibold text-foreground">{detail.app.name}</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-foreground">{detail.app.name}</p>
+            {detail.info && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSaved(null);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={14} /> 수정
+              </Button>
+            )}
+          </div>
           <p className="mt-0.5 text-[11px] text-muted">이 열람은 기록됐어요. 창을 닫으면 화면에서 원문이 지워져요.</p>
+          {saved && <p className="mt-2 text-sm font-medium text-success">{saved}</p>}
           {!detail.info && <p className="mt-3 text-sm text-danger">확인할 수 있는 정보가 없어요.</p>}
           {detail.info && (
           <dl className="mt-3 flex flex-col gap-3">
@@ -353,6 +437,18 @@ export function ExternalApplicantsCard({
       )}
     </Card>
   );
+}
+
+/** 신청 경로 수정칸 — 보기에 "기타(직접 입력)"가 있으면 "기타: 내용"을 적을 수 있게 글자 입력으로 둔다. */
+function routeField(options: string[]): EditField {
+  const choices = externalRouteChoices(options);
+  if (!choices.includes("기타")) return { key: "route", label: "신청 경로", options: choices };
+  return {
+    key: "route",
+    label: "신청 경로",
+    maxLength: 100,
+    hint: `보기 중 하나를 그대로 적거나 "기타: 내용" 형식으로 적어주세요. (${choices.join(" · ")})`,
+  };
 }
 
 function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {

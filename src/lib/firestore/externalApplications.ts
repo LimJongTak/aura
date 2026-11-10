@@ -165,6 +165,28 @@ export async function revealExternalApplicants(
   return merged;
 }
 
+export interface ExternalApplicantEdit {
+  name: string;
+  phone: string;
+  email: string;
+  route: string;
+  teamName: string;
+  teamMembers: string;
+  answers: Record<string, ProgramAnswer>;
+}
+
+const updateFn = httpsCallable<ExternalApplicantEdit & { id: string }, { success: boolean; changed: string[] }>(
+  functions,
+  "updateExternalApplicant"
+);
+
+/** 관리자 전용 — 외부인 신청서의 오탈자 등을 고친다. 이름·번호를 고치면 신청자는 고친 값으로 조회해야 한다
+ *  (조회 비밀번호는 그대로). 고친 항목 이름 목록을 돌려준다. */
+export async function updateExternalApplicant(id: string, input: ExternalApplicantEdit): Promise<string[]> {
+  const { data } = await updateFn({ id, ...input });
+  return data.changed;
+}
+
 // ─── 외부인 (비로그인, Cloud Function 경유) ──────────────────────────────────
 
 export interface ExternalApplyInput {

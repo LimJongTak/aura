@@ -342,7 +342,29 @@ export async function revealProgramApplicants(
   return merged;
 }
 
-/** 학생 본인 신청 취소 — 신청 상태이고 신청기간 안일 때만 가능 (규칙에서도 검증). */
+export interface ProgramApplicantEdit {
+  studentName: string;
+  department: string;
+  phone: string;
+  email: string;
+  teamName: string;
+  teamMembers: string;
+  answers: Record<string, ProgramAnswer>;
+}
+
+const updateApplicantFn = httpsCallable<ProgramApplicantEdit & { id: string }, { success: boolean; changed: string[] }>(
+  functions,
+  "updateProgramApplicant"
+);
+
+/** 관리자 전용 — 재학생 신청서의 오탈자 등을 고친다. 서버가 다시 검증·암호화하고 고친 항목을 기록한다.
+ *  이름·학과는 이 신청서에만 반영되고 학생명단은 바뀌지 않는다. 고친 항목 이름 목록을 돌려준다. */
+export async function updateProgramApplicant(id: string, input: ProgramApplicantEdit): Promise<string[]> {
+  const { data } = await updateApplicantFn({ id, ...input });
+  return data.changed;
+}
+
+/** 학생 본인 신청 취소 —신청 상태이고 신청기간 안일 때만 가능 (규칙에서도 검증). */
 export async function cancelProgramApplication(app: ProgramApplication): Promise<void> {
   const cRef = counterRef(app.programId, app.sessionId);
   const aRef = doc(db, "programApplications", app.id);

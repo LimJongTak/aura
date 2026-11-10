@@ -14,6 +14,7 @@ import {
 import {
   cleanText,
   isOwnApplicationFileUrl,
+  parseAdminEditedAnswers,
   parseExternalAnswers,
   parseExternalEmail,
   parseExternalName,
@@ -1631,8 +1632,106 @@ export const revealExternalApplicants = onCall({ secrets: [EXTERNAL_PII_ENC_KEY]
   return { items };
 });
 
+/** 관리자가 외부인 신청서의 오탈자 등을 고친다. 연락처·이메일·팀원·응답은 다시 암호화해 저장하고,
+ *  이름이나 번호를 고치면 신청자가 고친 값으로 조회·취소할 수 있게 조회키도 함께 바꾼다(조회 비밀번호는 그대로).
+ *  무엇을 고쳤는지(항목 이름만, 원문 제외)를 열람 기록에 purpose "edit"로 남긴다. */
+export const updateExternalApplicant = onCall({ secrets: [EXTERNAL_PII_ENC_KEY] }, async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const d = (request.data ?? {}) as Record<string, unknown>;
+  if (typeof d.id !== "string" || !FIRESTORE_ID_PATTERN.test(d.id)) {
+    throw new HttpsError("invalid-argument", "신청 정보가 올바르지 않습니다.");
+  }
+  const appId = d.id;
+  const name = parseExternalName(d.name);
+  const phone = parseExternalPhone(d.phone);
+  const email = parseExternalEmail(d.email);
+
+  const db = admin.firestore();
+  const appRef = db.collection("externalProgramApplications").doc(appId);
+  const secretRef = db.collection("externalApplicantSecrets").doc(appId);
+  const key = EXTERNAL_PII_ENC_KEY.value();
+  const lookupKey = externalLookupKey(name, phone);
+
+  const changed = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(appRef);
+    const a = snap.data();
+    if (!a) throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
+    const program = (await tx.get(db.collection("programs").doc(a.programId as string))).data() ?? {};
+    const prev =
+      typeof a.privateEnc === "string"
+        ? decryptPrivate(a.privateEnc, key, appId)
+        : { phone: "", email: "", teamMembers: "", answers: {} };
+
+    // 신청 뒤에 경로 보기가 바뀌었을 수 있어 고치지 않은 경로는 그대로 받는다.
+    const routeOptions = Array.isArray(program.externalRouteOptions) ? (program.externalRouteOptions as string[]) : [];
+    const route = d.route === a.route ? String(a.route ?? "") : parseExternalRoute(d.route, routeOptions);
+    const isTeam = program.teamType === "팀" || !!a.teamName;
+    const teamName = isTeam ? cleanText(d.teamName, "팀명", 50) : "";
+    const teamMembers = isTeam ? cleanText(d.teamMembers, "팀원", 1000, { multiline: true }) : "";
+    const questions = [
+      ...(Array.isArray(program.formQuestions) ? (program.formQuestions as ExternalQuestion[]) : []),
+      ...(Array.isArray(program.externalQuestions) ? (program.externalQuestions as ExternalQuestion[]) : []),
+    ];
+    const answers = parseAdminEditedAnswers(d.answers, questions, prev.answers);
+
+    const fields: string[] = [];
+    if (name !== a.name) fields.push("name");
+    if (phone !== prev.phone) fields.push("phone");
+    if (email !== prev.email) fields.push("email");
+    if (route !== a.route) fields.push("route");
+    if (teamName !== (a.teamName ?? "")) fields.push("teamName");
+    if (teamMembers !== prev.teamMembers) fields.push("teamMembers");
+    if (JSON.stringify(answers) !== JSON.stringify(prev.answers)) fields.push("answers");
+    if (fields.length === 0) return fields;
+
+    if (lookupKey !== a.lookupKey) {
+      // 고친 이름·번호로 같은 회차에 이미 신청한 사람이 있으면 조회가 섞이므로 막는다.
+      const dup = await tx.get(
+        db
+          .collection("externalProgramApplications")
+          .where("lookupKey", "==", lookupKey)
+          .where("programId", "==", a.programId)
+          .where("sessionId", "==", a.sessionId)
+          .limit(1)
+      );
+      if (!dup.empty) {
+        throw new HttpsError("already-exists", "같은 이름·번호로 이 회차에 신청한 내역이 이미 있습니다.");
+      }
+      const secret = await tx.get(secretRef);
+      if (secret.exists) tx.update(secretRef, { lookupKey });
+    }
+
+    tx.update(appRef, {
+      name,
+      route,
+      teamName,
+      lookupKey,
+      phoneMasked: maskExternalPhone(phone),
+      emailMasked: maskEmail(email),
+      privateEnc: encryptPrivate({ phone, email, teamMembers, answers }, key, appId),
+      editedAt: admin.firestore.FieldValue.serverTimestamp(),
+      editedBy: request.auth?.token.email ?? request.auth!.uid,
+    });
+    return fields;
+  });
+
+  if (changed.length > 0) {
+    const programId = (await appRef.get()).data()?.programId ?? null;
+    await db.collection("externalApplicantAccessLogs").add({
+      adminUid: request.auth!.uid,
+      adminEmail: request.auth?.token.email ?? null,
+      purpose: "edit",
+      applicationIds: [appId],
+      programIds: programId ? [programId] : [],
+      changedFields: changed,
+      accessedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  return { success: true, changed };
+});
+
 // ---------------------------------------------------------------------------
-// 재학생 프로그램 신청 — 예전에는 학생 브라우저가 programApplications에 연락처·이메일·팀원·설문 응답을
+// 재학생 프로그램 신청 —예전에는 학생 브라우저가 programApplications에 연락처·이메일·팀원·설문 응답을
 // 평문으로 직접 썼다. 이제 이 함수만 신청서를 만들고(규칙 create: false), 그 항목들은 재학생 연락처 키
 // (PHONE_ENC_KEY)로 외부인 신청과 같은 방식(AES-256-GCM, 문서 ID를 AAD로)으로 privateEnc에 묶어 저장한다.
 // 문서에는 화면용 마스킹 값만 평문으로 남고, 관리자는 revealProgramApplicants로 볼 때마다 기록이 남는다.
@@ -1782,6 +1881,86 @@ export const revealProgramApplicants = onCall({ secrets: [PHONE_ENC_KEY] }, asyn
     accessedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
   return { items };
+});
+
+/** 관리자가 재학생 신청서의 오탈자 등을 고친다. 이름·학과는 신청 당시 학생명단에서 복사한 값이라 여기서
+ *  고쳐도 학생명단은 바뀌지 않는다. 연락처·이메일·팀원·응답은 다시 암호화해 저장하고(예전 평문 문서면
+ *  이참에 평문 필드를 지운다), 고친 항목 이름만 열람 기록에 purpose "edit"로 남긴다. */
+export const updateProgramApplicant = onCall({ secrets: [PHONE_ENC_KEY] }, async (request) => {
+  await requireAdminAuth(request.auth?.uid);
+  const d = (request.data ?? {}) as Record<string, unknown>;
+  if (!isDocId(d.id)) throw new HttpsError("invalid-argument", "신청 정보가 올바르지 않습니다.");
+  const appId = d.id;
+  const studentName = parseExternalName(d.studentName);
+  const department = cleanText(d.department, "학과", 50);
+  if (/^[=+\-@]/.test(department)) throw new HttpsError("invalid-argument", "학과를 올바르게 입력해주세요.");
+  const phone = typeof d.phone === "string" ? d.phone.replace(/[^0-9]/g, "") : "";
+  if (typeof d.phone !== "string" || d.phone.length > 20 || !/^0\d{8,10}$/.test(phone)) {
+    throw new HttpsError("invalid-argument", "연락처를 숫자로 정확히 입력해주세요.");
+  }
+  const email = parseExternalEmail(d.email);
+
+  const db = admin.firestore();
+  const appRef = db.collection("programApplications").doc(appId);
+  const key = PHONE_ENC_KEY.value();
+
+  const changed = await db.runTransaction(async (tx) => {
+    const a = (await tx.get(appRef)).data();
+    if (!a) throw new HttpsError("not-found", "신청 내역을 찾을 수 없습니다.");
+    const program = (await tx.get(db.collection("programs").doc(a.programId as string))).data() ?? {};
+    const legacy = typeof a.privateEnc !== "string";
+    const prev = legacy ? legacyProgramPrivate(a) : decryptPrivate(a.privateEnc, key, appId);
+
+    const isTeam = program.teamType === "팀" || a.teamType === "팀" || !!a.teamName;
+    const teamName = isTeam ? cleanText(d.teamName, "팀명", 50) : "";
+    const teamMembers = isTeam ? cleanText(d.teamMembers, "팀원", 1000, { multiline: true }) : "";
+    const questions = Array.isArray(program.formQuestions) ? (program.formQuestions as ExternalQuestion[]) : [];
+    const answers = parseAdminEditedAnswers(d.answers, questions, prev.answers);
+
+    const fields: string[] = [];
+    if (studentName !== a.studentName) fields.push("studentName");
+    if (department !== a.department) fields.push("department");
+    if (phone !== prev.phone.replace(/[^0-9]/g, "")) fields.push("phone");
+    if (email !== prev.email) fields.push("email");
+    if (teamName !== (a.teamName ?? "")) fields.push("teamName");
+    if (teamMembers !== prev.teamMembers) fields.push("teamMembers");
+    if (JSON.stringify(answers) !== JSON.stringify(prev.answers)) fields.push("answers");
+    if (fields.length === 0) return fields;
+
+    tx.update(appRef, {
+      studentName,
+      department,
+      teamName,
+      phoneMasked: maskExternalPhone(phone),
+      emailMasked: maskEmail(email),
+      privateEnc: encryptPrivate({ phone, email, teamMembers, answers }, key, appId),
+      editedAt: admin.firestore.FieldValue.serverTimestamp(),
+      editedBy: request.auth?.token.email ?? request.auth!.uid,
+      ...(legacy
+        ? {
+            phone: admin.firestore.FieldValue.delete(),
+            email: admin.firestore.FieldValue.delete(),
+            teamMembers: admin.firestore.FieldValue.delete(),
+            answers: admin.firestore.FieldValue.delete(),
+          }
+        : {}),
+    });
+    return fields;
+  });
+
+  if (changed.length > 0) {
+    const programId = (await appRef.get()).data()?.programId ?? null;
+    await db.collection("programApplicantAccessLogs").add({
+      adminUid: request.auth!.uid,
+      adminEmail: request.auth?.token.email ?? null,
+      purpose: "edit",
+      applicationIds: [appId],
+      programIds: programId ? [programId] : [],
+      changedFields: changed,
+      accessedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  return { success: true, changed };
 });
 
 /** 예전 방식으로 평문 저장된 재학생 신청서를 privateEnc로 옮기고 평문 필드를 지운다. 매일 돌지만 옮길

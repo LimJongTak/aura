@@ -198,3 +198,33 @@ export function parseExternalAnswers(raw: unknown, questions: ExternalQuestion[]
   }
   return result;
 }
+
+function sameAnswer(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => x === b[i]);
+  return typeof a === "string" && a === b;
+}
+
+/** 관리자가 신청서의 오탈자 등을 고칠 때의 응답 검증. 신청 뒤에 문항·보기가 바뀌었을 수 있어서
+ *  고치지 않은 응답은 그대로 두고, 바꾼 응답만 형식·보기 목록을 확인한다(필수 여부는 따지지 않는다).
+ *  지금 양식에 없는 예전 문항의 응답도 지우지 않고 남긴다. */
+export function parseAdminEditedAnswers(
+  raw: unknown,
+  questions: ExternalQuestion[],
+  previous: Record<string, string | string[]>
+): Record<string, string | string[]> {
+  const input = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const result: Record<string, string | string[]> = {};
+  const known = new Set(questions.map((q) => q.id));
+  for (const [id, v] of Object.entries(previous)) {
+    if (!known.has(id)) result[id] = v;
+  }
+  for (const q of questions) {
+    const v = input[q.id];
+    if (previous[q.id] !== undefined && sameAnswer(v, previous[q.id])) {
+      result[q.id] = previous[q.id];
+      continue;
+    }
+    Object.assign(result, parseExternalAnswers({ [q.id]: v }, [{ ...q, required: false }]));
+  }
+  return result;
+}

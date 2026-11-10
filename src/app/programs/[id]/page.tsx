@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { NonCurricularBadge, PhaseBadge } from "@/components/programs/shared";
 import { ProgramContent } from "@/components/programs/ProgramContent";
+import { QuestionInput, textareaClass } from "@/components/programs/QuestionInput";
 import { useStudentSession } from "@/lib/auth/useStudentSession";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { toStudentEmail } from "@/lib/auth/studentAuth";
@@ -916,67 +917,6 @@ function cleanAnswers(questions: ProgramQuestion[], answers: Record<string, Prog
     result[q.id] = Array.isArray(a) ? q.options.filter((o) => a.includes(o)) : a!.trim();
   }
   return result;
-}
-
-const textareaClass =
-  "w-full rounded-xl border border-border bg-white px-3.5 py-2 text-sm outline-none transition placeholder:text-muted focus:border-primary focus:ring-2 focus:ring-primary/15";
-
-function QuestionInput({
-  question: q,
-  value,
-  onChange,
-}: {
-  question: ProgramQuestion;
-  value: ProgramAnswer | undefined;
-  onChange: (v: ProgramAnswer) => void;
-}) {
-  const text = typeof value === "string" ? value : "";
-  const checked = Array.isArray(value) ? value : [];
-  return (
-    <div>
-      {q.description && <p className="mb-1.5 whitespace-pre-wrap break-words text-xs text-muted">{q.description}</p>}
-      {q.type === "short" && <Input value={text} onChange={(e) => onChange(e.target.value)} maxLength={500} className="py-2" />}
-      {q.type === "long" && (
-        <textarea value={text} onChange={(e) => onChange(e.target.value)} rows={4} maxLength={3000} className={textareaClass} />
-      )}
-      {q.type === "date" && <Input type="date" value={text} onChange={(e) => onChange(e.target.value)} className="py-2" />}
-      {q.type === "dropdown" && (
-        <Select value={text} onChange={(e) => onChange(e.target.value)} className="py-2">
-          <option value="">선택</option>
-          {q.options.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </Select>
-      )}
-      {(q.type === "single" || q.type === "multiple") && (
-        <div className="flex flex-col gap-1.5 py-0.5">
-          {q.options.map((o) => (
-            <label key={o} className="flex cursor-pointer items-center gap-2 text-sm">
-              {q.type === "single" ? (
-                <input
-                  type="radio"
-                  name={`q-${q.id}`}
-                  checked={text === o}
-                  onChange={() => onChange(o)}
-                  className="h-4 w-4 shrink-0 accent-primary"
-                />
-              ) : (
-                <input
-                  type="checkbox"
-                  checked={checked.includes(o)}
-                  onChange={(e) => onChange(e.target.checked ? [...checked, o] : checked.filter((x) => x !== o))}
-                  className="h-4 w-4 shrink-0 accent-primary"
-                />
-              )}
-              <span className="break-words">{o}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function FormRow({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {

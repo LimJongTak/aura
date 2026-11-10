@@ -26,7 +26,9 @@ import {
   setProgramApplicationsStatus,
   subscribeApplicationsForProgram,
   subscribeProgramCounts,
+  updateProgramApplicant,
 } from "@/lib/firestore/programs";
+import { ApplicantEditForm } from "@/components/admin/ApplicantEditForm";
 import { listSemesters } from "@/lib/firestore/semesters";
 import {
   exportProgramApplications,
@@ -735,13 +737,88 @@ function ApplicantDetailModal({
   detail: { app: ProgramApplication; info: ExternalPrivateInfo | null };
   onClose: () => void;
 }) {
-  const { app, info } = detail;
+  const [app, setApp] = useState(detail.app);
+  const [info, setInfo] = useState(detail.info);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const isTeam = program.teamType === "팀" || !!app.teamName;
+
+  if (editing && info) {
+    return (
+      <ModalShell title="신청 정보 수정" wide onClose={onClose}>
+        <p className="mb-3 text-sm font-semibold text-foreground">
+          {app.studentName} <span className="font-normal text-muted">· {app.studentId}</span>
+        </p>
+        <ApplicantEditForm
+          fields={[
+            { key: "studentName", label: "이름", maxLength: 30, hint: "이 신청서에만 반영돼요. 학생명단은 학생 관리에서 고쳐주세요." },
+            { key: "department", label: "학과", maxLength: 50 },
+            { key: "phone", label: "연락처", maxLength: 20 },
+            { key: "email", label: "이메일", maxLength: 100 },
+            ...(isTeam
+              ? [
+                  { key: "teamName", label: "팀명", maxLength: 50 },
+                  { key: "teamMembers", label: "팀원", multiline: true, maxLength: 1000 },
+                ]
+              : []),
+          ]}
+          initial={{
+            studentName: app.studentName,
+            department: app.department,
+            phone: info.phone,
+            email: info.email,
+            teamName: app.teamName ?? "",
+            teamMembers: info.teamMembers,
+          }}
+          questions={program.formQuestions.map((q, i) => ({ q, label: `${i + 1}. ${q.title}` }))}
+          initialAnswers={info.answers}
+          onCancel={() => setEditing(false)}
+          onSave={async (v, answers) => {
+            const changed = await updateProgramApplicant(app.id, {
+              studentName: v.studentName,
+              department: v.department,
+              phone: v.phone,
+              email: v.email,
+              teamName: v.teamName,
+              teamMembers: v.teamMembers,
+              answers,
+            });
+            setApp({ ...app, studentName: v.studentName.trim(), department: v.department.trim(), teamName: v.teamName.trim() });
+            setInfo({
+              phone: v.phone.replace(/\D/g, ""),
+              email: v.email.trim().toLowerCase(),
+              teamMembers: v.teamMembers.trim(),
+              answers,
+            });
+            setSaved(changed.length > 0 ? "수정했어요." : "바뀐 내용이 없어요.");
+            setEditing(false);
+          }}
+        />
+      </ModalShell>
+    );
+  }
+
   return (
     <ModalShell title="신청 상세" wide onClose={onClose}>
-      <p className="text-sm font-semibold text-foreground">
-        {app.studentName} <span className="font-normal text-muted">· {app.studentId}</span>
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-semibold text-foreground">
+          {app.studentName} <span className="font-normal text-muted">· {app.studentId}</span>
+        </p>
+        {info && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSaved(null);
+              setEditing(true);
+            }}
+          >
+            <Pencil size={14} /> 수정
+          </Button>
+        )}
+      </div>
       <p className="mt-0.5 text-[11px] text-muted">이 열람은 기록됐어요. 창을 닫으면 화면에서 원문이 지워져요.</p>
+      {saved && <p className="mt-2 text-sm font-medium text-success">{saved}</p>}
       {!info && <p className="mt-3 text-sm text-danger">확인할 수 있는 정보가 없어요.</p>}
       <dl className="mt-3 flex flex-col gap-3">
         {info &&
