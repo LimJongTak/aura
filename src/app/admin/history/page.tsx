@@ -279,10 +279,21 @@ export default function AdminHistoryPage() {
   }
 
   async function handleAdvancedChange(id: string, next: ApplicationStatus) {
-    if (!confirm(`이 신청의 상태를 "${STATUS_CHANGE_LABEL[next]}"(으)로 변경할까요?`)) return;
+    let reason: string | undefined;
+    if (next === "반려") {
+      const input = prompt("반려 사유를 입력해주세요.");
+      if (input === null) return;
+      if (!input.trim()) {
+        alert("반려 사유를 입력해주세요.");
+        return;
+      }
+      reason = input.trim();
+    } else {
+      if (!confirm(`이 신청의 상태를 "${STATUS_CHANGE_LABEL[next]}"(으)로 변경할까요?`)) return;
+    }
     setBusyId(id);
     try {
-      await updateAdvancedApplicationStatus(id, next);
+      await updateAdvancedApplicationStatus(id, next, reason);
       await refresh();
     } catch {
       alert("상태 변경에 실패했어요. 잠시 후 다시 시도해주세요.");

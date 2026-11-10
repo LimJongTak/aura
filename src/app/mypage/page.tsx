@@ -487,6 +487,7 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
                     </td>
                     <td className="px-4 py-2.5">
                       <StatusBadge status={a.status} />
+                      {a.status === "반려" && a.note && <p className="mt-1 text-xs text-danger">반려 사유: {a.note}</p>}
                     </td>
                   </tr>
                 ))}

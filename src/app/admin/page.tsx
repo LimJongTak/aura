@@ -166,7 +166,14 @@ export default function AdminPage() {
   const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [semesterChoice, setSemesterChoice] = useState<Record<string, string>>({});
-  const [rejectTarget, setRejectTarget] = useState<MileageApplication | null>(null);
+  // 마일리지 신청과 중고급 이수 신청이 같은 반려 사유 창을 쓴다.
+  const [rejectTarget, setRejectTarget] = useState<{
+    kind: "mileage" | "advanced";
+    id: string;
+    studentId: string;
+    studentName: string;
+    label: string;
+  } | null>(null);
   const [rejectDraft, setRejectDraft] = useState("");
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [criteriaDrafts, setCriteriaDrafts] = useState<Record<string, EligibilityCriteria>>({});
@@ -254,7 +261,18 @@ export default function AdminPage() {
   }
 
   function openRejectModal(app: MileageApplication) {
-    setRejectTarget(app);
+    setRejectTarget({ kind: "mileage", id: app.id, studentId: app.studentId, studentName: app.studentName, label: app.activityName });
+    setRejectDraft("");
+  }
+
+  function openAdvancedRejectModal(app: AdvancedApplication) {
+    setRejectTarget({
+      kind: "advanced",
+      id: app.id,
+      studentId: app.studentId,
+      studentName: app.studentName,
+      label: `중고급 이수 신청 · ${app.targetSemester} ${app.level}`,
+    });
     setRejectDraft("");
   }
 
@@ -273,7 +291,8 @@ export default function AdminPage() {
     const id = rejectTarget.id;
     setBusyId(id);
     try {
-      await updateMileageApplicationStatus(id, "반려", reason, semesterChoice[id]);
+      if (rejectTarget.kind === "advanced") await updateAdvancedApplicationStatus(id, "반려", reason);
+      else await updateMileageApplicationStatus(id, "반려", reason, semesterChoice[id]);
       await refresh();
       closeRejectModal();
     } catch {
@@ -486,7 +505,7 @@ export default function AdminPage() {
                         size="sm"
                         variant="danger"
                         loading={busy}
-                        onClick={() => handleAdvancedDecision(a.id, "반려")}
+                        onClick={() => openAdvancedRejectModal(a)}
                       >
                         반려
                       </Button>
@@ -716,7 +735,7 @@ export default function AdminPage() {
           <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-bold text-foreground">반려 사유 입력</h3>
             <p className="mt-1 text-xs text-muted">
-              {rejectTarget.studentId} {rejectTarget.studentName} · {rejectTarget.activityName}
+              {rejectTarget.studentId} {rejectTarget.studentName} · {rejectTarget.label}
             </p>
             <textarea
               autoFocus
