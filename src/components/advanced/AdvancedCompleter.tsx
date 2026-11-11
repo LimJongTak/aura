@@ -1,6 +1,49 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Award } from "lucide-react";
+import { Card } from "@/components/ui/Card";
 import { formatDate } from "@/lib/firestore/programs";
+import { listAdvancedPaymentsForStudent } from "@/lib/firestore/scholarshipPayments";
 import type { AdvancedApplication, CompletionLevel, ScholarshipPayment } from "@/types/models";
+
+/** 학생의 중고급 이수 장학금 지급 기록. null = 아직 확인 중. 조회에 실패하면 빈
+ *  배열로 두어 신청을 막지 않는다 — 관리자 검토 단계에서 다시 걸러진다. */
+export function useAdvancedPayments(studentId: string): ScholarshipPayment[] | null {
+  const [payments, setPayments] = useState<ScholarshipPayment[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setPayments(null);
+    listAdvancedPaymentsForStudent(studentId)
+      .then((list) => {
+        if (!cancelled) setPayments(list);
+      })
+      .catch(() => {
+        if (!cancelled) setPayments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId]);
+  return payments;
+}
+
+/** 이미 중고급 이수 장학금을 받은 학생에게 신청 폼 대신 보여주는 안내 (최대 1회 수혜). */
+export function AdvancedAlreadyPaidCard({ studentName, payments }: { studentName: string; payments: ScholarshipPayment[] }) {
+  const paidSemesters = [...new Set(payments.map((p) => p.semester))].join(", ");
+  return (
+    <Card>
+      <p className="text-base font-bold text-foreground">이미 중고급 이수 장학금을 받으셨습니다</p>
+      <p className="mt-2 text-sm text-muted">
+        {studentName}님은 {paidSemesters}에 중고급 이수 장학금을 지급받았습니다.
+      </p>
+      <p className="mt-3 rounded-xl border border-warning/30 bg-warning-light px-4 py-3 text-sm font-bold text-warning">
+        중고급 이수 장학금은 최대 1회만 수혜 가능하므로 다시 신청할 수 없습니다.
+      </p>
+      <p className="mt-3 text-xs text-muted">문의 사항은 사업단으로 연락해주세요.</p>
+    </Card>
+  );
+}
 
 /**
  * 중고급 이수 장학금을 지급받은 학생의 이수 등급. 지급 기록에는 등급이 없으므로

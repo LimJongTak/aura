@@ -18,6 +18,7 @@ import {
   SubjectRow,
   emptySubject,
 } from "@/components/advanced/shared";
+import { AdvancedAlreadyPaidCard, useAdvancedPayments } from "@/components/advanced/AdvancedCompleter";
 import { submitEligibilityCheck } from "@/lib/firestore/eligibilityChecks";
 import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
@@ -77,6 +78,9 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
   const [nonCurricularYearMonth, setNonCurricularYearMonth] = useState("");
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [transcriptFileError, setTranscriptFileError] = useState<string | null>(null);
+
+  // 중고급 이수 장학금은 최대 1회만 수혜 가능 — 이미 받은 학생은 요건 확인도 막는다.
+  const advancedPayments = useAdvancedPayments(student.studentId);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -201,6 +205,14 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
         </p>
       </Card>
     );
+  }
+
+  if (advancedPayments === null) {
+    return <p className="py-10 text-center text-sm text-muted">불러오는 중...</p>;
+  }
+
+  if (advancedPayments.length > 0) {
+    return <AdvancedAlreadyPaidCard studentName={student.name} payments={advancedPayments} />;
   }
 
   if (submitted) {
