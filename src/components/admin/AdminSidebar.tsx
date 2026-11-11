@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "firebase/auth";
@@ -17,11 +18,13 @@ import {
   LogOut,
   type LucideIcon,
   Megaphone,
+  Menu,
   Send,
   ShieldCheck,
   UserPlus,
   Users,
   Wallet,
+  X,
 } from "lucide-react";
 import { auth } from "@/lib/firebase/client";
 import { useAdminPendingCounts, type AdminPendingCounts } from "@/lib/auth/useAdminPendingCounts";
@@ -101,41 +104,125 @@ function CountDot({ count }: { count: number }) {
   );
 }
 
+function MobileAdminNav({
+  pathname,
+  counts,
+  email,
+}: {
+  pathname: string;
+  counts: AdminPendingCounts;
+  email?: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const allItems = NAV_GROUPS.flatMap((g) => g.items);
+  const current = allItems.find((item) => isActive(pathname, item.href, item.exact));
+  const CurrentIcon = current?.icon ?? LayoutDashboard;
+  const totalCount = allItems.reduce((sum, item) => sum + (item.badge ? counts[item.badge] : 0), 0);
+
+  // 메뉴를 고르면(경로가 바뀌면) 시트를 닫는다.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // 시트가 열려 있는 동안 뒤 페이지가 스크롤되지 않게 한다.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
+  return (
+    // sticky는 바깥 래퍼에 둔다 — 블러(backdrop-filter)가 걸린 요소 안에 fixed 시트를
+    // 두면 시트가 화면이 아니라 그 바 기준으로 잡히므로 시트는 바의 형제로 둔다.
+    <div className="sticky top-16 z-30 -mx-4 -mt-2 sm:-mx-6 lg:hidden">
+      <div className="flex items-center gap-2 border-b border-border bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6">
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-bold text-foreground">
+          <CurrentIcon size={16} className="shrink-0 text-primary" />
+          <span className="truncate">{current?.label ?? "관리자"}</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="relative flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3.5 py-2 text-xs font-semibold text-foreground active:bg-surface"
+        >
+          <Menu size={15} /> 메뉴
+          {totalCount > 0 && (
+            <span className="flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
+              {totalCount > 99 ? "99+" : totalCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="관리자 메뉴">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+            <p className="text-base font-extrabold text-foreground">관리자 메뉴</p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-full p-2 text-muted active:bg-surface"
+              aria-label="메뉴 닫기"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 pb-8 pt-3">
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label} className="mt-3 first:mt-0">
+                <p className="px-1 pb-1.5 text-xs font-bold text-muted">{group.label}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
+                    const active = isActive(pathname, href, exact);
+                    const count = badge ? counts[badge] : 0;
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setOpen(false)}
+                        className={cn(
+                          "flex min-h-12 items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold transition",
+                          active ? "bg-primary text-white" : "border border-border text-foreground active:bg-surface"
+                        )}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        <span className="min-w-0 flex-1 leading-snug">{label}</span>
+                        <CountDot count={count} />
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <div className="mt-6 border-t border-border pt-4">
+              {email && <p className="truncate px-1 text-xs text-muted">{email}</p>}
+              <button
+                type="button"
+                onClick={() => signOut(auth)}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-border px-3 py-3 text-sm font-semibold text-muted active:bg-surface"
+              >
+                <LogOut size={16} /> 로그아웃
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminSidebar({ email }: { email?: string | null }) {
   const pathname = usePathname();
   const counts = useAdminPendingCounts(true);
 
   return (
     <>
-      {/* 모바일: 상단 가로 스크롤 탭 — 그룹 사이에 얇은 구분선을 둔다 */}
-      <nav className="-mx-4 flex items-center gap-1.5 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 lg:hidden">
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={group.label} className="flex shrink-0 items-center gap-1.5">
-            {gi > 0 && <span className="h-5 w-px shrink-0 bg-border" aria-hidden />}
-            {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
-              const active = isActive(pathname, href, exact);
-              const count = badge ? counts[badge] : 0;
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    "relative flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition",
-                    active
-                      ? "bg-primary text-white"
-                      : "border border-border text-muted hover:border-primary hover:text-primary"
-                  )}
-                >
-                  <Icon size={14} /> {label}
-                  {count > 0 && (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-white" />
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+      {/* 모바일·태블릿: 현재 메뉴 + "메뉴" 버튼 바. 누르면 전체 메뉴를 그룹별로 펼친
+          시트가 열린다 (예전 가로 스크롤 탭은 17개 메뉴를 옆으로 넘겨가며 찾아야 했다). */}
+      <MobileAdminNav pathname={pathname} counts={counts} email={email} />
 
       {/* 데스크톱: 좌측 고정 사이드바 — 그룹별로 소제목을 둔다 */}
       <aside className="hidden w-56 shrink-0 lg:block">

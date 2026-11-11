@@ -38,6 +38,9 @@ import type {
 
 type Category = "mileage" | "advanced" | "eligibility";
 
+/** 휴대폰에서만 승인·반려 버튼을 반씩 나눠 크게 — PC 모양은 그대로다. */
+const MOBILE_ACTION = "max-sm:flex-1 max-sm:py-2.5";
+
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
@@ -360,7 +363,7 @@ export default function AdminPage() {
         <p className="mt-4 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">{loadError}</p>
       )}
 
-      <div className="mt-5 flex gap-2">
+      <div className="mt-5 flex gap-2 max-sm:flex-wrap">
         <TabButton active={category === "mileage"} onClick={() => setCategory("mileage")}>
           마일리지 신청 ({mileageApps.length})
         </TabButton>
@@ -442,11 +445,11 @@ export default function AdminPage() {
                         ))}
                       </Select>
                     </div>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" loading={busy} onClick={() => handleMileageApprove(a.id)}>
+                    <div className="flex gap-1.5 max-sm:w-full">
+                      <Button size="sm" loading={busy} onClick={() => handleMileageApprove(a.id)} className={MOBILE_ACTION}>
                         승인
                       </Button>
-                      <Button size="sm" variant="danger" loading={busy} onClick={() => openRejectModal(a)}>
+                      <Button size="sm" variant="danger" loading={busy} onClick={() => openRejectModal(a)} className={MOBILE_ACTION}>
                         반려
                       </Button>
                     </div>
@@ -497,12 +500,13 @@ export default function AdminPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-1.5">
-                      <Button size="sm" loading={busy} onClick={() => handleAdvancedDecision(a.id, "승인")}>
+                    <div className="flex gap-1.5 max-sm:w-full">
+                      <Button size="sm" loading={busy} onClick={() => handleAdvancedDecision(a.id, "승인")} className={MOBILE_ACTION}>
                         승인
                       </Button>
                       <Button
                         size="sm"
+                        className={MOBILE_ACTION}
                         variant="danger"
                         loading={busy}
                         onClick={() => openAdvancedRejectModal(a)}

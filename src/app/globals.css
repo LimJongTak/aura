@@ -42,6 +42,127 @@ body {
   font-family: var(--font-sans), -apple-system, "Malgun Gothic", Arial, sans-serif;
 }
 
+/*
+ * 관리자 화면 — 휴대폰(640px 미만) 전용 보정. PC·태블릿 화면에는 적용되지 않는다.
+ * 넓은 표는 좁은 화면에서 한글이 한 글자씩 세로로 줄바꿈되어 읽기 어려우므로, 각 행을
+ * "이름표: 값" 형태의 카드로 펼친다. 이름표는 MobileTableLabels가 th 텍스트를 각 td의
+ * data-label로 달아준 값이다. 가로 스크롤로 두고 싶은 표는 data-mobile-table="scroll".
+ */
+@media (max-width: 639px) {
+  .admin-content table:not([data-mobile-table="scroll"]) {
+    display: block;
+    width: 100%;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > thead {
+    display: block;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > thead:not(:has(input)) {
+    display: none;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > thead > tr {
+    display: flex;
+    align-items: center;
+    padding: 0.625rem 0.875rem 0;
+    border: 0;
+    background: transparent;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > thead th {
+    display: none;
+  }
+  /* 전체 선택 체크박스가 있는 열 머리글만 남겨 "전체 선택"으로 보여준다. */
+  .admin-content table:not([data-mobile-table="scroll"]) > thead th:has(input) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: auto;
+    padding: 0;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > thead th:has(input)::after {
+    content: "전체 선택";
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
+    padding: 0.625rem;
+  }
+  /* 한 행 = 한 카드. 칸은 "이름표 위 / 값 아래" 타일을 2열로 배치하고, 긴 글·입력칸이
+     든 칸(data-wide)과 이름표 없는 칸(체크박스 등)은 한 줄 전체를 쓴다. */
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 0.75rem;
+    row-gap: 0.5rem;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 0.875rem;
+    padding: 0.75rem 0.875rem;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td {
+    display: block;
+    min-width: 0;
+    width: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+    text-align: left !important;
+    white-space: normal !important;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td[data-wide="true"],
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td[data-label=""] {
+    grid-column: 1 / -1;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.125rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1rem;
+    color: var(--color-muted);
+  }
+  /* 아이콘 버튼 하나만 든 칸 → "이름표 + 아이콘" 알약 버튼. 칸 전체가 눌리도록 버튼의
+     클릭 영역(::after)을 칸 크기로 넓힌다. */
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td[data-action="true"] {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 2.5rem;
+    padding: 0 0.75rem !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 9999px;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td[data-action="true"]::before {
+    order: 2;
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--foreground);
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td[data-action="true"] :is(a, button)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td[data-label=""]::before,
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td:not([data-label])::before {
+    display: none;
+  }
+  .admin-content table:not([data-mobile-table="scroll"]) > tbody > tr > td:empty {
+    display: none;
+  }
+
+  /* 모달: 내용이 길면 화면 밖으로 잘리지 않고 모달 안에서 스크롤되게 한다. */
+  .admin-content .fixed.inset-0 > div {
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+  }
+}
+
 ::selection {
   background: var(--color-primary-light);
   color: var(--color-primary-dark);

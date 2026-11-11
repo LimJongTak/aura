@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { PageSpinner } from "@/components/ui/PageSpinner";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { MobileTableLabels } from "@/components/admin/MobileTableLabels";
 import { useAdminUser } from "@/lib/auth/useAdminUser";
 
 /** /admin/* 전체를 감싸는 레이아웃. 로그인/권한 확인을 여기서 한 번만 하고,
@@ -46,7 +47,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:gap-8 lg:py-8">
       <AdminSidebar email={user.email} />
-      <div className="min-w-0 flex-1">{children}</div>
+      <MobileTableLabels>{children}</MobileTableLabels>
     </div>
   );
 }

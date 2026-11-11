@@ -123,7 +123,7 @@ export default function AdminAnalyticsPage() {
           </Card>
 
           <Card className="mt-6 overflow-x-auto p-0">
-            <table className="w-full text-left text-sm">
+            <table data-mobile-table="scroll" className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface text-xs text-muted">
                   <th className="px-5 py-3 font-semibold">기간</th>
