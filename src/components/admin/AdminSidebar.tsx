@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "firebase/auth";
 import {
+  Award,
   BarChart3,
   BookOpen,
   CalendarCheck,
@@ -65,7 +66,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "중고급 이수",
-    items: [{ href: "/admin/advanced-tracks", label: "트랙 · 신청 관리", icon: BookOpen }],
+    items: [
+      { href: "/admin/advanced-tracks", label: "트랙 · 신청 관리", icon: BookOpen },
+      { href: "/admin/advanced-completers", label: "이수자 명단", icon: Award },
+    ],
   },
   {
     label: "설정",

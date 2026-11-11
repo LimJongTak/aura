@@ -24,6 +24,7 @@ import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
 import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
 import { getEligibilityCheck } from "@/lib/firestore/eligibilityChecks";
+import { listAdvancedPaymentsForStudent } from "@/lib/firestore/scholarshipPayments";
 import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
 import { subscribeImmersiveSubjects } from "@/lib/firestore/immersiveSubjects";
 import { uploadEvidenceFile } from "@/lib/storage/evidence";
@@ -35,6 +36,7 @@ import {
   type CompletionLevel,
   type CompletionSemesterOption,
   type ImmersiveSemesterOption,
+  type ScholarshipPayment,
   type Student,
 } from "@/types/models";
 
@@ -83,9 +85,28 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
   const [prefillTranscriptUrl, setPrefillTranscriptUrl] = useState<string | null>(null);
   const [ackConfirmed, setAckConfirmed] = useState(false);
 
+  // 중고급 이수 장학금은 최대 1회만 수혜 가능 — 지급완료 기록이 있으면 신청을 막는다.
+  // null = 아직 확인 중.
+  const [advancedPayments, setAdvancedPayments] = useState<ScholarshipPayment[] | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listAdvancedPaymentsForStudent(student.studentId)
+      .then((list) => {
+        if (!cancelled) setAdvancedPayments(list);
+      })
+      .catch(() => {
+        // 조회 실패 시에는 신청을 막지 않는다 — 관리자 검토 단계에서 다시 걸러진다.
+        if (!cancelled) setAdvancedPayments([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [student.studentId]);
 
   useEffect(() => {
     const unsub = subscribeAdvancedTargetSemesters((list) => {
@@ -244,6 +265,26 @@ function AdvancedForm({ student, isPreview }: { student: Student; isPreview: boo
         <p className="text-sm text-muted">
           중고급 이수 신청은 참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 가능합니다.
         </p>
+      </Card>
+    );
+  }
+
+  if (advancedPayments === null) {
+    return <p className="py-10 text-center text-sm text-muted">불러오는 중...</p>;
+  }
+
+  if (advancedPayments.length > 0) {
+    const paidSemesters = [...new Set(advancedPayments.map((p) => p.semester))].join(", ");
+    return (
+      <Card>
+        <p className="text-base font-bold text-foreground">이미 중고급 이수 장학금을 받으셨습니다</p>
+        <p className="mt-2 text-sm text-muted">
+          {student.name}님은 {paidSemesters}에 중고급 이수 장학금을 지급받았습니다.
+        </p>
+        <p className="mt-3 rounded-xl border border-warning/30 bg-warning-light px-4 py-3 text-sm font-bold text-warning">
+          중고급 이수 장학금은 최대 1회만 수혜 가능하므로 다시 신청할 수 없습니다.
+        </p>
+        <p className="mt-3 text-xs text-muted">문의 사항은 사업단으로 연락해주세요.</p>
       </Card>
     );
   }

@@ -165,7 +165,10 @@ service cloud.firestore {
 
     // 학생별 장학금 지급 완료 기록 (금액 포함) — 관리자만 조회·기록한다.
     match /scholarshipPayments/{id} {
-      allow read, write: if isAdmin();
+      // 학생은 본인 지급 기록만 읽을 수 있다 — 중고급 이수 장학금(최대 1회 수혜)을
+      // 이미 받은 학생에게 재신청 불가 안내를 띄우는 데 쓴다.
+      allow read: if isActiveSelf(resource.data.studentId) || isAdmin();
+      allow write: if isAdmin();
     }
 
     // 학생이 등록한 장학금 수령 계좌 — 계좌번호는 Cloud Function이 암호화해서

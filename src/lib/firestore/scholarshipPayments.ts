@@ -25,6 +25,21 @@ export async function listScholarshipPaymentsForStudent(studentId: string): Prom
     .sort((a, b) => b.paidAt - a.paidAt);
 }
 
+/** 학생 본인의 중고급 이수 장학금 지급 기록 — 중고급 이수 장학금은 최대 1회만
+ *  수혜할 수 있어, 한 건이라도 있으면 신청 페이지에서 재신청을 막는다. */
+export async function listAdvancedPaymentsForStudent(studentId: string): Promise<ScholarshipPayment[]> {
+  const q = query(paymentsRef(), where("studentId", "==", studentId), where("type", "==", "advanced"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScholarshipPayment));
+}
+
+/** 전체 학기의 중고급 이수 장학금 지급 기록 (관리자 중고급 이수자 명단용). */
+export async function listAllAdvancedPayments(): Promise<ScholarshipPayment[]> {
+  const q = query(paymentsRef(), where("type", "==", "advanced"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ScholarshipPayment));
+}
+
 export interface RecordScholarshipPaymentInput {
   studentId: string;
   studentName: string;
