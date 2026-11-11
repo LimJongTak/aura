@@ -37,6 +37,8 @@ import { formatDate, listMyProgramApplications } from "@/lib/firestore/programs"
 import { ProgramApplicationStatusBadge } from "@/components/programs/shared";
 import type { ProgramApplication } from "@/types/models";
 import { ExternalUrlNotice } from "@/components/admin/ExternalUrlNotice";
+import { AdvancedCompleterBadge, AdvancedPaidNotice, paidAdvancedLevel } from "@/components/advanced/AdvancedCompleter";
+import { listAdvancedPaymentsForStudent } from "@/lib/firestore/scholarshipPayments";
 import {
   ACTIVITY_GROUPS,
   MAX_ADMIN_MILEAGE_GRANT,
@@ -48,6 +50,7 @@ import {
   type ConversionSettings,
   type EligibilityCheck,
   type MileageApplication,
+  type ScholarshipPayment,
   type Semester,
   type Student,
   type StudentTrackCompletion,
@@ -65,6 +68,7 @@ export default function AdminStudentDetailPage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [applications, setApplications] = useState<MileageApplication[]>([]);
   const [advanced, setAdvanced] = useState<AdvancedApplication[]>([]);
+  const [advancedPayments, setAdvancedPayments] = useState<ScholarshipPayment[]>([]);
   const [eligibilityChecks, setEligibilityChecks] = useState<EligibilityCheck[]>([]);
   const [programApps, setProgramApps] = useState<ProgramApplication[]>([]);
   const [semesters, setSemesters] = useState<Semester[]>([]);
@@ -82,7 +86,7 @@ export default function AdminStudentDetailPage() {
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [s, apps, advApps, elChecks, semesterList, convSettings, completion, progApps] = await Promise.all([
+    const [s, apps, advApps, elChecks, semesterList, convSettings, completion, progApps, advPayments] = await Promise.all([
       getStudent(studentId),
       listApplicationsForStudent(studentId),
       listAdvancedApplicationsForStudent(studentId),
@@ -91,7 +95,9 @@ export default function AdminStudentDetailPage() {
       getConversionSettings(),
       getTrackCompletion(studentId),
       listMyProgramApplications(studentId).catch(() => [] as ProgramApplication[]),
+      listAdvancedPaymentsForStudent(studentId).catch(() => [] as ScholarshipPayment[]),
     ]);
+    setAdvancedPayments([...advPayments].sort((a, b) => a.paidAt - b.paidAt));
     setStudent(s);
     setApplications(apps);
     setAdvanced(advApps);
@@ -351,6 +357,11 @@ export default function AdminStudentDetailPage() {
                 참여학과
               </span>
             )}
+            {advancedPayments.length > 0 && (
+              <span className="ml-2">
+                <AdvancedCompleterBadge level={paidAdvancedLevel(advancedPayments, advanced)} />
+              </span>
+            )}
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -528,6 +539,7 @@ export default function AdminStudentDetailPage() {
         <h2 className="font-bold text-foreground">
           중고급 이수 신청 내역 ({advanced.length}건)
         </h2>
+        {advancedPayments.length > 0 && <AdvancedPaidNotice payments={advancedPayments} />}
         <Card className="mt-3 overflow-x-auto p-0">
           {advanced.length === 0 ? (
             <p className="p-6 text-sm text-muted">신청 내역이 없습니다.</p>
@@ -569,7 +581,12 @@ export default function AdminStudentDetailPage() {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <StatusBadge status={a.status} />
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge status={a.status} />
+                        {a.status === "승인" && advancedPayments.some((p) => p.semester === a.targetSemester) && (
+                          <Badge tone="success">지급완료</Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5">
                       <button
