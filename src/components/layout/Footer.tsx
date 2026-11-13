@@ -18,7 +18,8 @@ export function Footer() {
             <p className="mt-4 text-sm font-semibold text-foreground">국립순천대학교 AI인재양성부트캠프사업단</p>
             <p className="mt-1 text-sm text-muted">문의 전화 061-750-5390 · 5391 · 5393 · 5394 · 5396</p>
           </div>
-          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-muted">
+          {/* 휴대폰에서는 상단 메뉴(☰)로 충분해서 푸터 메뉴는 숨긴다. */}
+          <nav className="hidden flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-muted md:flex">
             {FOOTER_LINKS.map((l) => (
               <Link key={l.href} href={l.href} className="transition hover:text-primary">
                 {l.label}
