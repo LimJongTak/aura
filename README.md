@@ -1,26 +1,67 @@
 <div align="center">
 
+<img src="public/scnu-logo.png" alt="국립순천대학교" height="56" />
+
 # A.U.R.A 마일리지
 
-**국립순천대학교 AI인재양성부트캠프사업단 마일리지 조회·신청 시스템**
+**국립순천대학교 AI인재양성부트캠프사업단 마일리지 · 중고급 이수 관리 시스템**
 
-스프레드시트 + Google Apps Script로 운영하던 마일리지 신청을 웹 서비스로 옮겼습니다.
+스프레드시트 + Google Apps Script로 운영하던 마일리지 신청을 웹 서비스로 옮겼습니다.<br/>
+학생은 신청과 결과 확인을, 사업단 담당자는 심사 · 지급 · 안내를 한곳에서 처리합니다.
 
 [**aura.scnuai.com**](https://aura.scnuai.com)
 
-![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![Firebase](https://img.shields.io/badge/Firebase-App%20Hosting-FFCA28?logo=firebase&logoColor=black)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Firebase](https://img.shields.io/badge/Firebase-App%20Hosting-FFCA28?style=flat-square&logo=firebase&logoColor=black)
+![Primary](https://img.shields.io/badge/Primary-%234B47E0-4B47E0?style=flat-square)
 
 </div>
+
+---
+
+## 한눈에 보기
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+**🎓 학생**
+
+마일리지 · 프로그램 · 중고급 이수 신청<br/>
+마이페이지에서 현황 요약과 탭별 내역 확인<br/>
+알림함으로 승인 · 지급 · 새 프로그램 소식 받기
+
+</td>
+<td width="33%" valign="top">
+
+**🛠️ 담당자**
+
+대시보드 "처리할 일" 카드로 바로 심사<br/>
+학생 상세에서 지급 · 회수 · 이수 과목 체크<br/>
+화면마다 "사용법" 버튼으로 업무 안내
+
+</td>
+<td width="33%" valign="top">
+
+**🔒 보안**
+
+Firestore 규칙이 실제 접근 통제<br/>
+계좌 · 전화번호 AES-256-GCM 암호화<br/>
+개인정보 열람 · 내보내기 감사 로그
+
+</td>
+</tr>
+</table>
 
 ---
 
 ## 목차
 
 - [주요 기능](#주요-기능)
+- [화면 디자인](#화면-디자인)
 - [기술 스택](#기술-스택)
 - [프로젝트 구조](#프로젝트-구조)
 - [데이터 모델](#데이터-모델)
@@ -43,29 +84,65 @@
 | 학생 등록 | `/register` | 학생명단에 없는 학생이 이름·학번·학과를 입력하고 학번 메일 인증을 마치면 바로 계정이 생성됩니다 |
 | 학교 메일로 가입 신청 | `/register/email` | 학번 메일을 쓰지 않는 학생이 실제 학교 메일로 인증하고 비밀번호를 정해 신청합니다. 관리자 승인 후 그 메일 아이디로 로그인합니다 |
 | 마일리지 조회 | `/lookup` | 누적 승인 마일리지, 신청 내역, 중고급 신청 현황을 확인합니다 |
-| 마일리지 신청 | `/apply` | 활동을 고르면 마일리지와 필요 증빙이 자동으로 표시되고, 증빙파일을 첨부해 신청합니다 |
+| 마일리지 신청 | `/apply` | 활동을 고르면 마일리지와 필요 증빙이 자동으로 표시되고, 증빙파일을 첨부해 신청합니다. "현재 학기"의 신청 기간에만 받습니다 |
 | 비교과 프로그램 | `/programs` `/programs/my` | 회차별로 신청하고 신청 내역을 확인합니다. 정원이 차거나 신청기간이 끝나면 신청 버튼이 사라집니다 |
 | 중고급 이수요건 확인 | `/apply-advanced/eligibility-check` | 참여학과 학생이 성적증명서를 첨부해 이수 현황을 미리 점검받습니다 |
-| 중고급 이수 신청 | `/apply-advanced` | 장학금 트랙을 신청합니다. 이수한 비교과 프로그램은 목록에서 고르거나 직접 입력할 수 있습니다 |
-| 마이페이지 | `/mypage` | 장학금 계좌·휴대전화번호 등록(암호화 저장), 트랙별 이수 과목 현황 확인 |
+| 중고급 이수 신청 | `/apply-advanced` | 장학금 트랙을 신청합니다. 신청 마감일이 지난 학기는 고를 수 없습니다 |
+| 마이페이지 | `/mypage` | 프로필 · 휴대전화 · 계좌 등록 상태, 승인 마일리지와 학기 한도 진행률, 자주 쓰는 바로가기, **마일리지 / 프로그램 / 중고급 이수** 탭 |
+| 알림함 | `/mypage/notifications` | 새 알림은 빨간 점과 개수로 표시됩니다. 누르면 읽음 처리되고 연결된 페이지로 이동하며, "모두 읽음"도 할 수 있습니다 |
 | 공지사항 | `/announcements` | 공지 목록과 상세 |
 
 > 참여학과는 인공지능공학전공, 전기공학전공, 전자공학전공입니다.
 
 ### 관리자 (`/admin`)
 
-| 메뉴 | 설명 |
+사이드바는 업무 기준으로 묶여 있고, 모든 화면 제목 옆의 **사용법** 버튼으로 그 화면의 안내를 바로 볼 수 있습니다.
+
+| 그룹 | 메뉴 | 설명 |
+| --- | --- | --- |
+| 개요 | 대시보드 | **처리할 일** 카드(마일리지 · 중고급 이수 · 이수요건 확인 · 학생 등록 · 프로그램 신청)를 눌러 검토중인 건을 승인 · 반려 · 판정합니다 |
+| | 처리 내역 | 처리가 끝난 건을 조회 · 검색하고 상태를 바꿉니다 |
+| 마일리지 · 학생 | 학생 관리 | 마일리지 순위, 학생 정보 수정 · 탈퇴. 학생 상세는 요약 카드 + 탭(마일리지 신청 / 프로그램 / 중고급 이수)으로 지급완료 · 회수 · 이수 과목 체크를 처리합니다 |
+| | 학생 등록 신청 · 일괄지급 · 지급 관리 | 등록 승인, 여러 학생 마일리지 일괄 지급, 학기별 환산금액 확정과 장학금 지급(계좌 엑셀 내보내기는 감사 로그 기록) |
+| | 개인정보 동의자 관리 | 개인정보 이용 동의 내역을 엑셀로 일괄 등록하거나 개별로 추가합니다 |
+| 프로그램 | 프로그램 관리 | 게시글 작성, 회차 · 정원, 외부 신청 인원, 신청자 확정 · 반려 · 지급. **알림으로 홍보** 버튼으로 바로 홍보 알림을 보냅니다 |
+| 중고급 이수 | 트랙 · 신청 관리 / 이수자 명단 | 트랙과 교과목, 이수자 명단 관리 |
+| 사이트 관리 | **학생 알림** | 대상(전체 · 참여학과 · 학과 · 휴대전화/계좌 미등록 · 학번 직접 입력)을 골라 링크가 달린 알림을 보내고, 읽음 수를 확인하고, 자동 알림을 종류별로 켜고 끕니다 |
+| | 공지 · 메뉴 · 퀵메뉴 · 방문자 통계 | 공지사항, 헤더 메뉴, 퀵메뉴, 일자별 방문자 수 |
+| 설정 | 학기 관리 | 마일리지 학기(신청 기간 · 상태 배지), 중고급 신청 학기(**신청 마감일**), 이수 학기, 몰입형 학기 |
+| 도움말 | 사용법 안내 | 전체 화면 사용법 모음 (`/admin/help`) |
+
+### 자동 알림
+
+관리자가 아래 처리를 하면 해당 학생 알림함에 자동으로 알림이 갑니다. 종류별 켜기/끄기는 **학생 알림 → 자동 알림 설정**에서 합니다.
+
+| 분류 | 알림 |
 | --- | --- |
-| 대시보드 | 검토중인 마일리지, 중고급 이수, 이수요건 확인 건을 탭별로 승인·반려·판정합니다 |
-| 처리 내역 | 처리가 끝난 건을 조회·검색하고 상태를 바꿉니다 |
-| 마일리지 일괄 부여 | 여러 학생에게 마일리지를 한 번에 부여합니다 |
-| 프로그램 관리 | 비교과 프로그램 게시글 작성, 회차와 정원 관리, 외부 신청 인원 반영, 신청자 확정·반려·지급 처리 |
-| 학생 관리 | 학생 정보 수정·탈퇴, 트랙별 이수 과목 체크, 등록 신청 승인 |
-| 개인정보 동의 | 개인정보 이용 동의 내역을 엑셀로 일괄 등록하거나 개별로 추가합니다 |
-| 지급 관리 | 학기별 환산금액 확정, 장학금 지급 처리, 계좌정보가 포함된 엑셀 내보내기(감사 로그 기록) |
-| 학기·트랙 관리 | 신청 학기, 이수 학기, 몰입형 학기와 중고급 트랙 교과목 관리 |
-| 사이트 관리 | 공지사항, 퀵메뉴, 헤더 메뉴 |
-| 방문자 통계 / 도움말 | `/admin/analytics`, `/admin/help` |
+| 마일리지 | 신청 승인 · 반려, 관리자 직접 · 일괄 지급, 장학금 지급완료, 회수 |
+| 중고급 이수 | 이수 신청 승인 · 반려, 이수요건 확인 결과(충족 · 미충족) |
+| 프로그램 | 참여 확정, 신청 반려, 마일리지 지급, 마일리지 미지급 |
+
+---
+
+## 화면 디자인
+
+학교 사업단 사이트에 맞게 **화려함보다 읽기 쉬운 단순한 카드형 레이아웃**을 기본으로 합니다.
+
+- **레이아웃**: 연한 회색 배경 위에 흰 카드(`rounded-2xl`, 얇은 테두리)를 올려 그림자 없이도 영역이 구분됩니다. 홈 섹션은 `01 ABOUT`, `02 HOW TO`처럼 번호 머리말과 가는 구분선으로 나눕니다.
+- **헤더**: 가운데 알약형 메뉴(현재 메뉴만 흰 알약), 마우스를 올리면 하위 메뉴가 펼쳐지는 패널. 768px 미만에서는 ☰ 메뉴로 바뀌고 푸터 메뉴는 숨깁니다.
+- **상태 표시**: 승인 · 충족은 초록, 검토중은 주황, 반려 · 미충족은 빨강 배지로 통일하고, 처리 대기 건수는 탭 · 카드 옆 숫자 배지로 보여줍니다.
+- **폰트**: Geist + 시스템 한글 폰트.
+
+| 토큰 | 값 | 쓰임 |
+| --- | --- | --- |
+| `primary` | ![#4b47e0](https://img.shields.io/badge/-%234b47e0-4b47e0?style=flat-square) | 주요 버튼, 선택된 탭, 강조 숫자 |
+| `primary-light` | ![#eef0fe](https://img.shields.io/badge/-%23eef0fe-eef0fe?style=flat-square) | 선택 항목 배경, 배지 |
+| `background` | ![#f5f7fb](https://img.shields.io/badge/-%23f5f7fb-f5f7fb?style=flat-square) | 페이지 배경 |
+| `foreground` | ![#1b2033](https://img.shields.io/badge/-%231b2033-1b2033?style=flat-square) | 본문 글자 |
+| `muted` | ![#6b7286](https://img.shields.io/badge/-%236b7286-6b7286?style=flat-square) | 보조 글자 |
+| `success` / `warning` / `danger` | ![#16a34a](https://img.shields.io/badge/-%2316a34a-16a34a?style=flat-square) ![#d97706](https://img.shields.io/badge/-%23d97706-d97706?style=flat-square) ![#dc2626](https://img.shields.io/badge/-%23dc2626-dc2626?style=flat-square) | 상태 배지 |
+
+색은 `src/app/globals.css`의 `@theme inline` 토큰으로만 쓰고, 화면 코드에 색상값을 직접 적지 않습니다.
 
 ---
 
@@ -87,8 +164,8 @@
 aura/
 ├─ src/
 │  ├─ app/              # 화면(App Router). /admin 아래는 관리자 화면
-│  ├─ components/       # 공용 UI, 인증 UI, 관리자 컴포넌트
-│  ├─ lib/              # Firebase 클라이언트, Firestore 접근 함수, 인증 훅
+│  ├─ components/       # 공용 UI(Card·Button·Badge), 인증, 관리자, 알림 컴포넌트
+│  ├─ lib/              # Firebase 클라이언트, Firestore 접근 함수, 인증 훅, 자동 알림(notifications/)
 │  └─ types/models.ts   # Firestore 문서 타입(컬렉션별 설명 주석 포함)
 ├─ functions/src/       # Cloud Functions (계정, 비밀번호, 암호화, 내보내기)
 ├─ scripts/             # 시딩·마이그레이션·운영 스크립트
@@ -128,8 +205,8 @@ aura/
 | `advancedTracks` | 트랙과 등급별 이수 교과목 |
 | `trackCompletions` / `trackCompletionAcks` | 학생별 트랙 이수 과목 체크 / 학생이 마지막으로 확인한 버전 |
 | `subjectMaster` / `immersiveSubjects` | 이수과목 마스터 / 몰입형 교과목 |
-| `semesters` / `semesterState` | 학기 목록 / 현재 학기 |
-| `completionSemesters` / `immersiveSemesters` / `advancedTargetSemesters` | 이수 학기 / 몰입형 학기 / 중고급 신청 학기 |
+| `semesters` / `semesterState` | 학기 목록 / 현재 학기(`current`), 중고급 신청 학기별 마감 시각(`advancedTargetDeadlines`, 규칙이 신청 마감 검사에 사용) |
+| `completionSemesters` / `immersiveSemesters` / `advancedTargetSemesters` | 이수 학기 / 몰입형 학기 / 중고급 신청 학기(신청 마감일 `applyEnd`) |
 
 #### 비교과 프로그램
 
@@ -159,7 +236,9 @@ aura/
 | 컬렉션 | 용도 |
 | --- | --- |
 | `announcements` / `quickLinks` / `navMenuGroups` | 공지사항 / 퀵메뉴 / 헤더 메뉴 |
-| `notificationSettings` | 이수 과목 알림 버전 등 전역 설정 |
+| `notifications` | 학생 알림 1건(제목 · 내용 · 링크 · 분류 · 읽음 여부). 관리자만 만들고, 학생은 본인 것만 읽고 읽음 표시만 바꿀 수 있습니다 |
+| `notificationBroadcasts` | 관리자가 직접 보낸 알림의 발송 기록(대상 · 인원). 관리자 전용 |
+| `notificationSettings` | 자동 알림 종류별 켜기/끄기(`autoNotifications`), 이수 과목 알림 버전 |
 | `visitStats` | 일자별 방문자 수 |
 | `rateLimits` | IP별 호출 횟수 제한(Cloud Functions 전용, IP는 해시로만 저장) |
 
@@ -184,6 +263,8 @@ aura/
 | 파일 업로드 | 크기 제한과 함께 HTML·SVG·XML·스크립트 형식을 차단합니다 |
 | 인증 | 비밀번호 8~64자 정책, 클라이언트 회원가입 차단. 학생 등록(`registerStudent`)은 학교 메일 인증번호를 확인한 뒤에만 계정을 만들고, 학생이 직접 비밀번호를 정합니다 |
 | 인증번호 | 안전한 난수로 만들고 해시로 저장합니다. 10분 유효, 5회 시도, 60초 재발송 간격, 시간당 5회. 비밀번호 찾기·학생 등록은 학번 등록 여부와 상관없이 같은 응답을 줍니다 |
+| 학생 알림 | `notifications`는 관리자만 생성 · 삭제하고(필드 · 길이 검증), 학생은 본인 알림의 `read` · `readAt`만 바꿀 수 있습니다. 링크는 사이트 내부 경로나 `https://` 주소만 허용합니다 |
+| 신청 기간 | 마일리지는 `semesterState/current`의 신청 기간, 중고급 이수 신청 · 이수요건 확인은 `semesterState/advancedTargetDeadlines`의 학기별 마감 시각을 규칙에서 검사합니다 |
 | 계좌 변경 알림 | `saveBankAccount`가 저장할 때마다 학교 메일로 알림(계좌 끝 4자리)을 보냅니다 |
 | 남용 방지 | 로그인 없이 부르는 함수(`requestRegistrationCode`, `registerStudent`, `requestEmailAccountCode`, `submitEmailAccountRequest`, `checkPrivacyConsent`, `hasPendingStudentRegistration`, `requestPasswordResetCode`, `recordView`)에 IP별 호출 제한을 둡니다. 방문 통계·조회수는 클라이언트가 직접 쓸 수 없습니다 |
 | 개인정보 암호화 | 계좌번호와 전화번호는 AES-256-GCM 암호문으로만 저장하고, 각각 **다른 키**를 씁니다 |
@@ -349,5 +430,5 @@ NODE_OPTIONS=--dns-result-order=ipv4first npx firebase deploy --only functions
 ---
 
 <div align="center">
-<sub>국립순천대학교 AI인재양성부트캠프사업단 · A.U.R.A</sub>
+<sub>국립순천대학교 AI인재양성부트캠프사업단 · A.U.R.A · 문의 061-750-5390</sub>
 </div>
