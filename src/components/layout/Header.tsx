@@ -216,9 +216,6 @@ export function Header() {
           </div>
         )}
 
-        {!sessionLoading && user && student && !student.mustChangePassword && (
-          <NotificationBell studentId={student.studentId} className="ml-auto md:hidden" />
-        )}
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
