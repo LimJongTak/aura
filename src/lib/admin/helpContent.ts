@@ -21,14 +21,14 @@ export interface HelpTopic {
   title: string;
   icon: LucideIcon;
   /** 사이드바 메뉴 그룹과 맞춘 분류 — 사용법 안내 페이지에서 같은 그룹끼리 묶어 보여준다. */
-  group: "개요" | "마일리지 · 학생" | "프로그램" | "중고급 이수" | "설정";
+  group: (typeof HELP_GROUPS)[number];
   /** 카드에 바로 보이는 한 줄 요약 */
   summary: string;
   /** 클릭했을 때 모달에 순서대로 보여줄 사용법 */
   steps: string[];
 }
 
-export const HELP_GROUPS = ["개요", "마일리지 · 학생", "프로그램", "중고급 이수", "설정"] as const;
+export const HELP_GROUPS = ["개요", "마일리지 · 학생", "프로그램", "중고급 이수", "사이트 관리", "설정"] as const;
 
 export const HELP_TOPICS: HelpTopic[] = [
   {
@@ -170,7 +170,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "registrations",
     title: "학생 등록 신청",
     icon: UserPlus,
-    group: "설정",
+    group: "마일리지 · 학생",
     summary: "학생 등록은 관리자 승인 없이 즉시 처리되며, 이 화면에서 누가 어떤 학번으로 등록을 시도했는지 기록을 확인합니다.",
     steps: [
       "학생이 등록 화면에서 이름·학번·학과를 입력하고 학교 메일(학번@s.scnu.ac.kr) 인증번호를 확인하면, 학생명단 추가와 계정 생성(학생이 직접 정한 비밀번호)이 바로 이루어집니다. 메일 인증이 없으면 등록되지 않아 남의 학번을 선점할 수 없습니다.",
@@ -184,7 +184,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "announcements",
     title: "공지사항 관리",
     icon: Megaphone,
-    group: "설정",
+    group: "사이트 관리",
     summary: "학생들이 보는 공지사항 페이지의 글을 작성·수정·삭제합니다.",
     steps: [
       "\"새 공지\"로 제목과 내용을 입력해 등록합니다.",
@@ -196,7 +196,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "menus",
     title: "메뉴 관리",
     icon: ListTree,
-    group: "설정",
+    group: "사이트 관리",
     summary: "사이트 상단 내비게이션(마일리지·중고급 이수 드롭다운 등)을 관리합니다.",
     steps: [
       "메뉴 하나가 곧 상단에 보이는 항목 1개입니다 — 안에 링크가 2개 이상이면 눌렀을 때 펼쳐지는 드롭다운으로, 1개면 바로 이동하는 단독 링크(예: 공지사항)로 보입니다.",
@@ -209,7 +209,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "quicklinks",
     title: "퀵메뉴 관리",
     icon: Link2,
-    group: "설정",
+    group: "사이트 관리",
     summary: "화면 오른쪽에 떠있는 바로가기 버튼(PC 전용)을 관리합니다.",
     steps: [
       "\"새 버튼\"으로 이름·연결 URL·아이콘을 정해 추가합니다.",
@@ -221,7 +221,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     id: "analytics",
     title: "방문자 통계",
     icon: BarChart3,
-    group: "설정",
+    group: "사이트 관리",
     summary: "사이트 방문자 수를 일/주/월/년 단위로 확인합니다.",
     steps: [
       "상단 탭에서 집계 단위(일/주/월/년)를 바꿀 수 있습니다.",
@@ -230,3 +230,28 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
 ];
+
+/** 관리자 화면 경로 → 그 화면의 사용법 항목. PageHeader의 "사용법" 버튼이 현재 화면에
+ *  맞는 안내를 바로 띄울 때 쓴다 (사용법 안내 페이지까지 이동하지 않아도 되게). */
+const TOPIC_PATHS: [path: string, topicId: string][] = [
+  ["/admin/history", "history"],
+  ["/admin/students", "students"],
+  ["/admin/mileage/bulk-grant", "bulk-grant"],
+  ["/admin/payments", "payments"],
+  ["/admin/programs", "programs"],
+  ["/admin/advanced-tracks", "advanced-tracks"],
+  ["/admin/semesters", "semesters"],
+  ["/admin/registrations", "registrations"],
+  ["/admin/announcements", "announcements"],
+  ["/admin/menus", "menus"],
+  ["/admin/quicklinks", "quicklinks"],
+  ["/admin/analytics", "analytics"],
+];
+
+export function findHelpTopic(pathname: string): HelpTopic | null {
+  let id: string | undefined;
+  if (pathname === "/admin") id = "dashboard";
+  else if (/^\/admin\/students\/[^/]+/.test(pathname)) id = "student-detail";
+  else id = TOPIC_PATHS.find(([path]) => pathname === path || pathname.startsWith(`${path}/`))?.[1];
+  return HELP_TOPICS.find((t) => t.id === id) ?? null;
+}

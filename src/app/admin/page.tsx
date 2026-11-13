@@ -1,7 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BookOpenCheck, Check, FileText, Sparkles, StickyNote, Users2, X } from "lucide-react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  BookOpenCheck,
+  CalendarCheck,
+  Check,
+  ClipboardCheck,
+  FileText,
+  GraduationCap,
+  ListChecks,
+  type LucideIcon,
+  Sparkles,
+  StickyNote,
+  UserPlus,
+  Users2,
+  X,
+} from "lucide-react";
+import { useAdminPendingCounts } from "@/lib/auth/useAdminPendingCounts";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -41,16 +59,57 @@ type Category = "mileage" | "advanced" | "eligibility";
 /** 휴대폰에서만 승인·반려 버튼을 반씩 나눠 크게 — PC 모양은 그대로다. */
 const MOBILE_ACTION = "max-sm:flex-1 max-sm:py-2.5";
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+/** 대시보드 상단 "처리할 일" 카드. 검토 대기 건수를 크게 보여주고, 누르면 아래 목록이
+ *  해당 종류로 바뀌거나(onClick) 처리 화면으로 이동한다(href). */
+function TaskCard({
+  icon: Icon,
+  label,
+  count,
+  active,
+  onClick,
+  href,
+}: {
+  icon: LucideIcon;
+  label: string;
+  count: number;
+  active?: boolean;
+  onClick?: () => void;
+  href?: string;
+}) {
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "flex h-9 w-9 items-center justify-center rounded-xl",
+            count > 0 ? "bg-primary-light text-primary" : "bg-surface text-muted"
+          )}
+        >
+          <Icon size={17} />
+        </span>
+        {href && <ArrowUpRight size={16} className="text-muted transition group-hover:text-primary" />}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-foreground">{label}</p>
+      <p className="mt-0.5 flex items-baseline gap-1">
+        <span className={cn("text-2xl font-extrabold", count > 0 ? "text-foreground" : "text-muted/60")}>{count}</span>
+        <span className="text-xs text-muted">{count > 0 ? "건 대기" : "건 · 처리 완료"}</span>
+      </p>
+    </>
+  );
+  const className = cn(
+    "group rounded-2xl border bg-white p-4 text-left transition",
+    active ? "border-primary ring-2 ring-primary/15" : "border-border/70 hover:border-primary/50"
+  );
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {body}
+      </Link>
+    );
+  }
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
-        active ? "bg-primary text-white" : "border border-border text-muted hover:border-primary hover:text-primary"
-      }`}
-    >
-      {children}
+    <button type="button" onClick={onClick} aria-pressed={active} className={className}>
+      {body}
     </button>
   );
 }
@@ -163,6 +222,7 @@ function DuplicateBadge({ matches }: { matches: MileageApplication[] }) {
 
 export default function AdminPage() {
   const { user } = useAdminUser();
+  const pendingCounts = useAdminPendingCounts(true);
   const [mileageApps, setMileageApps] = useState<MileageApplication[]>([]);
   const [mileageHistory, setMileageHistory] = useState<MileageApplication[]>([]);
   const [advancedApps, setAdvancedApps] = useState<AdvancedApplication[]>([]);
@@ -363,16 +423,31 @@ export default function AdminPage() {
         <p className="mt-4 rounded-xl bg-danger-light px-4 py-3 text-sm font-medium text-danger">{loadError}</p>
       )}
 
-      <div className="mt-5 flex gap-2 max-sm:flex-wrap">
-        <TabButton active={category === "mileage"} onClick={() => setCategory("mileage")}>
-          마일리지 신청 ({mileageApps.length})
-        </TabButton>
-        <TabButton active={category === "advanced"} onClick={() => setCategory("advanced")}>
-          중고급 이수 신청 ({advancedApps.length})
-        </TabButton>
-        <TabButton active={category === "eligibility"} onClick={() => setCategory("eligibility")}>
-          이수요건 확인 ({eligibilityChecks.length})
-        </TabButton>
+      <p className="mt-6 text-xs font-bold uppercase tracking-wide text-muted">처리할 일</p>
+      <div className="mt-2 grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <TaskCard
+          icon={ClipboardCheck}
+          label="마일리지 신청"
+          count={mileageApps.length}
+          active={category === "mileage"}
+          onClick={() => setCategory("mileage")}
+        />
+        <TaskCard
+          icon={GraduationCap}
+          label="중고급 이수 신청"
+          count={advancedApps.length}
+          active={category === "advanced"}
+          onClick={() => setCategory("advanced")}
+        />
+        <TaskCard
+          icon={ListChecks}
+          label="이수요건 확인"
+          count={eligibilityChecks.length}
+          active={category === "eligibility"}
+          onClick={() => setCategory("eligibility")}
+        />
+        <TaskCard icon={UserPlus} label="학생 등록 신청" count={pendingCounts.registrations} href="/admin/registrations" />
+        <TaskCard icon={CalendarCheck} label="프로그램 신청" count={pendingCounts.programs} href="/admin/programs" />
       </div>
 
       {category === "mileage" && (

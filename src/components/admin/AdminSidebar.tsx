@@ -58,6 +58,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "마일리지 · 학생",
     items: [
       { href: "/admin/students", label: "학생 관리", icon: Users },
+      { href: "/admin/registrations", label: "학생 등록 신청", icon: UserPlus, badge: "registrations" },
       { href: "/admin/mileage/bulk-grant", label: "일괄지급", icon: Send },
       { href: "/admin/payments", label: "지급 관리", icon: Wallet },
       { href: "/admin/privacy-consents", label: "개인정보 동의자 관리", icon: ShieldCheck },
@@ -75,15 +76,17 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "설정",
+    label: "사이트 관리",
     items: [
-      { href: "/admin/semesters", label: "학기 관리", icon: CalendarDays },
-      { href: "/admin/registrations", label: "학생 등록 신청", icon: UserPlus, badge: "registrations" },
       { href: "/admin/announcements", label: "공지사항 관리", icon: Megaphone },
       { href: "/admin/menus", label: "메뉴 관리", icon: ListTree },
       { href: "/admin/quicklinks", label: "퀵메뉴 관리", icon: Link2 },
       { href: "/admin/analytics", label: "방문자 통계", icon: BarChart3 },
     ],
+  },
+  {
+    label: "설정",
+    items: [{ href: "/admin/semesters", label: "학기 관리", icon: CalendarDays }],
   },
   {
     label: "도움말",
@@ -137,7 +140,7 @@ function MobileAdminNav({
   return (
     // sticky는 바깥 래퍼에 둔다 — 블러(backdrop-filter)가 걸린 요소 안에 fixed 시트를
     // 두면 시트가 화면이 아니라 그 바 기준으로 잡히므로 시트는 바의 형제로 둔다.
-    <div className="sticky top-16 z-30 -mx-4 -mt-2 sm:-mx-6 lg:hidden">
+    <div className="sticky top-[68px] z-30 -mx-4 -mt-2 sm:-mx-6 lg:hidden">
       <div className="flex items-center gap-2 border-b border-border bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6">
         <span className="flex min-w-0 flex-1 items-center gap-2 text-sm font-bold text-foreground">
           <CurrentIcon size={16} className="shrink-0 text-primary" />
@@ -225,12 +228,12 @@ export function AdminSidebar({ email }: { email?: string | null }) {
       <MobileAdminNav pathname={pathname} counts={counts} email={email} />
 
       {/* 데스크톱: 좌측 고정 사이드바 — 그룹별로 소제목을 둔다 */}
-      <aside className="hidden w-56 shrink-0 lg:block">
-        <div className="sticky top-24 flex flex-col gap-4">
+      <aside className="hidden w-60 shrink-0 lg:block">
+        <div className="sticky top-24 flex max-h-[calc(100vh-7rem)] flex-col gap-3 overflow-y-auto rounded-2xl border border-border/70 bg-white p-3">
           {NAV_GROUPS.map((group) => (
             <div key={group.label}>
-              <p className="px-3 pb-1.5 text-xs font-bold uppercase tracking-wide text-muted">{group.label}</p>
-              <div className="flex flex-col gap-1">
+              <p className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted">{group.label}</p>
+              <div className="flex flex-col gap-0.5">
                 {group.items.map(({ href, label, icon: Icon, exact, badge }) => {
                   const active = isActive(pathname, href, exact);
                   const count = badge ? counts[badge] : 0;
@@ -239,8 +242,8 @@ export function AdminSidebar({ email }: { email?: string | null }) {
                       key={href}
                       href={href}
                       className={cn(
-                        "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition",
-                        active ? "bg-primary text-white" : "text-foreground hover:bg-surface"
+                        "flex items-center gap-2.5 rounded-xl px-3 py-1.5 text-sm font-semibold transition",
+                        active ? "bg-primary-light text-primary-dark" : "text-foreground/80 hover:bg-surface hover:text-foreground"
                       )}
                     >
                       <Icon size={16} />
