@@ -190,11 +190,11 @@ export function Header() {
           <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             {user && student ? (
               <>
-                {!student.mustChangePassword && <NotificationBell studentId={student.studentId} className="mr-1" />}
                 <span className="mr-1 text-sm font-semibold text-muted">{student.name || student.studentId}님</span>
                 <button onClick={handleLogout} className={GHOST_BUTTON}>
                   로그아웃
                 </button>
+                {!student.mustChangePassword && <NotificationBell studentId={student.studentId} />}
                 <Link href="/mypage" className={CTA_BUTTON}>
                   마이페이지
                 </Link>
