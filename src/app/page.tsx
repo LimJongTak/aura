@@ -1,14 +1,25 @@
 import Link from "next/link";
-import { ArrowRight, ClipboardList, GraduationCap, Phone, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  BrainCircuit,
+  CheckCircle2,
+  ClipboardList,
+  GraduationCap,
+  Plus,
+  Rocket,
+  ShieldCheck,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { MILEAGE_SCORE_TABLE } from "@/lib/constants/mileageScoreTable";
 
 const AURA_LETTERS = [
-  { letter: "A", word: "AI", desc: "AI 기반 학습 및 디지털 역량 확보" },
-  { letter: "U", word: "Upgrade", desc: "역량 향상 및 심화 학습" },
-  { letter: "R", word: "Realize", desc: "실전 적용 및 성과 창출" },
-  { letter: "A", word: "Achieve", desc: "목표 달성 및 성장 완성" },
+  { letter: "A", word: "AI", desc: "AI 기반 학습 및 디지털 역량 확보", Icon: BrainCircuit },
+  { letter: "U", word: "Upgrade", desc: "역량 향상 및 심화 학습", Icon: TrendingUp },
+  { letter: "R", word: "Realize", desc: "실전 적용 및 성과 창출", Icon: Rocket },
+  { letter: "A", word: "Achieve", desc: "목표 달성 및 성장 완성", Icon: Target },
 ];
 
 const USAGE_STEPS = [
@@ -29,7 +40,7 @@ const USAGE_STEPS = [
   },
 ];
 
-const NOTICES:{ title: string; body: React.ReactNode }[] = [
+const NOTICES: { title: string; body: React.ReactNode }[] = [
   {
     title: "증빙서류에 학번·이름 기재",
     body: "증빙서류(파일 또는 사진)에는 반드시 본인의 학번과 이름을 기재해서 첨부해야 합니다. 기재되지 않으면 반려될 수 있습니다.",
@@ -51,6 +62,10 @@ const NOTICES:{ title: string; body: React.ReactNode }[] = [
     title: "사업단 검토 후 확정",
     body: "신청 후 사업단 검토를 거쳐 승인·반려 상태로 확정되며, 허위 증빙 제출 시 마일리지가 취소될 수 있습니다.",
   },
+  {
+    title: "중고급 이수자 장학금과 중복 수혜 불가",
+    body: "중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지 않습니다.",
+  },
 ];
 
 const ADVANCED_REQUIREMENTS = [
@@ -63,29 +78,48 @@ const ADVANCED_REQUIREMENTS = [
   { count: "1개", label: "비교과 프로그램 이수" },
 ];
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** 섹션 위쪽 작은 번호 라벨 — 섹션 사이 구분선과 함께 각 칸의 시작을 알려준다. */
+function Eyebrow({ no, label }: { no: string; label: string }) {
   return (
-    <section>
-      <h2 className="text-xl font-extrabold text-foreground">{title}</h2>
-      <div className="mt-3 text-sm leading-relaxed text-foreground/80">{children}</div>
-    </section>
+    <p className="mb-4 flex items-center gap-2 text-xs font-bold tracking-wider text-primary">
+      <span className="rounded-full bg-primary-light px-2 py-0.5">{no}</span>
+      {label}
+    </p>
+  );
+}
+
+function SectionHeading({ no, label, title, desc }: { no: string; label: string; title: string; desc?: string }) {
+  return (
+    <div className="max-w-2xl">
+      <Eyebrow no={no} label={label} />
+      <h2 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-4xl">{title}</h2>
+      {desc && <p className="mt-3 text-sm leading-relaxed text-muted sm:text-base">{desc}</p>}
+    </div>
   );
 }
 
 export default function HomePage() {
   return (
     <div>
-      {/* Hero */}
-      <div className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-5xl">
+      {/* Hero — 가운데 정렬 큰 제목 + 은은한 배경 번짐(과하지 않게 아주 옅게) */}
+      <section className="relative overflow-hidden">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-[-180px] h-[480px] w-[820px] -translate-x-1/2 rounded-full opacity-60 blur-3xl"
+          style={{
+            background:
+              "radial-gradient(closest-side, rgba(75,71,224,0.16), rgba(75,71,224,0.06) 55%, transparent)",
+          }}
+        />
+        <div className="relative mx-auto max-w-4xl px-4 pb-16 pt-16 text-center sm:px-6 sm:pb-24 sm:pt-24">
+          <h1 className="text-4xl font-extrabold tracking-tight text-foreground sm:text-6xl">
             A.U.R.A <span className="text-primary">마일리지</span>
           </h1>
-          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
-            교육 참여, 활동, 성과 등에 대해 부여되는 점수이며, 장학금(학기별 최대 150만원, 비참여학과
-            100만원)으로 환산·활용됩니다. 아래에서 내 마일리지를 조회하거나 신청해보세요.
+          <p className="mx-auto mt-5 max-w-2xl text-sm leading-relaxed text-muted sm:text-lg">
+            교육 참여, 활동, 성과에 따라 부여되는 점수로, 장학금(학기별 최대 150만원, 비참여학과
+            100만원)으로 환산됩니다. 마일리지 조회부터 신청, 중고급 이수 신청까지 한 곳에서.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-9 flex flex-wrap justify-center gap-3">
             <Link href="/apply">
               <Button size="lg">
                 <ClipboardList size={18} /> 마일리지 신청
@@ -96,141 +130,163 @@ export default function HomePage() {
                 <GraduationCap size={18} /> 중고급 이수 신청
               </Button>
             </Link>
-            <Link href="/privacy-consent">
-              <Button size="lg" variant="outline">
-                <ShieldCheck size={18} /> 개인정보 동의 확인
-              </Button>
-            </Link>
           </div>
+          <Link
+            href="/privacy-consent"
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-muted transition hover:text-primary"
+          >
+            <ShieldCheck size={16} /> 개인정보 동의 확인
+          </Link>
         </div>
-      </div>
+      </section>
 
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-        <div className="flex flex-col gap-10">
-          <Section title="A.U.R.A 마일리지란?">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {AURA_LETTERS.map((a, i) => (
-                <Card key={i} className="text-center">
-                  <p className="text-xl font-extrabold text-primary">{a.letter}</p>
-                  <p className="mt-1 text-sm font-semibold">{a.word}</p>
-                  <p className="mt-1.5 text-xs leading-snug text-muted">{a.desc}</p>
-                </Card>
-              ))}
-            </div>
-            <p className="mt-4 text-xs text-muted">
-              ※ 마일리지는 반드시 AI인재양성부트캠프 사업과 직접 관련된 활동에만 부여되며, 관련 없는
-              자격증·경진대회·인턴십 등은 인정되지 않습니다.
-            </p>
-          </Section>
-
-          <Section title="이용 방법">
-            <div className="grid gap-4 sm:grid-cols-3">
-              {USAGE_STEPS.map((step, i) => (
-                <Link key={step.href} href={step.href} className="group">
-                  <Card className="flex h-full flex-col transition group-hover:border-primary/50">
-                    <p className="font-bold">
-                      {"①②③"[i]} {step.title}
-                    </p>
-                    <p className="mt-1.5 flex-1 text-xs leading-relaxed text-muted">{step.desc}</p>
-                    <span className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-4 py-2 text-sm font-semibold text-foreground transition group-hover:border-primary group-hover:bg-primary group-hover:text-white">
-                      {step.title} 바로가기 <ArrowRight size={15} />
-                    </span>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="신청 시 꼭 확인하세요">
-            <Card className="p-0">
-              <ol className="divide-y divide-border">
-                {NOTICES.map((n, i) => (
-                  <li key={n.title} className="flex gap-4 px-5 py-4 sm:px-6">
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-light text-xs font-bold text-primary-dark">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <p className="font-bold text-foreground">{n.title}</p>
-                      <p className="mt-1 text-foreground/70">{n.body}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-              <p className="rounded-b-2xl border-t border-primary/15 bg-primary-light px-5 py-3.5 font-semibold text-primary-dark sm:px-6">
-                중고급 이수자 장학금을 받는 학기에는 같은 학기 AURA 마일리지 장학금이 지급되지
-                않습니다 (중복 수혜 불가).
-              </p>
-            </Card>
-          </Section>
-
-          <Section title="마일리지 점수표">
-            <Card className="overflow-x-auto p-0">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface text-muted">
-                    <th className="px-4 py-3 font-semibold">구분</th>
-                    <th className="px-4 py-3 font-semibold">세부 활동</th>
-                    <th className="px-4 py-3 text-right font-semibold">마일리지</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {MILEAGE_SCORE_TABLE.map((row, i) => (
-                    <tr key={i} className="border-b border-border last:border-0">
-                      <td className="px-4 py-2 font-semibold text-foreground/70">{row.group}</td>
-                      <td className="px-4 py-2">{row.label}</td>
-                      <td className="px-4 py-2 text-right font-semibold">{row.score}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Card>
-          </Section>
-
-          <Section title="중고급 이수자 신청 (참여학과 한정)">
-            <Card>
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <p className="max-w-2xl">
-                  참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청할 수 있는 별도
-                  트랙이에요. 아래 조건을 모두 충족하고 사업단 승인을 받으면, AURA 마일리지 환산과는
-                  무관하게 별도 장학금이 지급돼요.
-                </p>
-                <div className="shrink-0 sm:text-right">
-                  <p className="text-xs font-semibold text-muted">별도 장학금</p>
-                  <p className="text-2xl font-extrabold text-primary">150만원</p>
+      <div className="mx-auto max-w-6xl divide-y divide-border px-4 sm:px-6 [&>section]:py-16 sm:[&>section]:py-24 [&>section:first-child]:border-t [&>section:first-child]:border-border [&>section:last-child]:pb-12">
+        {/* A.U.R.A란? */}
+        <section>
+          <SectionHeading
+            no="01"
+            label="ABOUT"
+            title="A.U.R.A 마일리지란?"
+            desc="AI인재양성부트캠프 사업과 직접 관련된 활동에만 부여되며, 관련 없는 자격증·경진대회·인턴십 등은 인정되지 않습니다."
+          />
+          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {AURA_LETTERS.map(({ letter, word, desc, Icon }, i) => (
+              <Card key={i} className="flex flex-col">
+                <div className="flex items-center justify-between">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-light text-primary">
+                    <Icon size={20} />
+                  </span>
+                  <span className="text-3xl font-extrabold text-border">{letter}</span>
                 </div>
-              </div>
+                <p className="mt-6 text-lg font-bold text-foreground">{word}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">{desc}</p>
+              </Card>
+            ))}
+          </div>
+        </section>
 
-              <p className="mt-6 text-xs font-semibold text-muted">신청 조건 · 모두 충족</p>
-              <ul className="mt-2 grid gap-3 sm:grid-cols-3">
-                {ADVANCED_REQUIREMENTS.map((r) => (
-                  <li key={r.label} className="rounded-xl border border-border bg-surface px-4 py-3.5">
-                    <p className="text-lg font-extrabold text-foreground">{r.count}</p>
-                    <p className="mt-0.5 font-semibold text-foreground">{r.label}</p>
-                    {r.hint && <p className="mt-1 text-xs leading-snug text-muted">{r.hint}</p>}
-                  </li>
-                ))}
-              </ul>
+        {/* 이용 방법 */}
+        <section>
+          <SectionHeading no="02" label="HOW TO" title="이용 방법" desc="세 단계로 마일리지와 중고급 이수를 관리하세요." />
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            {USAGE_STEPS.map((step, i) => (
+              <Link key={step.href} href={step.href} className="group">
+                <Card className="flex h-full flex-col transition group-hover:-translate-y-0.5 group-hover:border-primary/40">
+                  <span className="text-sm font-bold text-primary">STEP {String(i + 1).padStart(2, "0")}</span>
+                  <p className="mt-3 text-lg font-bold text-foreground">{step.title}</p>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-muted">{step.desc}</p>
+                  <span className="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-foreground transition group-hover:text-primary">
+                    바로가기 <ArrowRight size={15} className="transition group-hover:translate-x-0.5" />
+                  </span>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* 중고급 이수자 — 목업의 Pricing 섹션 구성 */}
+        <section className="grid gap-6 lg:grid-cols-[1fr_1.35fr] lg:gap-8">
+          <div className="flex flex-col gap-6">
+            <SectionHeading
+              no="03"
+              label="ADVANCED TRACK"
+              title="중고급 이수자 신청"
+              desc="참여학과(인공지능공학전공·전기공학전공·전자공학전공) 학생만 신청할 수 있는 별도 트랙입니다. 조건을 모두 충족하고 사업단 승인을 받으면, AURA 마일리지 환산과는 별개로 장학금이 지급됩니다."
+            />
+            <Card className="mt-auto">
+              <p className="text-xl font-extrabold tracking-tight text-foreground">
+                내가 요건을 충족했는지
+                <br />
+                먼저 확인해보세요
+              </p>
+              <Link href="/apply-advanced/eligibility-check" className="mt-5 block">
+                <Button size="lg" className="w-full">
+                  요건 확인하기
+                </Button>
+              </Link>
             </Card>
-          </Section>
+          </div>
 
-          <Section title="문의처">
-            <Card className="flex items-start gap-4 bg-surface">
-              <Phone className="mt-0.5 shrink-0 text-primary" size={20} />
+          <Card className="flex flex-col p-6 sm:p-8">
+            <p className="text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">신청 조건</p>
+            <p className="mt-2 text-sm text-muted">아래 조건을 모두 충족해야 합니다.</p>
+            <ul className="mt-6 flex flex-col gap-4">
+              {ADVANCED_REQUIREMENTS.map((r) => (
+                <li key={r.label} className="flex gap-3">
+                  <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-primary" />
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {r.label} <span className="text-primary">{r.count}</span>
+                    </p>
+                    {r.hint && <p className="mt-0.5 text-sm text-muted">{r.hint}</p>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <Link
+              href="/apply-advanced"
+              className="group mt-8 flex items-center justify-between rounded-2xl bg-surface px-6 py-5 transition hover:bg-primary-light"
+            >
               <div>
-                <p className="font-semibold text-foreground">국립순천대학교 AI인재양성부트캠프사업단</p>
-                <p className="mt-1">문의 전화: 061-750-5390 · 5391 · 5393 · 5394 · 5396</p>
-                <a
-                  href="https://www.scnu.ac.kr/scnuai/main.do"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 inline-block font-semibold text-primary hover:underline"
-                >
-                  사업단 홈페이지 바로가기
-                </a>
+                <p className="text-xs font-semibold text-muted">별도 장학금</p>
+                <p className="mt-1 text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+                  150만원
+                </p>
               </div>
-            </Card>
-          </Section>
-        </div>
+              <ArrowRight size={22} className="text-foreground transition group-hover:translate-x-1 group-hover:text-primary" />
+            </Link>
+          </Card>
+        </section>
+
+        {/* 신청 시 꼭 확인하세요 — 목업의 FAQ 섹션 구성 */}
+        <section className="grid gap-8 lg:grid-cols-[1fr_1.6fr]">
+          <div>
+            <Eyebrow no="04" label="NOTICE" />
+            <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-foreground sm:text-5xl">
+              신청 전<br className="hidden lg:block" /> 꼭 확인하세요
+            </h2>
+          </div>
+          <div className="flex flex-col gap-3">
+            {NOTICES.map((n, i) => (
+              <details
+                key={n.title}
+                open={i === 0}
+                className="group rounded-2xl border border-border/70 bg-white px-5 py-4 sm:px-6"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+                  {n.title}
+                  <Plus size={18} className="shrink-0 text-muted transition group-open:rotate-45" />
+                </summary>
+                <p className="mt-2.5 text-sm leading-relaxed text-muted">{n.body}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        {/* 점수표 */}
+        <section>
+          <SectionHeading no="05" label="SCORE TABLE" title="마일리지 점수표" desc="활동별로 부여되는 마일리지입니다." />
+          <Card className="mt-8 overflow-x-auto p-0">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-border bg-surface text-muted">
+                  <th className="px-5 py-3.5 font-semibold">구분</th>
+                  <th className="px-5 py-3.5 font-semibold">세부 활동</th>
+                  <th className="px-5 py-3.5 text-right font-semibold">마일리지</th>
+                </tr>
+              </thead>
+              <tbody>
+                {MILEAGE_SCORE_TABLE.map((row, i) => (
+                  <tr key={i} className="border-b border-border/70 last:border-0">
+                    <td className="px-5 py-2.5 font-semibold text-muted">{row.group}</td>
+                    <td className="px-5 py-2.5">{row.label}</td>
+                    <td className="px-5 py-2.5 text-right font-bold text-foreground">{row.score}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </section>
       </div>
     </div>
   );

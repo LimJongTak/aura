@@ -54,6 +54,14 @@ const DEFAULT_NAV_GROUPS: NavMenuGroup[] = [
 
 /** /programs/abc처럼 메뉴 링크의 하위 경로에 있을 때도 해당 메뉴를 활성으로 표시한다
  *  (홈 "/"은 모든 경로의 상위라 정확히 일치할 때만). */
+const NAV_PILL = "block whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition";
+const NAV_PILL_ACTIVE = "bg-white text-primary-dark shadow-[0_1px_3px_rgba(20,24,40,0.10)]";
+const NAV_PILL_IDLE = "text-muted hover:text-foreground";
+const CTA_BUTTON =
+  "whitespace-nowrap rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-dark";
+const GHOST_BUTTON =
+  "whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold text-muted transition hover:bg-surface hover:text-foreground";
+
 function isUnder(pathname: string, href: string) {
   return pathname === href || (href !== "/" && pathname.startsWith(`${href}/`));
 }
@@ -134,37 +142,30 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-white/90 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-white/85 backdrop-blur-md">
+      <div className="mx-auto flex h-[68px] max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" className="flex shrink-0 items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/scnu-logo.png" alt="국립순천대학교" className="h-8 w-auto sm:h-9" />
-          <span className="hidden h-7 w-px bg-border sm:block" />
-          <span className="whitespace-nowrap text-sm font-semibold text-foreground sm:text-base">
+          <span className="hidden h-6 w-px bg-border lg:block" />
+          <span className="whitespace-nowrap text-sm font-bold tracking-tight text-foreground sm:text-base md:hidden lg:inline">
             AI인재양성부트캠프사업단
           </span>
         </Link>
 
-        <nav ref={navRef} className="hidden items-center gap-8 sm:flex">
+        {/* 가운데 알약형 메뉴 — 연한 바탕 위에 현재 메뉴만 흰 알약으로 떠 보인다. */}
+        <nav ref={navRef} className="hidden items-center gap-1 rounded-full bg-surface p-1 md:flex">
           {navGroups.map((group) => {
             const soleItem = group.items.length === 1 ? group.items[0] : null;
             const active = soleItem
               ? isUnder(pathname, soleItem.href)
               : group.items.some((item) => isUnder(pathname, item.href));
             const highlighted = active || openGroupId === group.id;
+            const pillClass = cn(NAV_PILL, highlighted ? NAV_PILL_ACTIVE : NAV_PILL_IDLE);
 
             if (soleItem) {
               return (
-                <Link
-                  key={group.id}
-                  href={soleItem.href}
-                  className={cn(
-                    "block border-b-2 py-2 text-sm font-medium transition",
-                    highlighted
-                      ? "border-primary text-primary-dark"
-                      : "border-transparent text-muted hover:text-foreground"
-                  )}
-                >
+                <Link key={group.id} href={soleItem.href} className={pillClass}>
                   {group.label}
                 </Link>
               );
@@ -176,16 +177,7 @@ export function Header() {
                 onMouseEnter={() => openGroupOnHover(group.id)}
                 onMouseLeave={scheduleCloseGroup}
               >
-                <Link
-                  href={group.items[0].href}
-                  onClick={() => setOpenGroupId(null)}
-                  className={cn(
-                    "block border-b-2 py-2 text-sm font-medium transition",
-                    highlighted
-                      ? "border-primary text-primary-dark"
-                      : "border-transparent text-muted hover:text-foreground"
-                  )}
-                >
+                <Link href={group.items[0].href} onClick={() => setOpenGroupId(null)} className={pillClass}>
                   {group.label}
                 </Link>
               </div>
@@ -194,43 +186,28 @@ export function Header() {
         </nav>
 
         {!sessionLoading && (
-          <div className="hidden items-center gap-2 sm:flex">
+          <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             {user && student ? (
               <>
-                <span className="text-xs font-semibold text-muted">{student.name || student.studentId}님</span>
-                <Link
-                  href="/mypage"
-                  className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
-                >
-                  마이페이지
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-                >
+                <span className="mr-1 text-sm font-semibold text-muted">{student.name || student.studentId}님</span>
+                <button onClick={handleLogout} className={GHOST_BUTTON}>
                   로그아웃
                 </button>
+                <Link href="/mypage" className={CTA_BUTTON}>
+                  마이페이지
+                </Link>
               </>
             ) : user && isAdmin ? (
               <>
-                <Link
-                  href="/admin"
-                  className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
-                >
-                  관리자
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-                >
+                <button onClick={handleLogout} className={GHOST_BUTTON}>
                   로그아웃
                 </button>
+                <Link href="/admin" className={CTA_BUTTON}>
+                  관리자
+                </Link>
               </>
             ) : (
-              <Link
-                href="/login"
-                className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-              >
+              <Link href="/login" className={CTA_BUTTON}>
                 로그인
               </Link>
             )}
@@ -240,9 +217,9 @@ export function Header() {
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-foreground sm:hidden"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-foreground md:hidden"
         >
-          {menuOpen ? <X size={22} /> : <Menu size={22} />}
+          {menuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
 
@@ -251,13 +228,13 @@ export function Header() {
           ref={panelRef}
           onMouseEnter={() => openGroupOnHover(activeGroup.id)}
           onMouseLeave={scheduleCloseGroup}
-          className="absolute inset-x-0 top-full hidden border-b border-t border-border bg-white sm:block"
+          className="absolute inset-x-0 top-full hidden border-b border-border/70 bg-white/95 backdrop-blur-md md:block"
         >
           <div
-            className="mx-auto grid max-w-6xl px-4 sm:px-6"
+            className="mx-auto grid max-w-6xl gap-2 px-4 py-3 sm:px-6"
             style={{ gridTemplateColumns: `repeat(${activeGroup.items.length}, minmax(0, 1fr))` }}
           >
-            {activeGroup.items.map((item, i) => {
+            {activeGroup.items.map((item) => {
               const itemActive = pathname === item.href;
               return (
                 <Link
@@ -265,13 +242,17 @@ export function Header() {
                   href={item.href}
                   onClick={() => setOpenGroupId(null)}
                   className={cn(
-                    "flex items-center justify-between gap-2 border-border px-5 py-4 text-sm font-medium transition",
-                    i > 0 && "border-l",
-                    itemActive ? "text-primary-dark" : "text-foreground hover:bg-surface hover:text-primary-dark"
+                    "group flex items-center justify-between gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition",
+                    itemActive
+                      ? "bg-primary-light text-primary-dark"
+                      : "text-foreground hover:bg-surface hover:text-primary-dark"
                   )}
                 >
                   {item.label}
-                  <ChevronRight size={14} className="shrink-0 text-muted" />
+                  <ChevronRight
+                    size={15}
+                    className="shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-primary"
+                  />
                 </Link>
               );
             })}
@@ -280,7 +261,7 @@ export function Header() {
       )}
 
       {menuOpen && (
-        <nav className="flex flex-col gap-1 border-t border-border px-4 py-3 sm:hidden">
+        <nav className="flex flex-col gap-1 border-t border-border/70 bg-white px-4 py-3 md:hidden">
           {navGroups.map((group) => {
             const soleItem = group.items.length === 1 ? group.items[0] : null;
             if (soleItem) {
@@ -290,7 +271,7 @@ export function Header() {
                   key={group.id}
                   href={soleItem.href}
                   className={cn(
-                    "rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                    "rounded-xl px-3 py-2.5 text-sm font-semibold transition",
                     active ? "bg-primary-light text-primary-dark" : "text-foreground hover:bg-surface"
                   )}
                 >
@@ -307,7 +288,7 @@ export function Header() {
                   type="button"
                   onClick={() => setMobileOpenGroupId((prev) => (prev === group.id ? null : group.id))}
                   className={cn(
-                    "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition",
+                    "flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold transition",
                     active ? "bg-primary-light text-primary-dark" : "text-foreground hover:bg-surface"
                   )}
                 >
@@ -323,7 +304,7 @@ export function Header() {
                           key={item.href}
                           href={item.href}
                           className={cn(
-                            "rounded-lg px-3 py-2 text-sm font-medium transition",
+                            "rounded-xl px-3 py-2 text-sm font-medium transition",
                             itemActive ? "bg-primary-light text-primary-dark" : "text-muted hover:bg-surface"
                           )}
                         >
@@ -336,46 +317,31 @@ export function Header() {
               </div>
             );
           })}
-          <div className="mt-2 border-t border-border pt-3">
+          <div className="mt-2 border-t border-border/70 pt-3">
             {!sessionLoading &&
               (user && student ? (
                 <div className="flex items-center justify-between gap-2 px-3">
                   <span className="text-sm font-semibold text-muted">{student.name || student.studentId}님</span>
-                  <div className="flex items-center gap-2">
-                    <Link
-                      href="/mypage"
-                      className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
-                    >
-                      마이페이지
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-                    >
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={handleLogout} className={GHOST_BUTTON}>
                       로그아웃
                     </button>
+                    <Link href="/mypage" className={CTA_BUTTON}>
+                      마이페이지
+                    </Link>
                   </div>
                 </div>
               ) : user && isAdmin ? (
-                <div className="flex items-center justify-between px-3">
-                  <Link
-                    href="/admin"
-                    className="rounded-full bg-primary-light px-3 py-1.5 text-xs font-semibold text-primary-dark transition hover:bg-primary/20"
-                  >
-                    관리자
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-primary hover:text-primary"
-                  >
+                <div className="flex items-center justify-end gap-1.5 px-3">
+                  <button onClick={handleLogout} className={GHOST_BUTTON}>
                     로그아웃
                   </button>
+                  <Link href="/admin" className={CTA_BUTTON}>
+                    관리자
+                  </Link>
                 </div>
               ) : (
-                <Link
-                  href="/login"
-                  className="mx-3 flex items-center justify-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white"
-                >
+                <Link href="/login" className={cn(CTA_BUTTON, "mx-3 flex items-center justify-center py-2.5")}>
                   로그인
                 </Link>
               ))}

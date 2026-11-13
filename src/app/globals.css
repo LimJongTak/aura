@@ -1,14 +1,18 @@
 @import "tailwindcss";
 
+/*
+ * 화이트 카드 + 연한 블루그레이 배경 + 인디고 포인트의 심플한 랜딩 스타일.
+ * 페이지 배경(--background)이 카드(흰색)보다 살짝 어두워서 카드가 그림자 없이도 구분된다.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #16233d;
-  --color-primary: #1a56a8;
-  --color-primary-dark: #123f7c;
-  --color-primary-light: #eaf2fc;
-  --color-muted: #64748b;
-  --color-border: #e2e8f0;
-  --color-surface: #f5f8fc;
+  --background: #f5f7fb;
+  --foreground: #1b2033;
+  --color-primary: #4b47e0;
+  --color-primary-dark: #3632b8;
+  --color-primary-light: #eef0fe;
+  --color-muted: #6b7286;
+  --color-border: #e5e8f0;
+  --color-surface: #f2f4f9;
   --color-success: #16a34a;
   --color-success-light: #eafaf0;
   --color-warning: #d97706;
