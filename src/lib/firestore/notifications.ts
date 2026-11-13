@@ -206,15 +206,6 @@ export function subscribeMyNotifications(
   );
 }
 
-/** 안 읽은 알림 개수 — 헤더 종 아이콘·마이페이지 배지용. */
-export function subscribeUnreadCount(studentId: string, cb: (count: number) => void) {
-  return onSnapshot(
-    query(notificationsRef(), where("studentId", "==", studentId), where("read", "==", false)),
-    (snap) => cb(snap.size),
-    () => cb(0)
-  );
-}
-
 export async function markNotificationRead(id: string): Promise<void> {
   await updateDoc(doc(db, "notifications", id), { read: true, readAt: Date.now() });
 }

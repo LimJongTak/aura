@@ -6,7 +6,6 @@ import { Bell, ChevronRight } from "lucide-react";
 import { subscribeMyNotifications } from "@/lib/firestore/notifications";
 import { cn } from "@/lib/utils/cn";
 import type { StudentNotification } from "@/types/models";
-import { UnreadBadge } from "./NotificationBell";
 
 /** 마이페이지 상단의 알림 요약 — 새 알림이 있으면 가장 최근 것의 제목과 개수를 눈에 띄게 보여준다. */
 export function MyPageNotificationCard({ studentId }: { studentId: string }) {
@@ -44,5 +43,19 @@ export function MyPageNotificationCard({ studentId }: { studentId: string }) {
         알림함 <ChevronRight size={14} className="transition group-hover:translate-x-0.5" />
       </span>
     </Link>
+  );
+}
+
+function UnreadBadge({ count, className }: { count: number; className?: string }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className={cn(
+        "flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white",
+        className
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }

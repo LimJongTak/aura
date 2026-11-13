@@ -11,7 +11,6 @@ import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { subscribeNavMenuGroups } from "@/lib/firestore/navMenus";
 import type { NavMenuGroup } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
-import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 /** navMenuGroups 컬렉션이 아직 비어있거나(최초 배포 직후) 로딩 중일 때 쓰는
  *  기본 메뉴 — /admin/menus에서 관리자가 구성을 바꾸면 그 값으로 대체된다.
@@ -194,7 +193,6 @@ export function Header() {
                 <button onClick={handleLogout} className={GHOST_BUTTON}>
                   로그아웃
                 </button>
-                {!student.mustChangePassword && <NotificationBell studentId={student.studentId} />}
                 <Link href="/mypage" className={CTA_BUTTON}>
                   마이페이지
                 </Link>
