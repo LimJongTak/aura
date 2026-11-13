@@ -12,6 +12,12 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import {
+  notifyMileageGranted,
+  notifyMileagePaid,
+  notifyMileageRecalled,
+  notifyMileageReviewed,
+} from "@/lib/notifications/autoNotify";
 import type {
   ActivityGroup,
   ApplicationStatus,
@@ -87,6 +93,7 @@ export async function grantMileage(input: GrantMileageInput): Promise<void> {
     appliedAt: serverTimestamp(),
     processedAt: serverTimestamp(),
   });
+  await notifyMileageGranted(input);
 }
 
 function toMillis(v: unknown): number {
@@ -165,6 +172,7 @@ export async function updateMileageApplicationStatus(
     processedAt: serverTimestamp(),
     ...(semester ? { semester } : {}),
   });
+  await notifyMileageReviewed(id, status);
 }
 
 /** 여러 신청의 지급 완료 여부를 한 번에 표시한다 (체크박스 일괄 처리용). */
@@ -177,6 +185,7 @@ export async function setMileagePaid(ids: string[], paid: boolean): Promise<void
       })
     )
   );
+  if (paid) await notifyMileagePaid(ids);
 }
 
 /** 이미 승인된 마일리지를 관리자가 사유를 남기고 회수한다 (예: 중고급 이수
@@ -193,6 +202,7 @@ export async function recallMileageApplications(ids: string[], reason: string): 
       })
     )
   );
+  await notifyMileageRecalled(ids, reason);
 }
 
 /** 잘못 회수 처리한 건을 되돌린다. */

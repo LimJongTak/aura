@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Bell,
   BookOpen,
   CalendarCheck,
   CalendarDays,
@@ -181,6 +182,21 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "notifications",
+    title: "학생 알림",
+    icon: Bell,
+    group: "사이트 관리",
+    summary: "학생 마이페이지 알림함으로 알림을 보내고, 자동 알림을 켜고 끕니다.",
+    steps: [
+      "\"알림 보내기\"에서 받는 학생(전체·참여학과·학과·휴대전화/계좌 미등록·학번 직접 입력)을 고릅니다.",
+      "\"빠른 시작\"으로 계좌 등록 요청·프로그램 홍보 같은 자주 쓰는 문구를 바로 채울 수 있습니다.",
+      "제목·내용을 적고, 알림을 눌렀을 때 이동할 페이지(예: 프로그램 신청 페이지)를 연결합니다.",
+      "오른쪽 미리보기를 확인한 뒤 \"알림 보내기\"를 누릅니다. 학생 화면에는 빨간 점과 개수로 표시됩니다.",
+      "\"보낸 알림\"에서 몇 명이 읽었는지 확인하고, 잘못 보낸 알림은 삭제(발송 취소)할 수 있습니다.",
+      "\"자동 알림 설정\"에서 승인·반려·지급 등 처리 시 자동으로 가는 알림을 종류별로 켜고 끕니다.",
+    ],
+  },
+  {
     id: "announcements",
     title: "공지사항 관리",
     icon: Megaphone,
@@ -242,6 +258,7 @@ const TOPIC_PATHS: [path: string, topicId: string][] = [
   ["/admin/advanced-tracks", "advanced-tracks"],
   ["/admin/semesters", "semesters"],
   ["/admin/registrations", "registrations"],
+  ["/admin/notifications", "notifications"],
   ["/admin/announcements", "announcements"],
   ["/admin/menus", "menus"],
   ["/admin/quicklinks", "quicklinks"],

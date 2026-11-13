@@ -15,6 +15,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase/client";
 import { recordView } from "@/lib/firestore/visits";
+import { notifyProgramMileage, notifyProgramStatus } from "@/lib/notifications/autoNotify";
 import { deleteExternalApplicationFile, listExternalApplicationsForProgram } from "@/lib/firestore/externalApplications";
 import { nanoid } from "@/lib/utils/nanoid";
 import {
@@ -420,6 +421,7 @@ export async function setProgramApplicationsStatus(
     batch.update(counterRef(programId, sessionId), { count: increment(delta) });
   }
   await batch.commit();
+  await notifyProgramStatus(apps, status, note);
 }
 
 export async function deleteProgramApplications(apps: ProgramApplication[]): Promise<void> {
@@ -495,6 +497,7 @@ export async function grantProgramMileage(
     }
   }
   await batch.commit();
+  await notifyProgramMileage(apps);
 }
 
 /** 프로그램 종료 후, 지급 요건을 채우지 못한 신청자(중도이탈 등)를 사유와 함께 미지급 처리한다.

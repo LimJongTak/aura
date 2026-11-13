@@ -177,6 +177,9 @@ export interface AdvancedTargetSemesterOption {
   id: string;
   name: string;
   order: number;
+  /** 신청 마감 시각(epoch ms, 마감일 23:59:59). 지나면 학생이 이 학기로 중고급 이수 신청·
+   *  이수요건 확인을 할 수 없다. null/없음이면 마감 없음. 관리자가 학기 관리에서 정한다. */
+  applyEnd?: number | null;
 }
 
 /** 중고급 이수 신청의 교과목 1건(이수 교과목 또는 몰입형 교과목 공통 입력 단위). */
@@ -765,4 +768,61 @@ export interface ExternalPrivateInfo {
   email: string;
   teamMembers: string;
   answers: Record<string, ProgramAnswer>;
+}
+
+// ─── 학생 알림 ────────────────────────────────────────────────────────────────
+
+/** 알림 분류 — 학생 알림 목록의 작은 꼬리표로 보인다. */
+export const NOTIFICATION_CATEGORIES = ["공지", "프로그램", "마일리지", "중고급 이수", "정보 등록"] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+
+/** 관리자가 처리할 때 자동으로 나가는 알림의 종류. 관리자 화면에서 종류별로 켜고 끈다. */
+export const AUTO_NOTIFICATION_EVENTS = [
+  "mileageApproved",
+  "mileageRejected",
+  "mileageGranted",
+  "mileagePaid",
+  "mileageRecalled",
+  "advancedResult",
+  "eligibilityResult",
+  "programConfirmed",
+  "programRejected",
+  "programMileage",
+  "programNonPayment",
+] as const;
+export type AutoNotificationEvent = (typeof AUTO_NOTIFICATION_EVENTS)[number];
+
+/** notificationSettings/autoNotifications — 없는 키는 켜짐(true)으로 본다. */
+export type AutoNotificationSettings = Partial<Record<AutoNotificationEvent, boolean>>;
+
+/** notifications/{id} — 학생 한 명에게 간 알림 1건. 학생은 read/readAt만 바꿀 수 있다. */
+export interface StudentNotification {
+  id: string;
+  studentId: string;
+  title: string;
+  body: string;
+  /** 눌렀을 때 이동할 주소. 사이트 내부 경로("/programs/abc") 또는 https 주소, 없으면 "". */
+  link: string;
+  category: NotificationCategory;
+  /** "manual"이면 관리자가 직접 보낸 알림, 그 외에는 자동 알림 종류 */
+  source: "manual" | AutoNotificationEvent;
+  /** 관리자가 여러 명에게 한 번에 보낸 경우 그 발송 기록(notificationBroadcasts) id */
+  broadcastId: string | null;
+  read: boolean;
+  readAt: number | null;
+  createdAt: number;
+}
+
+/** notificationBroadcasts/{id} — 관리자가 직접 보낸 알림의 발송 기록. */
+export interface NotificationBroadcast {
+  id: string;
+  title: string;
+  body: string;
+  link: string;
+  category: NotificationCategory;
+  /** 받는 사람을 고른 기준을 사람이 읽을 수 있게 적은 것 (예: "계좌 미등록 학생") */
+  audienceLabel: string;
+  recipientCount: number;
+  createdAt: number;
+  createdBy: string;
 }

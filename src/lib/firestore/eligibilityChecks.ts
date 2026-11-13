@@ -13,6 +13,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { notifyEligibilityResult } from "@/lib/notifications/autoNotify";
 import type { EligibilityCheck, EligibilityCheckStatus, EligibilityCriteria } from "@/types/models";
 
 const eligibilityRef = () => collection(db, "eligibilityChecks");
@@ -118,12 +119,18 @@ export async function updateEligibilityCriteria(
   criteria: EligibilityCriteria,
   note: string
 ): Promise<void> {
-  await updateDoc(doc(db, "eligibilityChecks", id), {
+  const ref = doc(db, "eligibilityChecks", id);
+  const before = await getDoc(ref);
+  const status = computeOverallEligibilityStatus(criteria);
+  await updateDoc(ref, {
     criteria,
-    status: computeOverallEligibilityStatus(criteria),
+    status,
     note,
     processedAt: serverTimestamp(),
   });
+  // 결과가 실제로 바뀌었을 때(검토중 → 충족/미충족 등)만 학생에게 알린다.
+  const prev = before.data() as EligibilityCheck | undefined;
+  if (prev && prev.status !== status) await notifyEligibilityResult(prev, status);
 }
 
 /** 메모만 저장한다 — criteria/status/processedAt은 건드리지 않는다. 메모를 적는 도중에

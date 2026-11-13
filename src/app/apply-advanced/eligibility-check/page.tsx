@@ -21,7 +21,7 @@ import {
 import { AdvancedAlreadyPaidCard, useAdvancedPayments } from "@/components/advanced/AdvancedCompleter";
 import { submitEligibilityCheck } from "@/lib/firestore/eligibilityChecks";
 import { subscribeAdvancedTracks } from "@/lib/firestore/advancedTracks";
-import { subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
+import { isAdvancedTargetOpen, subscribeAdvancedTargetSemesters } from "@/lib/firestore/advancedTargetSemesters";
 import { subscribeCompletionSemesters } from "@/lib/firestore/completionSemesters";
 import { subscribeImmersiveSemesters } from "@/lib/firestore/immersiveSemesters";
 import { subscribeImmersiveSubjects } from "@/lib/firestore/immersiveSubjects";
@@ -64,6 +64,7 @@ export default function EligibilityCheckPage() {
 function EligibilityForm({ student, isPreview }: { student: Student; isPreview: boolean }) {
   const [targetSemesters, setTargetSemesters] = useState<AdvancedTargetSemesterOption[]>([]);
   const [targetSemester, setTargetSemester] = useState("");
+  const [closedTargetCount, setClosedTargetCount] = useState(0);
   const [level, setLevel] = useState<CompletionLevel>("중급");
   const [tracks, setTracks] = useState<AdvancedTrack[] | null>(null);
   const [trackId, setTrackId] = useState("");
@@ -87,7 +88,10 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsub = subscribeAdvancedTargetSemesters((list) => {
+    const unsub = subscribeAdvancedTargetSemesters((all) => {
+      // 신청 마감일이 지난 학기는 고를 수 없게 목록에서 뺀다 (Firestore 규칙에서도 막는다).
+      const list = all.filter((s) => isAdvancedTargetOpen(s));
+      setClosedTargetCount(all.length - list.length);
       setTargetSemesters(list);
       setTargetSemester((prev) => (prev && list.some((s) => s.name === prev) ? prev : (list[0]?.name ?? "")));
     });
@@ -151,6 +155,10 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
     setSubmitError(null);
     if (isPreview) {
       setSubmitError("미리보기 모드에서는 제출할 수 없습니다.");
+      return;
+    }
+    if (targetSemester && !targetSemesters.some((s) => s.name === targetSemester && isAdvancedTargetOpen(s))) {
+      setSubmitError("확인 기간이 지난 학기예요. 다른 학기를 선택해주세요.");
       return;
     }
     if (!targetSemester || !isSubjectFilled(subject1) || !isSubjectFilled(subject2) || !isSubjectFilled(immersive)) {
@@ -276,7 +284,14 @@ function EligibilityForm({ student, isPreview }: { student: Student; isPreview: 
               ))}
             </Select>
             {targetSemesters.length === 0 && (
-              <p className="mt-1.5 text-xs text-muted">등록된 학기가 없습니다. 사업단에 문의해주세요.</p>
+              <p className="mt-1.5 text-xs text-muted">
+                {closedTargetCount > 0
+                  ? "지금은 신청할 수 있는 학기가 없어요. 신청 기간을 공지사항에서 확인해주세요."
+                  : "등록된 학기가 없습니다. 사업단에 문의해주세요."}
+              </p>
+            )}
+            {targetSemesters.length > 0 && closedTargetCount > 0 && (
+              <p className="mt-1.5 text-xs text-muted">신청 기간이 지난 학기는 목록에 보이지 않아요.</p>
             )}
           </div>
 

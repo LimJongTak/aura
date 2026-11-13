@@ -32,6 +32,7 @@ import { getConversionSettings } from "@/lib/firestore/conversionSettings";
 import { getCurrentSemester } from "@/lib/firestore/semesters";
 import { listAdvancedPaymentsForStudent } from "@/lib/firestore/scholarshipPayments";
 import { TrackCompletionSection } from "@/components/mypage/TrackCompletionSection";
+import { MyPageNotificationCard } from "@/components/notifications/MyPageNotificationCard";
 import { ProgramApplicationStatusBadge, ProgramMileageStatus } from "@/components/programs/shared";
 import { formatDate, getProgramsByIds, listMyProgramApplications } from "@/lib/firestore/programs";
 import type {
@@ -94,6 +95,12 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
   const [contact, setContact] = useState<StudentContact | null>(null);
   const [phoneModalOpen, setPhoneModalOpen] = useState(false);
   const [tab, setTab] = useState<MyPageTab>("mileage");
+
+  // 알림의 "자세히 보기"가 /mypage?tab=advanced처럼 특정 탭을 가리킬 수 있다.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (requested === "mileage" || requested === "programs" || requested === "advanced") setTab(requested);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +230,9 @@ function MyPageContent({ student, isPreview }: { student: Student; isPreview: bo
           />
         </div>
       </Card>
+
+      {/* 새 알림 */}
+      <MyPageNotificationCard studentId={student.studentId} />
 
       {/* 마일리지 요약 */}
       <div className="grid gap-3 md:grid-cols-3">

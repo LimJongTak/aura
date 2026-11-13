@@ -7,6 +7,7 @@ import { signOut } from "firebase/auth";
 import {
   Award,
   BarChart3,
+  Bell,
   BookOpen,
   CalendarCheck,
   CalendarDays,
@@ -78,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "사이트 관리",
     items: [
+      { href: "/admin/notifications", label: "학생 알림", icon: Bell },
       { href: "/admin/announcements", label: "공지사항 관리", icon: Megaphone },
       { href: "/admin/menus", label: "메뉴 관리", icon: ListTree },
       { href: "/admin/quicklinks", label: "퀵메뉴 관리", icon: Link2 },

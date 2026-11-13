@@ -12,6 +12,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
+import { notifyAdvancedReviewed } from "@/lib/notifications/autoNotify";
 import type { AdvancedApplication, ApplicationStatus } from "@/types/models";
 
 const advancedRef = () => collection(db, "advancedApplications");
@@ -99,6 +100,7 @@ export async function updateAdvancedApplicationStatus(
     note: note ?? "",
     processedAt: serverTimestamp(),
   });
+  await notifyAdvancedReviewed(id, status);
 }
 
 /** 신청 자체를 완전히 삭제한다 — 반려와 달리 기록이 전혀 남지 않는다. 승인된

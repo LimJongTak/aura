@@ -11,6 +11,7 @@ import { useAdminUser } from "@/lib/auth/useAdminUser";
 import { subscribeNavMenuGroups } from "@/lib/firestore/navMenus";
 import type { NavMenuGroup } from "@/types/models";
 import { cn } from "@/lib/utils/cn";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 /** navMenuGroups 컬렉션이 아직 비어있거나(최초 배포 직후) 로딩 중일 때 쓰는
  *  기본 메뉴 — /admin/menus에서 관리자가 구성을 바꾸면 그 값으로 대체된다.
@@ -189,6 +190,7 @@ export function Header() {
           <div className="hidden shrink-0 items-center gap-1.5 md:flex">
             {user && student ? (
               <>
+                {!student.mustChangePassword && <NotificationBell studentId={student.studentId} className="mr-1" />}
                 <span className="mr-1 text-sm font-semibold text-muted">{student.name || student.studentId}님</span>
                 <button onClick={handleLogout} className={GHOST_BUTTON}>
                   로그아웃
@@ -214,6 +216,9 @@ export function Header() {
           </div>
         )}
 
+        {!sessionLoading && user && student && !student.mustChangePassword && (
+          <NotificationBell studentId={student.studentId} className="ml-auto md:hidden" />
+        )}
         <button
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ClipboardList, Download, ExternalLink, Eye, Pencil, Trash2, X } from "lucide-react";
+import { ArrowLeft, Bell, ClipboardList, Download, ExternalLink, Eye, Pencil, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input, Select } from "@/components/ui/Input";
@@ -202,6 +202,13 @@ export default function AdminProgramDetailPage() {
               <ExternalLink size={15} /> 학생 화면
             </Button>
           </Link>
+          {program.isPublished && (
+            <Link href={`/admin/notifications?programId=${program.id}`}>
+              <Button size="sm" variant="outline">
+                <Bell size={15} /> 알림으로 홍보
+              </Button>
+            </Link>
+          )}
           <Link href={`/admin/programs/${program.id}/edit`}>
             <Button size="sm" variant="outline">
               <Pencil size={15} /> 수정

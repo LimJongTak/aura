@@ -27,6 +27,8 @@ import {
 import {
   createAdvancedTargetSemester,
   deleteAdvancedTargetSemester,
+  isAdvancedTargetOpen,
+  setAdvancedTargetSemesterApplyEnd,
   setAdvancedTargetSemesterOrder,
   subscribeAdvancedTargetSemesters,
 } from "@/lib/firestore/advancedTargetSemesters";
@@ -64,6 +66,31 @@ function fromDateInput(value: string): Date | null {
 }
 
 type Tab = "mileage" | "advancedTarget" | "completion" | "immersive";
+
+type PeriodStatus = { label: string; tone: "open" | "closed" | "upcoming" | "unset" };
+
+const PERIOD_TONE: Record<PeriodStatus["tone"], string> = {
+  open: "bg-success-light text-success",
+  upcoming: "bg-primary-light text-primary-dark",
+  closed: "bg-surface text-muted",
+  unset: "bg-warning-light text-warning",
+};
+
+function PeriodBadge({ status }: { status: PeriodStatus }) {
+  return (
+    <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${PERIOD_TONE[status.tone]}`}>
+      {status.label}
+    </span>
+  );
+}
+
+/** 마일리지 학기의 신청 상태 — 신청은 "현재 학기"의 기간 안에서만 받는다. */
+function mileagePeriodStatus(s: Semester, now = Date.now()): PeriodStatus {
+  if (!s.mileageApplyStart || !s.mileageApplyEnd) return { label: "기간 미설정", tone: "unset" };
+  if (now < s.mileageApplyStart) return { label: "신청 예정", tone: "upcoming" };
+  if (now > s.mileageApplyEnd) return { label: "신청 마감", tone: "closed" };
+  return s.isCurrent ? { label: "신청 중", tone: "open" } : { label: "기간 중 · 현재 학기 아님", tone: "unset" };
+}
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -174,7 +201,8 @@ export default function AdminSemestersPage() {
       <Card className="mt-6">
         <p className="font-bold text-foreground">마일리지 신청 학기 관리</p>
         <p className="mt-1 text-xs text-muted">
-          &quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다.
+          &quot;현재 학기&quot;로 지정한 학기의 신청 기간에만 마일리지 신청을 받습니다. 신청 마감 시각이 지나면
+          학생 화면에서 신청이 막히고, 서버(Firestore 규칙)에서도 거부돼요. 지난 학기는 현재 학기가 아니므로 신청할 수 없어요.
         </p>
 
         <ul className="mt-3 flex flex-col gap-3">
@@ -183,6 +211,7 @@ export default function AdminSemestersPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <p className="font-bold">{s.name}</p>
+                  <PeriodBadge status={mileagePeriodStatus(s)} />
                   {s.isCurrent && (
                     <span className="flex items-center gap-1 rounded-full bg-success-light px-2 py-0.5 text-xs font-semibold text-success">
                       <CheckCircle2 size={12} /> 현재 학기
@@ -226,14 +255,17 @@ export default function AdminSemestersPage() {
         title="중고급 신청 학기 관리"
         description={
           <>
-            중고급 이수 신청서의 &quot;지원 학기&quot;를 고를 때 쓰는 목록이에요 (예: 2026학년도 제1학기). 마일리지는
-            연 단위로 신청받지만, 중고급 이수는 학기 단위로 따로 신청받기 때문에 별도로 관리해요.
+            중고급 이수 신청서·이수요건 확인의 &quot;지원 학기&quot;를 고를 때 쓰는 목록이에요 (예: 2026학년도 제1학기).
+            <b> 신청 마감일</b>을 정하면 그날 23:59까지만 그 학기로 신청을 받고, 지나면 학생 화면 목록에서 빠지며 서버에서도
+            거부돼요. 마감일을 비워두면 계속 신청할 수 있어요.
           </>
         }
         placeholder="예: 2026학년도 제1학기"
         items={advancedTargetSemesters}
         onCreate={(name) => createAdvancedTargetSemester(name, advancedTargetSemesters.length)}
-        onDelete={deleteAdvancedTargetSemester}
+        onDelete={(id) =>
+          deleteAdvancedTargetSemester(id, advancedTargetSemesters.find((s) => s.id === id)?.name)
+        }
         onMove={(index, direction) => {
           const target = advancedTargetSemesters[index + direction];
           const current = advancedTargetSemesters[index];
@@ -246,6 +278,17 @@ export default function AdminSemestersPage() {
         onDragReorder={(items) =>
           Promise.all(items.map((item, i) => setAdvancedTargetSemesterOrder(item.id, i))).then(() => undefined)
         }
+        dateField={{
+          label: "신청 마감일",
+          getValue: (item) => item.applyEnd ?? null,
+          onChange: (id, date) =>
+            setAdvancedTargetSemesterApplyEnd(id, advancedTargetSemesters.find((s) => s.id === id)?.name ?? "", date),
+        }}
+        statusOf={(item) => {
+          const option = advancedTargetSemesters.find((s) => s.id === item.id);
+          if (!option?.applyEnd) return { label: "마감일 없음", tone: "unset" };
+          return isAdvancedTargetOpen(option) ? { label: "신청 가능", tone: "open" } : { label: "신청 마감", tone: "closed" };
+        }}
       />
       )}
 
@@ -344,6 +387,7 @@ type SemesterItem = {
   order: number;
   isFrom2026H1Onward?: boolean;
   concludeDate?: number | null;
+  applyEnd?: number | null;
 };
 
 interface SemesterFlagConfig {
@@ -369,6 +413,7 @@ function SimpleSemesterList({
   onDragReorder,
   flags,
   dateField,
+  statusOf,
 }: {
   title: string;
   description: React.ReactNode;
@@ -382,6 +427,8 @@ function SimpleSemesterList({
   flags?: SemesterFlagConfig[];
   /** 이수 교과목 학기 목록에서만 쓰는 "종강일" 날짜 입력. 다른 학기 목록에는 없다. */
   dateField?: SemesterDateFieldConfig;
+  /** 학기 이름 옆에 보여줄 신청 상태 배지 (중고급 신청 학기 목록에서 쓴다). */
+  statusOf?: (item: SemesterItem) => PeriodStatus;
 }) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -395,7 +442,7 @@ function SimpleSemesterList({
     try {
       await dateField.onChange(id, fromDateInput(value));
     } catch {
-      alert("종강일 저장에 실패했어요. 잠시 후 다시 시도해주세요.");
+      alert(`${dateField.label} 저장에 실패했어요. 잠시 후 다시 시도해주세요.`);
     } finally {
       setSavingDateId(null);
     }
@@ -460,6 +507,7 @@ function SimpleSemesterList({
                   <GripVertical size={15} />
                 </span>
                 <span className="text-sm font-semibold text-foreground">{item.name}</span>
+                {statusOf && <PeriodBadge status={statusOf(item)} />}
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 {dateField && (
